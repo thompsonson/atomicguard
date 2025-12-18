@@ -1,0 +1,6 @@
+MD013: false  # line length
+MD024: false  # duplicate headings (used intentionally in design docs)
+MD033: false  # inline HTML
+MD036: false  # emphasis as heading (used in generated reports)
+MD040: false  # fenced code language (many existing blocks)
+MD041: false  # first line heading

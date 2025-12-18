@@ -1,0 +1,176 @@
+"""
+Test execution guards.
+
+Guards that validate artifacts by running tests against them.
+"""
+
+import multiprocessing
+import sys
+import types
+from typing import Any
+
+from atomicguard.domain.interfaces import GuardInterface
+from atomicguard.domain.models import Artifact, GuardResult
+
+
+class TestGuard(GuardInterface):
+    """
+    Validates artifact via test execution in the same process.
+
+    Simple guard that executes test code against artifact content.
+    For isolation, use DynamicTestGuard instead.
+    """
+
+    def __init__(self, test_code: str | None = None):
+        """
+        Args:
+            test_code: Static test code to run (if not using dependencies)
+        """
+        self._static_test_code = test_code
+
+    def validate(self, artifact: Artifact, **deps: Any) -> GuardResult:
+        """
+        Execute test code against artifact.
+
+        Args:
+            artifact: The implementation artifact to test
+            **deps: May include 'test' artifact with test code
+
+        Returns:
+            GuardResult with test outcome
+        """
+        test_artifact = deps.get("test")
+        test_code = test_artifact.content if test_artifact else self._static_test_code
+
+        if not test_code:
+            return GuardResult(passed=False, feedback="No test code provided")
+
+        namespace: dict[str, Any] = {}
+        try:
+            exec(artifact.content, namespace)
+            exec(test_code, namespace)
+            return GuardResult(passed=True)
+        except AssertionError as e:
+            return GuardResult(passed=False, feedback=f"Test failed: {e}")
+        except Exception as e:
+            return GuardResult(passed=False, feedback=f"{type(e).__name__}: {e}")
+
+
+class DynamicTestGuard(GuardInterface):
+    """
+    Runs test code against implementation in isolated subprocess.
+
+    Expects 'test' dependency containing the test artifact.
+    Executes tests and returns pass/fail with detailed feedback.
+
+    Uses multiprocessing for isolation to prevent test code from
+    affecting the parent process.
+    """
+
+    def __init__(self, timeout: float = 60.0):
+        """
+        Args:
+            timeout: Maximum time in seconds to wait for test execution
+        """
+        self.timeout = timeout
+
+    def validate(self, artifact: Artifact, **deps: Any) -> GuardResult:
+        """
+        Run tests in isolated subprocess.
+
+        Args:
+            artifact: The implementation artifact to test
+            **deps: Must include 'test' artifact with test code
+
+        Returns:
+            GuardResult with test outcome
+        """
+        test_artifact = deps.get("test")
+        if not test_artifact:
+            return GuardResult(
+                passed=False, feedback="No test artifact in dependencies"
+            )
+
+        q: multiprocessing.Queue = multiprocessing.Queue()
+        p = multiprocessing.Process(
+            target=self._run_tests, args=(artifact, test_artifact, q)
+        )
+        p.start()
+        p.join(self.timeout)
+
+        if p.is_alive():
+            p.terminate()
+            p.join()
+            return GuardResult(
+                passed=False,
+                feedback=f"Timeout: Test execution exceeded {self.timeout}s",
+            )
+
+        if not q.empty():
+            passed, msg = q.get()
+            return GuardResult(passed=passed, feedback=msg)
+        return GuardResult(passed=False, feedback="Test execution crashed")
+
+    def _run_tests(
+        self, impl_artifact: Artifact, test_artifact: Artifact, q: Any
+    ) -> None:
+        """
+        Execute tests in subprocess.
+
+        This method runs in a forked process for isolation.
+        """
+        try:
+            impl_code = impl_artifact.content
+            test_code = test_artifact.content
+
+            if not impl_code:
+                q.put((False, "No implementation code"))
+                return
+
+            if not test_code:
+                q.put((False, "No test code"))
+                return
+
+            # Create mock 'implementation' module
+            impl_module = types.ModuleType("implementation")
+            exec(impl_code, impl_module.__dict__)
+            sys.modules["implementation"] = impl_module
+
+            # Execute test code (pytest already in sys.modules from parent)
+            import pytest
+
+            test_scope = {"__builtins__": __builtins__, "pytest": pytest}
+            exec(test_code, test_scope)
+
+            # Find and run test functions
+            test_funcs = [
+                v
+                for k, v in test_scope.items()
+                if k.startswith("test_") and callable(v)
+            ]
+
+            if not test_funcs:
+                q.put((False, "No test functions found"))
+                return
+
+            failures = []
+            for func in test_funcs:
+                try:
+                    func()
+                except AssertionError as e:
+                    failures.append(f"{func.__name__}: AssertionError - {e}")
+                except Exception as e:
+                    failures.append(f"{func.__name__}: {type(e).__name__} - {e}")
+
+            if failures:
+                q.put((False, "Test failures:\n" + "\n".join(failures)))
+            else:
+                q.put((True, f"All {len(test_funcs)} tests passed"))
+
+        except SyntaxError as e:
+            q.put((False, f"Syntax error: {e}"))
+        except Exception as e:
+            q.put((False, f"Execution error: {e}"))
+        finally:
+            if "implementation" in sys.modules:
+                del sys.modules["implementation"]

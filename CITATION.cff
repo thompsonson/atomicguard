@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "AtomicGuard: A Dual-State Agent Framework"
+authors:
+  - family-names: "Thompson"
+    given-names: "Matthew"
+    orcid: "https://orcid.org/0009-0007-0846-0369"
+version: "0.1.0"
+date-released: "2025-12-16"
+url: "https://github.com/thompsonson/atomicguard"
+repository-code: "https://github.com/thompsonson/atomicguard"
+license: MIT
+keywords:
+  - llm
+  - agents
+  - code-generation
+  - neuro-symbolic
+  - guards
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Thompson"
+      given-names: "Matthew"
+      orcid: "https://orcid.org/0009-0007-0846-0369"
+  title: "Managing the Stochastic: Foundations of Learning in Neuro-Symbolic Systems for Software Engineering"
+  year: 2025

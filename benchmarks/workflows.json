@@ -1,0 +1,92 @@
+{
+  "tdd_stack": {
+    "name": "Stack",
+    "specification": "Implement a Stack class with push, pop, peek, is_empty, and size methods.",
+    "action_pairs": {
+      "g_test": {
+        "prompt": "Write pytest test functions for a Stack class with push, pop, peek, is_empty, and size methods.\nInclude tests for:\n- Basic push/pop operations\n- peek without removal\n- is_empty on new and used stack\n- size accuracy\n- IndexError on pop/peek when empty\n\nOutput ONLY the test code, no implementation. Use 'from implementation import Stack'.",
+        "guard": "syntax"
+      },
+      "g_impl": {
+        "prompt": "Write a Python Stack class with push, pop, peek, is_empty, and size methods.\nThe tests expect: from implementation import Stack\n\nYou must implement code that passes the following tests:\n{test_code}",
+        "guard": "dynamic_test",
+        "requires": ["g_test"]
+      }
+    }
+  },
+  "tdd_calculator": {
+    "name": "Calculator",
+    "specification": "Implement a Calculator class with add, subtract, multiply, divide methods.",
+    "action_pairs": {
+      "g_test": {
+        "prompt": "Write pytest test functions for a Calculator class with add, subtract, multiply, divide methods.\nInclude tests for:\n- Basic arithmetic operations\n- Negative numbers\n- Float operations\n- Division by zero raises ValueError\n\nOutput ONLY the test code, no implementation. Use 'from implementation import Calculator'.",
+        "guard": "syntax"
+      },
+      "g_impl": {
+        "prompt": "Write a Python Calculator class with add, subtract, multiply, divide methods.\nDivision by zero should raise ValueError.\nThe tests expect: from implementation import Calculator\n\nYou must implement code that passes the following tests:\n{test_code}",
+        "guard": "dynamic_test",
+        "requires": ["g_test"]
+      }
+    }
+  },
+  "tdd_queue": {
+    "name": "Queue",
+    "specification": "Implement a Queue class with enqueue, dequeue, front, is_empty, and size methods.",
+    "action_pairs": {
+      "g_test": {
+        "prompt": "Write pytest test functions for a Queue class with enqueue, dequeue, front, is_empty, and size methods.\nInclude tests for:\n- Basic enqueue/dequeue (FIFO order)\n- front without removal\n- is_empty on new and used queue\n- size accuracy\n- IndexError on dequeue/front when empty\n\nOutput ONLY the test code, no implementation. Use 'from implementation import Queue'.",
+        "guard": "syntax"
+      },
+      "g_impl": {
+        "prompt": "Write a Python Queue class with enqueue, dequeue, front, is_empty, and size methods.\nThe tests expect: from implementation import Queue\n\nYou must implement code that passes the following tests:\n{test_code}",
+        "guard": "dynamic_test",
+        "requires": ["g_test"]
+      }
+    }
+  },
+  "tdd_lrucache": {
+    "name": "LRUCache",
+    "specification": "Implement an LRUCache class with get and put methods. The cache has a fixed capacity and evicts the least recently used item when full.",
+    "action_pairs": {
+      "g_test": {
+        "prompt": "Write pytest test functions for an LRUCache class with get(key) and put(key, value) methods.\nThe cache is initialized with a capacity: LRUCache(capacity).\n\nInclude tests for:\n- Basic get/put operations\n- get returns -1 for missing keys\n- Capacity limit enforced (evicts LRU item when full)\n- Access order updates on get (accessed items become most recent)\n- Access order updates on put (updated items become most recent)\n- Eviction of correct LRU item after multiple accesses\n\nOutput ONLY the test code, no implementation. Use 'from implementation import LRUCache'.",
+        "guard": "syntax"
+      },
+      "g_impl": {
+        "prompt": "Write a Python LRUCache class with get(key) and put(key, value) methods.\nThe cache is initialized with a capacity: LRUCache(capacity).\n- get(key): Return the value if key exists, otherwise return -1. Accessing a key makes it most recently used.\n- put(key, value): Insert or update the key-value pair. If capacity is exceeded, evict the least recently used item first.\n\nThe tests expect: from implementation import LRUCache\n\nYou must implement code that passes the following tests:\n{test_code}",
+        "guard": "dynamic_test",
+        "requires": ["g_test"]
+      }
+    }
+  },
+  "tdd_template": {
+    "name": "SimpleTemplate",
+    "specification": "Implement a SimpleTemplate class for basic string substitution with {varname} placeholders.",
+    "action_pairs": {
+      "g_test": {
+        "prompt": "Write pytest test functions for a SimpleTemplate class.\n\nInterface:\n  template = SimpleTemplate(\"Hello, {name}!\")\n  result = template.render(name=\"World\")  # Returns \"Hello, World!\"\n\nBehavior rules:\n1. Placeholders use single curly braces: {varname}\n2. Variable names are alphanumeric and underscores only (e.g., {name}, {user_id}, {item1})\n3. Missing variables raise KeyError\n4. Escaped braces: {{ becomes { and }} becomes } in output\n5. No nesting, no filters, no conditionals\n\nInclude tests for:\n- Basic single variable substitution\n- Multiple variables in one template\n- Missing variable raises KeyError\n- Escaped braces {{ and }} render as literal { and }\n- Empty template string\n- Template with no placeholders\n- Adjacent placeholders {a}{b}\n- Variable with underscore and numbers {user_1}\n\nOutput ONLY the test code, no implementation. Use 'from implementation import SimpleTemplate'.",
+        "guard": "syntax"
+      },
+      "g_impl": {
+        "prompt": "Write a Python SimpleTemplate class for basic string substitution.\n\nInterface:\n  template = SimpleTemplate(template_string)\n  result = template.render(**kwargs)  # Returns substituted string\n\nBehavior rules:\n1. Placeholders use single curly braces: {varname}\n2. Variable names are alphanumeric and underscores only\n3. Missing variables raise KeyError\n4. Escaped braces: {{ becomes { and }} becomes } in output\n5. No nesting, no filters, no conditionals - simple substitution only\n\nThe tests expect: from implementation import SimpleTemplate\n\nYou must implement code that passes the following tests:\n{test_code}",
+        "guard": "dynamic_test",
+        "requires": ["g_test"]
+      }
+    }
+  },
+  "tdd_password": {
+    "name": "PasswordValidator",
+    "specification": "Implement a PasswordValidator class that validates passwords against fixed rules and returns specific error messages.",
+    "action_pairs": {
+      "g_test": {
+        "prompt": "Write pytest test functions for a PasswordValidator class.\n\nInterface:\n  validator = PasswordValidator()\n  is_valid, errors = validator.validate(password)\n  # Returns (True, []) if valid\n  # Returns (False, [\"error1\", \"error2\"]) if invalid\n\nValidation rules (ALL must pass for valid password):\n1. Minimum 8 characters\n2. At least one uppercase letter (A-Z)\n3. At least one lowercase letter (a-z)\n4. At least one digit (0-9)\n5. At least one special character from: !@#$%^&*\n\nExact error messages (use these exact strings):\n- \"Password must be at least 8 characters\"\n- \"Password must contain at least one uppercase letter\"\n- \"Password must contain at least one lowercase letter\"\n- \"Password must contain at least one digit\"\n- \"Password must contain at least one special character (!@#$%^&*)\"\n\nInclude tests for:\n- Valid password returns (True, [])\n- Password too short (< 8 chars)\n- Missing uppercase letter\n- Missing lowercase letter\n- Missing digit\n- Missing special character\n- Multiple violations return all applicable errors\n- Exactly 8 characters is valid length\n- Edge case: only special characters (should fail other rules)\n\nOutput ONLY the test code, no implementation. Use 'from implementation import PasswordValidator'.",
+        "guard": "syntax"
+      },
+      "g_impl": {
+        "prompt": "Write a Python PasswordValidator class.\n\nInterface:\n  validator = PasswordValidator()\n  is_valid, errors = validator.validate(password)\n  # Returns (True, []) if password is valid\n  # Returns (False, list_of_error_strings) if invalid\n\nValidation rules (ALL must pass):\n1. Minimum 8 characters\n2. At least one uppercase letter (A-Z)\n3. At least one lowercase letter (a-z)\n4. At least one digit (0-9)\n5. At least one special character from: !@#$%^&*\n\nExact error messages (must match exactly):\n- \"Password must be at least 8 characters\"\n- \"Password must contain at least one uppercase letter\"\n- \"Password must contain at least one lowercase letter\"\n- \"Password must contain at least one digit\"\n- \"Password must contain at least one special character (!@#$%^&*)\"\n\nReturn all applicable errors, not just the first one.\n\nThe tests expect: from implementation import PasswordValidator\n\nYou must implement code that passes the following tests:\n{test_code}",
+        "guard": "dynamic_test",
+        "requires": ["g_test"]
+      }
+    }
+  }
+}
