@@ -1,0 +1,1 @@
+"""AtomicGuard test suite."""

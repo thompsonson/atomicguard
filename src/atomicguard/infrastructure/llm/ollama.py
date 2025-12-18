@@ -1,0 +1,132 @@
+"""
+Ollama LLM generator implementation.
+
+Connects to Ollama instances via the OpenAI-compatible API.
+"""
+
+import re
+import uuid
+from datetime import datetime
+from typing import Any, cast
+
+from atomicguard.domain.interfaces import GeneratorInterface
+from atomicguard.domain.models import (
+    Artifact,
+    ArtifactStatus,
+    Context,
+    ContextSnapshot,
+)
+from atomicguard.domain.prompts import PromptTemplate
+
+DEFAULT_OLLAMA_URL = "http://localhost:11434/v1"
+
+
+class OllamaGenerator(GeneratorInterface):
+    """Connects to Ollama instance using OpenAI-compatible API."""
+
+    def __init__(
+        self,
+        model: str = "qwen2.5-coder:7b",
+        base_url: str = DEFAULT_OLLAMA_URL,
+        timeout: float = 120.0,
+    ):
+        """
+        Args:
+            model: Ollama model name
+            base_url: Ollama API URL
+            timeout: Request timeout in seconds
+        """
+        try:
+            from openai import OpenAI
+        except ImportError as err:
+            raise ImportError("openai library required: pip install openai") from err
+
+        self._model = model
+        self._client = OpenAI(
+            base_url=base_url,
+            api_key="ollama",  # required but unused
+            timeout=timeout,
+        )
+        self._version_counter = 0
+
+    def generate(
+        self, context: Context, template: PromptTemplate | None = None
+    ) -> Artifact:
+        """Generate an artifact based on context."""
+        # Build prompt
+        if template:
+            prompt = template.render(context)
+        else:
+            prompt = self._build_basic_prompt(context)
+
+        # Call Ollama
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a Python programming assistant. Provide complete, runnable code in a markdown block:\n```python\n# code\n```",
+            },
+            {"role": "user", "content": prompt},
+        ]
+
+        response = self._client.chat.completions.create(
+            model=self._model, messages=cast(Any, messages), temperature=0.7
+        )
+
+        content = response.choices[0].message.content or ""
+        code = self._extract_code(content)
+
+        self._version_counter += 1
+
+        return Artifact(
+            artifact_id=str(uuid.uuid4()),
+            content=code,
+            previous_attempt_id=None,
+            action_pair_id="ollama",
+            created_at=datetime.now().isoformat(),
+            attempt_number=self._version_counter,
+            status=ArtifactStatus.PENDING,
+            guard_result=None,
+            feedback="",
+            context=ContextSnapshot(
+                specification=context.specification,
+                constraints=context.ambient.constraints,
+                feedback_history=(),
+                dependency_ids=(),
+            ),
+        )
+
+    def _extract_code(self, content: str) -> str:
+        """Extract Python code from response."""
+        # Try python block
+        match = re.search(r"```python\n(.*?)\n```", content, re.DOTALL)
+        if match:
+            return match.group(1)
+
+        # Try generic block
+        match = re.search(r"```\n(.*?)\n```", content, re.DOTALL)
+        if match:
+            return match.group(1)
+
+        # Try first def/import/class
+        match = re.search(r"^(def |import |class )", content, re.MULTILINE)
+        if match:
+            return content[match.start() :]
+
+        # Fallback: full content
+        return content
+
+    def _build_basic_prompt(self, context: Context) -> str:
+        """Build a basic prompt from context."""
+        parts = [context.specification]
+
+        if context.current_artifact:
+            parts.append(f"\nPrevious attempt:\n{context.current_artifact}")
+
+        if context.feedback_history:
+            feedback_text = "\n".join(
+                f"Attempt {i + 1} feedback: {f}"
+                for i, (_, f) in enumerate(context.feedback_history)
+            )
+            parts.append(f"\nFeedback history:\n{feedback_text}")
+
+        return "\n".join(parts)

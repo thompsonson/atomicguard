@@ -1,0 +1,116 @@
+"""
+AtomicGuard: Dual-State Framework for LLM Output Management.
+
+A framework for managing stochastic LLM outputs through deterministic
+control flow, implementing the formal model from Thompson (2025).
+
+Example:
+    from atomicguard import Workflow, ActionPair
+    from atomicguard.guards import SyntaxGuard
+    from atomicguard.infrastructure import OllamaGenerator
+
+    generator = OllamaGenerator(model="qwen2.5-coder:7b")
+    guard = SyntaxGuard()
+    action_pair = ActionPair(generator=generator, guard=guard)
+
+    workflow = Workflow(rmax=3)
+    workflow.add_step('g_code', action_pair=action_pair)
+    result = workflow.execute("Write a function that adds two numbers")
+"""
+
+# Domain models (most commonly used)
+# Application layer (orchestration)
+from atomicguard.application.action_pair import ActionPair
+from atomicguard.application.agent import DualStateAgent
+from atomicguard.application.workflow import Workflow, WorkflowStep
+
+# Domain exceptions
+from atomicguard.domain.exceptions import RmaxExhausted
+
+# Domain interfaces (for type hints and custom implementations)
+from atomicguard.domain.interfaces import (
+    ArtifactDAGInterface,
+    GeneratorInterface,
+    GuardInterface,
+)
+from atomicguard.domain.models import (
+    AmbientEnvironment,
+    Artifact,
+    ArtifactStatus,
+    Context,
+    ContextSnapshot,
+    FeedbackEntry,
+    GuardResult,
+    WorkflowResult,
+    WorkflowState,
+)
+
+# Prompts and tasks (structures only - content defined by calling applications)
+from atomicguard.domain.prompts import (
+    PromptTemplate,
+    StepDefinition,
+    TaskDefinition,
+)
+
+# Guards (commonly composed)
+from atomicguard.guards import (
+    CompositeGuard,
+    DynamicTestGuard,
+    HumanReviewGuard,
+    SyntaxGuard,
+    TestGuard,
+)
+from atomicguard.infrastructure.llm import (
+    MockGenerator,
+    OllamaGenerator,
+)
+
+# Infrastructure (explicit import encouraged for dependency injection)
+from atomicguard.infrastructure.persistence import (
+    FilesystemArtifactDAG,
+    InMemoryArtifactDAG,
+)
+
+__version__ = "0.1.0"
+
+__all__ = [
+    # Version
+    "__version__",
+    # Domain models
+    "Artifact",
+    "ArtifactStatus",
+    "ContextSnapshot",
+    "FeedbackEntry",
+    "Context",
+    "AmbientEnvironment",
+    "GuardResult",
+    "WorkflowState",
+    "WorkflowResult",
+    # Prompts and tasks (structures only)
+    "PromptTemplate",
+    "StepDefinition",
+    "TaskDefinition",
+    # Domain interfaces
+    "GeneratorInterface",
+    "GuardInterface",
+    "ArtifactDAGInterface",
+    # Domain exceptions
+    "RmaxExhausted",
+    # Application layer
+    "ActionPair",
+    "DualStateAgent",
+    "Workflow",
+    "WorkflowStep",
+    # Infrastructure - Persistence
+    "InMemoryArtifactDAG",
+    "FilesystemArtifactDAG",
+    # Infrastructure - LLM
+    "OllamaGenerator",
+    "MockGenerator",
+    # Guards
+    "CompositeGuard",
+    "SyntaxGuard",
+    "TestGuard",
+    "DynamicTestGuard",
+    "HumanReviewGuard",
+]

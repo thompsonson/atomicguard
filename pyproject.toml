@@ -1,0 +1,186 @@
+[project]
+name = "atomicguard"
+version = "0.1.0"
+description = "A Dual-State Agent Framework for reliable LLM code generation with guard-validated loops"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Matthew Thompson", email = "thompsonson@gmail.com" }
+]
+maintainers = [
+    { name = "Matthew Thompson", email = "thompsonson@gmail.com" }
+]
+requires-python = ">=3.12"
+keywords = [
+    "llm",
+    "agents",
+    "code-generation",
+    "neuro-symbolic",
+    "guards",
+    "ai",
+    "validation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
+dependencies = [
+    "click>=8.3.1",
+    "matplotlib>=3.10.0",
+    "openai>=2.12.0",
+    "rich>=14.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/thompsonson/atomicguard"
+Repository = "https://github.com/thompsonson/atomicguard"
+Documentation = "https://github.com/thompsonson/atomicguard#readme"
+Issues = "https://github.com/thompsonson/atomicguard/issues"
+Changelog = "https://github.com/thompsonson/atomicguard/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.13.0",
+    "pre-commit>=4.5.0",
+    "ruff>=0.14.0",
+]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# =============================================================================
+# Semantic Release
+# =============================================================================
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["src/atomicguard/__init__.py:__version__"]
+branch = "main"
+commit_message = "chore(release): bump version to {version}"
+build_command = "pip install build && python -m build"
+upload_to_pypi = true
+upload_to_release = true
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^Merge",
+]
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[tool.semantic_release.remote]
+type = "github"
+token = { env = "GH_TOKEN" }
+
+# =============================================================================
+# Testing
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/atomicguard"]
+branch = true
+omit = [
+    "*/__pycache__/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 70
+show_missing = true
+
+# =============================================================================
+# Linting & Formatting
+# =============================================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ARG",  # flake8-unused-arguments
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["atomicguard"]
+
+# =============================================================================
+# Type Checking
+# =============================================================================
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+show_error_codes = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
