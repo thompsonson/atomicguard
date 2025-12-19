@@ -1,0 +1,17 @@
+{
+  "name": "TDD Stack with Import Guard",
+  "specification": "Write pytest-style unit tests for a Stack implementation.\n\nRequirements for tests:\n1. Test class named `TestStack`\n2. Test push() and pop() operations\n3. Test peek() returns top element without removing it\n4. Test is_empty() returns correct boolean\n5. Test stack underflow (pop on empty stack raises IndexError)\n6. Use assert statements\n\nReturn only the Python test code, no implementation.",
+  "model": "qwen2.5-coder:14b",
+  "rmax": 3,
+  "action_pairs": {
+    "g_test": {
+      "guard": "composite",
+      "guards": ["syntax", "import", "human"],
+      "human_prompt_title": "REVIEW GENERATED TESTS"
+    },
+    "g_impl": {
+      "guard": "dynamic_test",
+      "requires": ["g_test"]
+    }
+  }
+}

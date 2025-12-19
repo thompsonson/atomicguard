@@ -57,6 +57,7 @@ from atomicguard.guards import (
     CompositeGuard,
     DynamicTestGuard,
     HumanReviewGuard,
+    ImportGuard,
     SyntaxGuard,
     TestGuard,
 )
@@ -110,6 +111,7 @@ __all__ = [
     # Guards
     "CompositeGuard",
     "SyntaxGuard",
+    "ImportGuard",
     "TestGuard",
     "DynamicTestGuard",
     "HumanReviewGuard",
