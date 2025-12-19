@@ -2,8 +2,7 @@
 
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-from atomicguard.guards.base import CompositeGuard
-from atomicguard.guards.syntax import SyntaxGuard
+from atomicguard.guards import CompositeGuard, SyntaxGuard
 
 
 class AlwaysPassGuard(GuardInterface):

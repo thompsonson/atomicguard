@@ -6,7 +6,6 @@ Guards that validate artifacts by running tests against them.
 
 import multiprocessing
 import sys
-import types
 from typing import Any
 
 from atomicguard.domain.interfaces import GuardInterface
@@ -115,62 +114,88 @@ class DynamicTestGuard(GuardInterface):
         self, impl_artifact: Artifact, test_artifact: Artifact, q: Any
     ) -> None:
         """
-        Execute tests in subprocess.
+        Execute tests using pytest in an isolated temp directory.
 
         This method runs in a forked process for isolation.
+        Supports pytest classes, fixtures, and parameterized tests.
         """
-        try:
-            impl_code = impl_artifact.content
-            test_code = test_artifact.content
+        import os
+        import tempfile
+        from io import StringIO
 
-            if not impl_code:
-                q.put((False, "No implementation code"))
-                return
+        impl_code = impl_artifact.content
+        test_code = test_artifact.content
 
-            if not test_code:
-                q.put((False, "No test code"))
-                return
+        if not impl_code:
+            q.put((False, "No implementation code"))
+            return
 
-            # Create mock 'implementation' module
-            impl_module = types.ModuleType("implementation")
-            exec(impl_code, impl_module.__dict__)
-            sys.modules["implementation"] = impl_module
+        if not test_code:
+            q.put((False, "No test code"))
+            return
 
-            # Execute test code (pytest already in sys.modules from parent)
-            import pytest
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Write implementation as importable module
+            impl_path = os.path.join(tmpdir, "implementation.py")
+            with open(impl_path, "w") as f:
+                f.write(impl_code)
 
-            test_scope = {"__builtins__": __builtins__, "pytest": pytest}
-            exec(test_code, test_scope)
+            # Write test file
+            test_path = os.path.join(tmpdir, "test_generated.py")
+            with open(test_path, "w") as f:
+                f.write(test_code)
 
-            # Find and run test functions
-            test_funcs = [
-                v
-                for k, v in test_scope.items()
-                if k.startswith("test_") and callable(v)
-            ]
+            # Add tmpdir to sys.path for imports
+            sys.path.insert(0, tmpdir)
 
-            if not test_funcs:
-                q.put((False, "No test functions found"))
-                return
+            try:
+                import pytest
 
-            failures = []
-            for func in test_funcs:
-                try:
-                    func()
-                except AssertionError as e:
-                    failures.append(f"{func.__name__}: AssertionError - {e}")
-                except Exception as e:
-                    failures.append(f"{func.__name__}: {type(e).__name__} - {e}")
+                # Capture pytest output
+                captured_output = StringIO()
 
-            if failures:
-                q.put((False, "Test failures:\n" + "\n".join(failures)))
-            else:
-                q.put((True, f"All {len(test_funcs)} tests passed"))
+                class OutputCapture:
+                    """Pytest plugin to capture failure output."""
 
-        except SyntaxError as e:
-            q.put((False, f"Syntax error: {e}"))
-        except Exception as e:
-            q.put((False, f"Execution error: {e}"))
-        finally:
-            if "implementation" in sys.modules:
-                del sys.modules["implementation"]
+                    @pytest.hookimpl(hookwrapper=True)
+                    def pytest_runtest_logreport(self, report: Any) -> Any:
+                        yield
+                        if report.failed:
+                            captured_output.write(
+                                f"{report.nodeid}: {report.longreprtext}\n"
+                            )
+
+                # Run pytest
+                exit_code = pytest.main(
+                    [
+                        test_path,
+                        "-v",
+                        "--tb=short",
+                        "-q",
+                        "--no-header",
+                    ],
+                    plugins=[OutputCapture()],
+                )
+
+                if exit_code == pytest.ExitCode.OK:
+                    q.put((True, "All tests passed"))
+                elif exit_code == pytest.ExitCode.NO_TESTS_COLLECTED:
+                    q.put((False, "No tests collected by pytest"))
+                else:
+                    output = captured_output.getvalue()
+                    if output:
+                        q.put((False, f"Test failures:\n{output}"))
+                    else:
+                        q.put((False, f"pytest exited with code {exit_code}"))
+
+            except SyntaxError as e:
+                q.put((False, f"Syntax error: {e}"))
+            except Exception as e:
+                q.put((False, f"pytest execution error: {type(e).__name__}: {e}"))
+            finally:
+                # Clean up sys.path
+                if tmpdir in sys.path:
+                    sys.path.remove(tmpdir)
+                # Clean up implementation module if loaded
+                if "implementation" in sys.modules:
+                    del sys.modules["implementation"]

@@ -3,7 +3,7 @@
 import pytest
 
 from atomicguard.domain.models import Artifact, ArtifactStatus
-from atomicguard.guards.syntax import SyntaxGuard
+from atomicguard.guards import SyntaxGuard
 
 
 class TestSyntaxGuard:
