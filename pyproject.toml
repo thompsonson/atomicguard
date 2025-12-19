@@ -1,6 +1,6 @@
 [project]
 name = "atomicguard"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Dual-State Agent Framework for reliable LLM code generation with guard-validated loops"
 readme = "README.md"
 license = { text = "MIT" }
