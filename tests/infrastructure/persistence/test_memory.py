@@ -18,11 +18,6 @@ class TestInMemoryArtifactDAG:
         assert retrieved.content == sample_artifact.content
         assert retrieved.artifact_id == sample_artifact.artifact_id
 
-    def test_store_with_metadata(self, memory_dag, sample_artifact):
-        """Store artifact with metadata."""
-        artifact_id = memory_dag.store(sample_artifact, metadata="test metadata")
-        assert artifact_id == sample_artifact.artifact_id
-
     def test_get_nonexistent(self, memory_dag):
         """Getting nonexistent artifact raises KeyError."""
         with pytest.raises(KeyError, match="Artifact not found"):

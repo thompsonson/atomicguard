@@ -73,9 +73,7 @@ class DualStateAgent:
         while retry_count <= self._rmax:
             artifact, result = self._action_pair.execute(context, dependencies)
 
-            self._artifact_dag.store(
-                artifact, metadata="" if result.passed else result.feedback
-            )
+            self._artifact_dag.store(artifact)
 
             if result.passed:
                 return artifact

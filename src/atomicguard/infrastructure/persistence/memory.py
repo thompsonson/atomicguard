@@ -13,11 +13,9 @@ class InMemoryArtifactDAG(ArtifactDAGInterface):
 
     def __init__(self) -> None:
         self._artifacts: dict[str, Artifact] = {}
-        self._metadata: dict[str, str] = {}
 
-    def store(self, artifact: Artifact, metadata: str = "") -> str:
+    def store(self, artifact: Artifact) -> str:
         self._artifacts[artifact.artifact_id] = artifact
-        self._metadata[artifact.artifact_id] = metadata
         return artifact.artifact_id
 
     def get_artifact(self, artifact_id: str) -> Artifact:

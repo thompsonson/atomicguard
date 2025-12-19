@@ -76,13 +76,12 @@ class ArtifactDAGInterface(ABC):
     """
 
     @abstractmethod
-    def store(self, artifact: "Artifact", metadata: str = "") -> str:
+    def store(self, artifact: "Artifact") -> str:
         """
         Store an artifact in the DAG.
 
         Args:
             artifact: The artifact to store
-            metadata: Optional metadata string
 
         Returns:
             The artifact_id

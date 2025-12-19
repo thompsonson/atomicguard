@@ -104,13 +104,12 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         prefix = artifact_id[:2]
         return self._objects_dir / prefix / f"{artifact_id}.json"
 
-    def store(self, artifact: Artifact, _metadata: str = "") -> str:
+    def store(self, artifact: Artifact) -> str:
         """
         Append artifact to DAG (immutable, append-only).
 
         Args:
             artifact: The artifact to store
-            metadata: Optional metadata string (for compatibility, stored in feedback)
 
         Returns:
             The artifact_id
