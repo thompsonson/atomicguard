@@ -7,13 +7,13 @@
 - Specification Ψ (from user)
 - Artifact a (from LLM)
 - Dependency artifacts (scoped from repository R)
-- Guard result (v, φ) (from guard execution)
+- Guard result (v, φ, fatal) (from guard execution)
 
 **Actions:**
 
 | Category | Actions |
 |----------|---------|
-| **External (Actuators)** | QUERY-LLM, REPLY-TO-USER |
+| **External (Actuators)** | QUERY-LLM, REPLY-TO-USER, ESCALATE-TO-USER |
 | **Sensing** | EXECUTE-GUARD (with scoped dependencies) |
 | **Internal** | ADVANCE-STATE, REFINE-CONTEXT |
 
@@ -54,6 +54,21 @@
 | [Ψ, H: {(a₁, φ₁), (a₂, φ₂)}] | QUERY-LLM |
 | [Ψ, a₃, (⊥, φ₃: "Sum is 10, not prime")] | REFINE-CONTEXT |
 | [Ψ, H: {...}, retries = Rmax] | REPLY-TO-USER(failure, provenance) |
+
+### 3.5. Fatal Escalation (⊥_fatal - Non-recoverable)
+
+| Percept Sequence | Action |
+|------------------|--------|
+| [Ψ: "Execute code in sandbox"] | QUERY-LLM |
+| [Ψ, a₁: "import os; os.system(...)"] | EXECUTE-GUARD(a₁, deps={}) |
+| [Ψ, a₁, (⊥_fatal, φ: "Security: os.system forbidden")] | ESCALATE-TO-USER(a₁, φ) |
+
+**Note**: On `⊥_fatal`, the agent:
+
+1. Stores artifact in DAG for provenance
+2. Raises `EscalationRequired` immediately (no retry)
+3. Workflow returns `WorkflowStatus.ESCALATION`
+4. Human must review artifact and feedback
 
 ### 4. TDD Workflow (Guard uses dependency artifact)
 
@@ -123,7 +138,7 @@ function DUAL-STATE-AGENT(percept) returns action
         return EXECUTE-GUARD(a, deps)
 
     # Process guard result
-    elif percept contains (v, φ):
+    elif percept contains (v, φ, fatal):
         if v = ⊤:
             # Definition 8: Advance workflow state
             sw ← sw[gid ↦ ⊤]
@@ -136,7 +151,11 @@ function DUAL-STATE-AGENT(percept) returns action
                 C ← compose_context(E, Ψ, Hfeedback)
                 return QUERY-LLM(C)
 
-        else:  # v = ⊥
+        elif fatal:  # v = ⊥_fatal
+            # Definition 6: Non-recoverable failure - escalate immediately
+            return ESCALATE-TO-USER(a, φ)
+
+        else:  # v = ⊥ (retryable)
             # Check retry budget
             if retries ≥ Rmax:
                 return REPLY-TO-USER(failure, Hfeedback)

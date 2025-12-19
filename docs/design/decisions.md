@@ -13,6 +13,8 @@
 
 | Decision | Choice | Alternative Considered |
 |----------|--------|------------------------|
+| Fatal escalation | `GuardResult.fatal` + `EscalationRequired` exception | Simple retry-or-fail binary |
+| Workflow outcome | `WorkflowStatus` enum (SUCCESS, FAILED, ESCALATION) | Boolean `success` field |
 | ActionPair structure | ⟨agen, G⟩ pure executor | Included ρ (precondition) |
 | WorkflowState ownership | Workflow owns, Agent stateless | Agent owns state |
 | Precondition handling | Inferred from `requires` | Explicit lambda |

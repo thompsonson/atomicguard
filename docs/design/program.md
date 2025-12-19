@@ -46,6 +46,7 @@ class GuardResult:
     """Immutable guard validation outcome."""
     passed: bool          # v ∈ {⊥, ⊤}
     feedback: str = ""    # φ ∈ Σ*
+    fatal: bool = False   # ⊥_fatal - skip retry, escalate to human
 
 @dataclass(frozen=True)
 class AmbientEnvironment:
@@ -223,6 +224,13 @@ class RmaxExhausted(Exception):
         super().__init__(message)
         self.provenance = provenance
 
+class EscalationRequired(Exception):
+    """Raised when guard returns ⊥_fatal - human intervention needed."""
+    def __init__(self, artifact: Artifact, feedback: str):
+        super().__init__(feedback)
+        self.artifact = artifact
+        self.feedback = feedback
+
 class DualStateAgent:
     """
     Dual-State Agent implementing guard-validated generation.
@@ -282,6 +290,9 @@ class DualStateAgent:
                 # Definition 8: Advance workflow state
                 self._advance_state(artifact)
                 return artifact
+            elif result.fatal:
+                # ⊥_fatal: Non-recoverable failure - escalate immediately
+                raise EscalationRequired(artifact, result.feedback)
             else:
                 # Definition 5: Refine context, workflow stable
                 context = self._refine_context(
@@ -620,6 +631,7 @@ class TDDTestGuard(GuardInterface):
 ## Workflow Orchestration
 
 ```python
+from enum import Enum
 from typing import List, Tuple as TypingTuple, Dict
 from dataclasses import dataclass
 
@@ -631,13 +643,21 @@ class WorkflowStep:
     guard_id: str
     guard_artifact_deps: Tuple[str, ...] = ()  # guard_ids of required artifacts
 
+class WorkflowStatus(Enum):
+    """Workflow execution outcome."""
+    SUCCESS = "success"      # All steps completed
+    FAILED = "failed"        # Rmax exhausted on a step
+    ESCALATION = "escalation"  # Fatal guard triggered
+
 @dataclass(frozen=True)
 class WorkflowResult:
     """Immutable workflow execution result."""
-    success: bool
+    status: WorkflowStatus
     artifacts: Dict[str, Artifact]  # guard_id → artifact
     failed_step: Optional[str] = None
     provenance: TypingTuple[TypingTuple[Artifact, str], ...] = ()
+    escalation_artifact: Optional[Artifact] = None  # Artifact that triggered escalation
+    escalation_feedback: str = ""  # Fatal feedback message
 
 class Workflow:
     """
@@ -669,7 +689,7 @@ class Workflow:
             # Check precondition
             if not step.action_pair.can_execute(self._workflow_state):
                 return WorkflowResult(
-                    success=False,
+                    status=WorkflowStatus.FAILED,
                     artifacts=artifacts,
                     failed_step=step.name,
                     provenance=(("Precondition not met", ""),)
@@ -693,16 +713,25 @@ class Workflow:
                 # Advance workflow state with artifact tracking
                 self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
 
+            except EscalationRequired as e:
+                return WorkflowResult(
+                    status=WorkflowStatus.ESCALATION,
+                    artifacts=artifacts,
+                    failed_step=step.guard_id,
+                    escalation_artifact=e.artifact,
+                    escalation_feedback=e.feedback,
+                )
+
             except RmaxExhausted as e:
                 return WorkflowResult(
-                    success=False,
+                    status=WorkflowStatus.FAILED,
                     artifacts=artifacts,
                     failed_step=step.name,
                     provenance=tuple(e.provenance)
                 )
 
         return WorkflowResult(
-            success=True,
+            status=WorkflowStatus.SUCCESS,
             artifacts=artifacts
         )
 
@@ -737,6 +766,8 @@ class Workflow:
 | Context refinement | feedback_history accumulation | Definition 5 |
 | Artifact provenance | ArtifactDAGInterface (git-backed) | Definition 2 |
 | Fail with provenance | RmaxExhausted exception, WorkflowResult | Algorithm 1, line 9 |
+| Fatal escalation | GuardResult.fatal + EscalationRequired | Definition 6 (⊥_fatal) |
+| Workflow outcome | WorkflowStatus enum (SUCCESS, FAILED, ESCALATION) | Definition 6 |
 | Infrastructure abstraction | Interface + Implementation pattern | SOLID/DDD |
 | Workflow orchestration | Workflow class (SRP) | Definition 9 |
 | Guard input scoping | Explicit dependencies via WorkflowStep | Remark (Guard Input Scoping) |

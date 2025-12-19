@@ -272,7 +272,61 @@ All guards implement:
 class GuardInterface(ABC):
     @abstractmethod
     def validate(self, artifact: Artifact, **deps) -> GuardResult:
-        """Returns (passed: bool, feedback: str)"""
+        """Returns GuardResult with validation outcome."""
+
+@dataclass
+class GuardResult:
+    passed: bool          # ⊤ (accept) or ⊥ (reject)
+    feedback: str = ""    # φ ∈ Σ* - feedback for next attempt
+    fatal: bool = False   # ⊥_fatal - skip retry, escalate to human
 ```
 
 The `feedback` field provides context for the next generation attempt when `passed=False`.
+
+---
+
+## Fatal Guard Semantics
+
+Guards may return `fatal=True` to indicate **non-recoverable failures** that should not be retried. This implements the guard fatal state (`⊥_fatal`) from Definition 6.
+
+### When to Use Fatal
+
+| Scenario | Example | Rationale |
+|----------|---------|-----------|
+| Security violation | Code attempts file system access outside sandbox | Cannot be fixed by regeneration |
+| Impossible specification | Tests require conflicting behaviors | Specification error, not generation error |
+| Human-approved artifact fails | Human approved tests that have syntax errors | Human must review their approval |
+| Resource exhaustion | Generated code exceeds memory limits | Architectural constraint violation |
+
+### Behavior on Fatal
+
+1. **No retry**: Agent raises `EscalationRequired` immediately
+2. **Artifact preserved**: Failed artifact stored in DAG for review
+3. **Workflow halts**: Returns `WorkflowStatus.ESCALATION`
+4. **Feedback surfaced**: `escalation_feedback` contains guard's message
+
+### Example: Security Guard with Fatal
+
+```python
+class SandboxGuard(GuardInterface):
+    """G₁₆: Validates execution safety with fatal on violations."""
+
+    FORBIDDEN_PATTERNS = ['os.system', 'subprocess.run', 'eval(', 'exec(']
+
+    def validate(self, artifact: Artifact, **deps) -> GuardResult:
+        for pattern in self.FORBIDDEN_PATTERNS:
+            if pattern in artifact.content:
+                return GuardResult(
+                    passed=False,
+                    feedback=f"Security violation: {pattern} not allowed",
+                    fatal=True  # No retry - escalate immediately
+                )
+        return GuardResult(passed=True)
+```
+
+### Distinction from Retryable Failures
+
+| Failure Type | `fatal` | Action | Example |
+|--------------|---------|--------|---------|
+| Retryable | `False` | Refine context, retry | Syntax error, test failure |
+| Fatal | `True` | Escalate to human | Security violation, impossible spec |
