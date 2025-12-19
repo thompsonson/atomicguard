@@ -107,6 +107,8 @@ E = ⟨R, Ω⟩ (Ambient Environment)
 T(sw, ⊥) = sw   # No state change on failure
 ```
 
+**Remark (Semantic Agency)**: The action `QUERY-LLM` may invoke an autonomous semantic agent (ReAct, CoT, tool-use loop) rather than a single inference step. The agent's internal reasoning trajectory is contained within `Senv` and is opaque to the workflow. The Dual-State Agent observes only the final artifact `a` and validates it via `EXECUTE-GUARD`.
+
 ---
 
 ## Agent Function Definition

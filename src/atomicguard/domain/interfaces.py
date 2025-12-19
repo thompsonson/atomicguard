@@ -26,6 +26,13 @@ class GeneratorInterface(ABC):
 
     Implementations connect to LLMs or other generation sources.
 
+    Note (Hierarchical Composition & Semantic Agency):
+        The generator is not constrained to a single inference step. It may be
+        instantiated as an autonomous Semantic Agent (ReAct loop, CoT reasoning,
+        multi-tool orchestration) operating within the stochastic environment.
+        From the workflow's perspective, this agentic process is atomic — the
+        Workflow State tracks only the final artifact's validity via the Guard.
+
     Note (Side Effects & Idempotency):
         While generate() formally produces an artifact, implementations
         may induce side effects (filesystem I/O, API calls). In such cases:

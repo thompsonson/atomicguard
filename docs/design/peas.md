@@ -53,4 +53,13 @@
 
 **Key Insight**: The dual-state separation (Definition 1) exists precisely because observability differs—Sworkflow is fully observable, Senv is not.
 
+**Remark (Hierarchical Composition)**: The generator `agen` may itself be a semantic agent (ReAct loop, CoT reasoning, multi-step tool use). From the PEAS perspective:
+
+- The semantic agent's internal state is part of the **Environment** (opaque)
+- Its reasoning steps are not **Percepts** to the Dual-State Agent
+- The **Actuator** `QUERY-LLM` invokes the semantic agent atomically
+- Only the final artifact is observed and validated via **Sensors** (guards)
+
+This design allows workflows to compose: each generator can be arbitrarily complex internally while presenting a simple artifact interface to the guard.
+
 **Remark (Guard Input Scoping)**: While Definition 6 provides guards access to the full context C, well-designed guards accept only minimal required inputs. The Workflow extracts specific artifacts from R and passes them explicitly, preserving guard simplicity and testability.

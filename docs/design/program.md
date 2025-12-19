@@ -359,7 +359,16 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
 class GeneratorInterface(ABC):
-    """Abstract interface for LLM generation."""
+    """
+    Abstract interface for LLM generation.
+
+    Note (Hierarchical Composition & Semantic Agency):
+        The generator is not constrained to a single inference step. It may be
+        instantiated as an autonomous Semantic Agent (ReAct loop, CoT reasoning,
+        multi-tool orchestration) operating within the stochastic environment.
+        From the workflow's perspective, this agentic process is atomic — the
+        Workflow State tracks only the final artifact's validity via the Guard.
+    """
 
     @abstractmethod
     def generate(self, context: Context, template: Optional[PromptTemplate] = None) -> Artifact:
@@ -410,6 +419,14 @@ class ArtifactDAGInterface(ABC):
         """Get full history leading to artifact."""
         pass
 ```
+
+**Remark (Hierarchical Composition & Semantic Agency)**: The generator function `agen` is not constrained to be a single LLM inference step. It may be instantiated as an autonomous **Semantic Agent** (e.g., a ReAct loop, Chain-of-Thought reasoning, or multi-tool orchestration) that operates purely within the stochastic environment state. From the Dual-State Workflow's perspective:
+
+1. The semantic agent's internal reasoning is **opaque** to the Workflow State
+2. The generator invocation is **atomic** — the workflow sees only the final artifact
+3. The Guard `G` validates the output regardless of how it was produced
+
+This enables hierarchical composition: a workflow step's generator can itself be a complete agentic system, with the Guard serving as the interface contract.
 
 ---
 
