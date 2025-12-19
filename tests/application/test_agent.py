@@ -4,7 +4,7 @@ import pytest
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.agent import DualStateAgent
-from atomicguard.domain.exceptions import RmaxExhausted
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import (
     Artifact,
@@ -46,6 +46,16 @@ class FailThenPassGuard(GuardInterface):
         if self._call_count <= self._fail_count:
             return GuardResult(passed=False, feedback=f"Fail #{self._call_count}")
         return GuardResult(passed=True, feedback="")
+
+
+class FatalGuard(GuardInterface):
+    """Guard that returns fatal failure."""
+
+    def __init__(self, feedback: str = "Fatal: cannot recover") -> None:
+        self._feedback = feedback
+
+    def validate(self, _artifact: Artifact, **_deps: Artifact) -> GuardResult:
+        return GuardResult(passed=False, feedback=self._feedback, fatal=True)
 
 
 class TestDualStateAgentInit:
@@ -213,6 +223,36 @@ class TestDualStateAgentExecute:
         assert len(exc_info.value.provenance) == 2
         # Each provenance entry is (artifact, feedback)
         assert exc_info.value.provenance[0][1] == "Validation failed"
+
+    def test_execute_raises_escalation_on_fatal(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """execute() raises EscalationRequired on fatal guard result."""
+        generator = MockGenerator(responses=["some code"])
+        pair = ActionPair(generator=generator, guard=FatalGuard())
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        with pytest.raises(EscalationRequired) as exc_info:
+            agent.execute("Write something")
+
+        assert exc_info.value.feedback == "Fatal: cannot recover"
+        assert exc_info.value.artifact.content == "some code"
+        # Verify no retries occurred
+        assert generator.call_count == 1
+
+    def test_execute_fatal_stores_artifact_before_raising(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """execute() stores artifact in DAG before raising EscalationRequired."""
+        generator = MockGenerator(responses=["fatal code"])
+        pair = ActionPair(generator=generator, guard=FatalGuard())
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        with pytest.raises(EscalationRequired):
+            agent.execute("Write something")
+
+        # Artifact should be stored even though escalation was raised
+        assert len(memory_dag._artifacts) == 1
 
 
 class TestDualStateAgentContextComposition:

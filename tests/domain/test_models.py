@@ -10,6 +10,7 @@ from atomicguard.domain.models import (
     GuardResult,
     WorkflowResult,
     WorkflowState,
+    WorkflowStatus,
 )
 
 
@@ -134,6 +135,30 @@ class TestGuardResult:
         with pytest.raises(AttributeError):
             result.passed = False
 
+    def test_fatal_default_false(self):
+        """Fatal defaults to False for backward compatibility."""
+        result = GuardResult(passed=False, feedback="Error")
+        assert result.fatal is False
+
+    def test_fatal_explicit_true(self):
+        """Fatal can be set explicitly."""
+        result = GuardResult(passed=False, feedback="Fatal error", fatal=True)
+        assert result.fatal is True
+
+
+class TestWorkflowStatus:
+    """Tests for WorkflowStatus enum."""
+
+    def test_status_values(self):
+        """Verify all expected status values exist."""
+        assert WorkflowStatus.SUCCESS.value == "success"
+        assert WorkflowStatus.FAILED.value == "failed"
+        assert WorkflowStatus.ESCALATION.value == "escalation"
+
+    def test_all_statuses_accounted(self):
+        """Ensure we have exactly 3 statuses."""
+        assert len(WorkflowStatus) == 3
+
 
 class TestWorkflowState:
     """Tests for WorkflowState."""
@@ -176,29 +201,42 @@ class TestWorkflowResult:
     def test_successful_result(self, sample_artifact):
         """Test successful workflow result."""
         result = WorkflowResult(
-            success=True,
+            status=WorkflowStatus.SUCCESS,
             artifacts={"g_impl": sample_artifact},
         )
-        assert result.success is True
+        assert result.status == WorkflowStatus.SUCCESS
         assert "g_impl" in result.artifacts
         assert result.failed_step is None
 
     def test_failed_result(self):
         """Test failed workflow result."""
         result = WorkflowResult(
-            success=False,
+            status=WorkflowStatus.FAILED,
             artifacts={},
             failed_step="g_impl",
         )
-        assert result.success is False
+        assert result.status == WorkflowStatus.FAILED
         assert result.failed_step == "g_impl"
 
     def test_result_with_provenance(self, sample_artifact):
         """Test result with provenance chain."""
         result = WorkflowResult(
-            success=True,
+            status=WorkflowStatus.SUCCESS,
             artifacts={"g_impl": sample_artifact},
             provenance=((sample_artifact, "step_1"),),
         )
         assert len(result.provenance) == 1
         assert result.provenance[0][1] == "step_1"
+
+    def test_escalation_result(self, sample_artifact):
+        """Test escalation workflow result."""
+        result = WorkflowResult(
+            status=WorkflowStatus.ESCALATION,
+            artifacts={},
+            failed_step="g_impl",
+            escalation_artifact=sample_artifact,
+            escalation_feedback="Non-recoverable error",
+        )
+        assert result.status == WorkflowStatus.ESCALATION
+        assert result.escalation_artifact == sample_artifact
+        assert result.escalation_feedback == "Non-recoverable error"

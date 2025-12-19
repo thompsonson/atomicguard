@@ -6,7 +6,7 @@ WorkflowState is managed by Workflow.
 """
 
 from atomicguard.application.action_pair import ActionPair
-from atomicguard.domain.exceptions import RmaxExhausted
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
 from atomicguard.domain.interfaces import ArtifactDAGInterface
 from atomicguard.domain.models import (
     AmbientEnvironment,
@@ -77,7 +77,11 @@ class DualStateAgent:
 
             if result.passed:
                 return artifact
+            elif result.fatal:
+                # Non-recoverable failure - escalate immediately
+                raise EscalationRequired(artifact, result.feedback)
             else:
+                # Recoverable failure - retry
                 feedback_history.append((artifact, result.feedback))
                 retry_count += 1
                 context = self._refine_context(

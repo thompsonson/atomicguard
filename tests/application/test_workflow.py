@@ -3,7 +3,7 @@
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.workflow import Workflow
 from atomicguard.domain.interfaces import GuardInterface
-from atomicguard.domain.models import Artifact, GuardResult
+from atomicguard.domain.models import Artifact, GuardResult, WorkflowStatus
 from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
@@ -21,6 +21,16 @@ class AlwaysFailGuard(GuardInterface):
 
     def validate(self, _artifact: Artifact, **_deps: Artifact) -> GuardResult:
         return GuardResult(passed=False, feedback="Always fails")
+
+
+class FatalGuard(GuardInterface):
+    """Guard that returns fatal failure."""
+
+    def __init__(self, feedback: str = "Fatal: cannot recover") -> None:
+        self._feedback = feedback
+
+    def validate(self, _artifact: Artifact, **_deps: Artifact) -> GuardResult:
+        return GuardResult(passed=False, feedback=self._feedback, fatal=True)
 
 
 class TestWorkflowInit:
@@ -146,7 +156,7 @@ class TestWorkflowExecute:
 
         result = workflow.execute("Write a function")
 
-        assert result.success is True
+        assert result.status == WorkflowStatus.SUCCESS
         assert "g_test" in result.artifacts
 
     def test_execute_multiple_steps_success(self) -> None:
@@ -162,7 +172,7 @@ class TestWorkflowExecute:
 
         result = workflow.execute("Write code")
 
-        assert result.success is True
+        assert result.status == WorkflowStatus.SUCCESS
         assert "g_test" in result.artifacts
         assert "g_impl" in result.artifacts
 
@@ -175,7 +185,7 @@ class TestWorkflowExecute:
 
         result = workflow.execute("Write something")
 
-        assert result.success is False
+        assert result.status == WorkflowStatus.FAILED
         assert result.failed_step == "g_test"
 
     def test_execute_respects_step_dependencies(self) -> None:
@@ -209,7 +219,7 @@ class TestWorkflowExecute:
 
         result = workflow.execute("Do nothing")
 
-        assert result.success is True
+        assert result.status == WorkflowStatus.SUCCESS
         assert len(result.artifacts) == 0
 
     def test_execute_failure_includes_provenance(self) -> None:
@@ -221,9 +231,37 @@ class TestWorkflowExecute:
 
         result = workflow.execute("Write something")
 
-        assert result.success is False
+        assert result.status == WorkflowStatus.FAILED
         assert result.provenance is not None
         assert len(result.provenance) > 0
+
+    def test_execute_returns_escalation_on_fatal_guard(self) -> None:
+        """execute() returns ESCALATION status on fatal guard."""
+        generator = MockGenerator(responses=["code"])
+        pair = ActionPair(generator=generator, guard=FatalGuard())
+        workflow = Workflow()
+        workflow.add_step("g_test", pair)
+
+        result = workflow.execute("Write something")
+
+        assert result.status == WorkflowStatus.ESCALATION
+        assert result.failed_step == "g_test"
+        assert result.escalation_feedback == "Fatal: cannot recover"
+        assert result.escalation_artifact is not None
+        assert result.escalation_artifact.content == "code"
+
+    def test_execute_escalation_no_retries(self) -> None:
+        """execute() does not retry on fatal guard failure."""
+        generator = MockGenerator(responses=["code1", "code2", "code3"])
+        pair = ActionPair(generator=generator, guard=FatalGuard())
+        workflow = Workflow(rmax=5)
+        workflow.add_step("g_test", pair)
+
+        result = workflow.execute("Write something")
+
+        assert result.status == WorkflowStatus.ESCALATION
+        # Only one attempt should have been made
+        assert generator.call_count == 1
 
 
 class TestWorkflowInternalMethods:

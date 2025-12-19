@@ -25,7 +25,7 @@ from atomicguard.application.agent import DualStateAgent
 from atomicguard.application.workflow import Workflow, WorkflowStep
 
 # Domain exceptions
-from atomicguard.domain.exceptions import RmaxExhausted
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
 
 # Domain interfaces (for type hints and custom implementations)
 from atomicguard.domain.interfaces import (
@@ -43,6 +43,7 @@ from atomicguard.domain.models import (
     GuardResult,
     WorkflowResult,
     WorkflowState,
+    WorkflowStatus,
 )
 
 # Prompts and tasks (structures only - content defined by calling applications)
@@ -87,6 +88,7 @@ __all__ = [
     "GuardResult",
     "WorkflowState",
     "WorkflowResult",
+    "WorkflowStatus",
     # Prompts and tasks (structures only)
     "PromptTemplate",
     "StepDefinition",
@@ -97,6 +99,7 @@ __all__ = [
     "ArtifactDAGInterface",
     # Domain exceptions
     "RmaxExhausted",
+    "EscalationRequired",
     # Application layer
     "ActionPair",
     "DualStateAgent",

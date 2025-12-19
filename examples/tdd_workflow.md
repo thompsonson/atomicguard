@@ -286,12 +286,15 @@ def main():
 
     result = workflow.execute(TEST_SPECIFICATION)  # Step 1
 
-    if result.success:
+    if result.status == WorkflowStatus.SUCCESS:
         print("=== TDD WORKFLOW SUCCESS ===")
         print(f"\n--- Tests (g_test) ---")
         print(result.artifacts['g_test'].content)
         print(f"\n--- Implementation (g_impl) ---")
         print(result.artifacts['g_impl'].content)
+    elif result.status == WorkflowStatus.ESCALATION:
+        print(f"=== ESCALATION REQUIRED at {result.failed_step} ===")
+        print(f"Reason: {result.escalation_feedback}")
     else:
         print(f"=== WORKFLOW FAILED at {result.failed_step} ===")
         print("\nProvenance:")

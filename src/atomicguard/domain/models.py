@@ -84,6 +84,7 @@ class GuardResult:
 
     passed: bool
     feedback: str = ""
+    fatal: bool = False  # ⊥_fatal - skip retry, escalate to human
 
 
 # =============================================================================
@@ -117,6 +118,14 @@ class Context:
 # =============================================================================
 
 
+class WorkflowStatus(Enum):
+    """Workflow execution outcome."""
+
+    SUCCESS = "success"  # All steps completed
+    FAILED = "failed"  # Rmax exhausted on a step
+    ESCALATION = "escalation"  # Fatal guard triggered
+
+
 @dataclass
 class WorkflowState:
     """Mutable workflow state tracking guard satisfaction."""
@@ -139,7 +148,9 @@ class WorkflowState:
 class WorkflowResult:
     """Result of workflow execution."""
 
-    success: bool
+    status: WorkflowStatus
     artifacts: dict[str, Artifact]
     failed_step: str | None = None
     provenance: tuple[tuple[Artifact, str], ...] = ()
+    escalation_artifact: Artifact | None = None  # Artifact that triggered escalation
+    escalation_feedback: str = ""  # Fatal feedback message

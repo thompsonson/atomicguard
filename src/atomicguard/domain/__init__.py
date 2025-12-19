@@ -4,7 +4,7 @@ Domain layer for the Dual-State Framework.
 Contains core business logic with no external dependencies.
 """
 
-from atomicguard.domain.exceptions import RmaxExhausted
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
 from atomicguard.domain.interfaces import (
     ArtifactDAGInterface,
     GeneratorInterface,
@@ -20,6 +20,7 @@ from atomicguard.domain.models import (
     GuardResult,
     WorkflowResult,
     WorkflowState,
+    WorkflowStatus,
 )
 from atomicguard.domain.prompts import (
     PromptTemplate,
@@ -38,6 +39,7 @@ __all__ = [
     "GuardResult",
     "WorkflowState",
     "WorkflowResult",
+    "WorkflowStatus",
     # Prompts and Tasks (structures only, no content)
     "PromptTemplate",
     "StepDefinition",
@@ -48,4 +50,5 @@ __all__ = [
     "ArtifactDAGInterface",
     # Exceptions
     "RmaxExhausted",
+    "EscalationRequired",
 ]

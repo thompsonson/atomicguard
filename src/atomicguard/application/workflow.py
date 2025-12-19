@@ -8,9 +8,14 @@ from dataclasses import dataclass
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.agent import DualStateAgent
-from atomicguard.domain.exceptions import RmaxExhausted
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
 from atomicguard.domain.interfaces import ArtifactDAGInterface
-from atomicguard.domain.models import Artifact, WorkflowResult, WorkflowState
+from atomicguard.domain.models import (
+    Artifact,
+    WorkflowResult,
+    WorkflowState,
+    WorkflowStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -94,7 +99,7 @@ class Workflow:
 
             if step is None:
                 return WorkflowResult(
-                    success=False,
+                    status=WorkflowStatus.FAILED,
                     artifacts=self._artifacts,
                     failed_step="No applicable step",
                 )
@@ -119,15 +124,24 @@ class Workflow:
                 self._artifacts[step.guard_id] = artifact
                 self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
 
+            except EscalationRequired as e:
+                return WorkflowResult(
+                    status=WorkflowStatus.ESCALATION,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    escalation_artifact=e.artifact,
+                    escalation_feedback=e.feedback,
+                )
+
             except RmaxExhausted as e:
                 return WorkflowResult(
-                    success=False,
+                    status=WorkflowStatus.FAILED,
                     artifacts=self._artifacts,
                     failed_step=step.guard_id,
                     provenance=tuple(e.provenance),
                 )
 
-        return WorkflowResult(success=True, artifacts=self._artifacts)
+        return WorkflowResult(status=WorkflowStatus.SUCCESS, artifacts=self._artifacts)
 
     def _precondition_met(self, step: WorkflowStep) -> bool:
         """Precondition: all required guards satisfied."""

@@ -47,6 +47,7 @@ from atomicguard import (
     PromptTemplate,
     SyntaxGuard,
     Workflow,
+    WorkflowStatus,
 )
 
 # =============================================================================
@@ -369,7 +370,8 @@ def save_results(
         "model": model,
         "timestamp": datetime.now().isoformat(),
         "duration_seconds": round(duration, 2),
-        "success": result.success,
+        "success": result.status == WorkflowStatus.SUCCESS,
+        "status": result.status.value,
         "failed_step": result.failed_step,
         "total_attempts": total_attempts,
         "artifacts": {},
@@ -573,11 +575,11 @@ def main() -> int:
         duration = (datetime.now() - start_time).total_seconds()
 
         # Log result
-        if result.success:
+        if result.status == WorkflowStatus.SUCCESS:
             logger.info(f"Workflow completed successfully in {duration:.2f}s")
         else:
             logger.warning(
-                f"Workflow failed at step '{result.failed_step}' after {duration:.2f}s"
+                f"Workflow {result.status.value} at step '{result.failed_step}' after {duration:.2f}s"
             )
 
         # Save results
@@ -618,7 +620,7 @@ def main() -> int:
         return 1
 
     # Display results
-    if result.success:
+    if result.status == WorkflowStatus.SUCCESS:
         print("\n" + "=" * 60)
         print("SUCCESS: TDD Workflow Complete")
         print("=" * 60)

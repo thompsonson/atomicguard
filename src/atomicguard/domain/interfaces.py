@@ -25,6 +25,13 @@ class GeneratorInterface(ABC):
     Port for artifact generation.
 
     Implementations connect to LLMs or other generation sources.
+
+    Note (Side Effects & Idempotency):
+        While generate() formally produces an artifact, implementations
+        may induce side effects (filesystem I/O, API calls). In such cases:
+        1. The artifact serves as a receipt/manifest of the operation
+        2. Guards act as sensors verifying environmental state
+        3. Side-effecting generators MUST be idempotent for retry safety
     """
 
     @abstractmethod

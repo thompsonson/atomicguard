@@ -26,3 +26,22 @@ class RmaxExhausted(Exception):
         """
         super().__init__(message)
         self.provenance = provenance
+
+
+class EscalationRequired(Exception):
+    """
+    Raised when guard returns ⊥_fatal - human intervention needed.
+
+    This indicates a non-recoverable failure that should not be retried.
+    The workflow should surface this to the caller for human review.
+    """
+
+    def __init__(self, artifact: "Artifact", feedback: str):
+        """
+        Args:
+            artifact: The artifact that triggered escalation
+            feedback: Human-readable feedback explaining the fatal condition
+        """
+        super().__init__(feedback)
+        self.artifact = artifact
+        self.feedback = feedback
