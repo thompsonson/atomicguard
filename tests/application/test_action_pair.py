@@ -4,7 +4,7 @@ from atomicguard.application.action_pair import ActionPair
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, Context, GuardResult
 from atomicguard.domain.prompts import PromptTemplate
-from atomicguard.guards.syntax import SyntaxGuard
+from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 
 

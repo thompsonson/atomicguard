@@ -4,7 +4,7 @@ from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.workflow import Workflow
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-from atomicguard.guards.syntax import SyntaxGuard
+from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
 

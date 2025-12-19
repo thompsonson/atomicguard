@@ -12,7 +12,7 @@ from atomicguard.domain.models import (
     ContextSnapshot,
     GuardResult,
 )
-from atomicguard.guards.syntax import SyntaxGuard
+from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
 
