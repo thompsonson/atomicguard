@@ -8,6 +8,7 @@ in the ADD workflow.
 import ast
 import json
 import logging
+import re
 from typing import Any
 
 from atomicguard.domain.interfaces import GuardInterface
@@ -215,14 +216,60 @@ class TestSyntaxGuard(GuardInterface):
 
 class PytestArchAPIGuard(GuardInterface):
     """
-    Validates pytestarch API usage by executing the generated code.
+    Validates pytestarch API usage with strict whitelist.
 
-    Instead of AST pattern matching, we:
-    1. Assemble the full test module code
-    2. Compile it (catches syntax errors)
-    3. Execute in isolated namespace with pytestarch imported
-    4. This catches AttributeError for non-existent methods like modules_in()
+    Uses a two-phase approach:
+    1. Static whitelist check - reject any method not in the whitelist
+    2. Code execution - catch runtime errors from pytestarch
     """
+
+    # ONLY these pytestarch v4.0.1 methods are allowed
+    WHITELISTED_METHODS = frozenset(
+        {
+            # Module selection
+            "modules_that",
+            "are_sub_modules_of",
+            "are_named",
+            "have_name_matching",
+            # Behavior
+            "should",
+            "should_not",
+            "should_only",
+            # Dependency type
+            "import_modules_that",
+            "be_imported_by_modules_that",
+            "import_modules_except_modules_that",
+            "be_imported_by_modules_except_modules_that",
+            "import_anything",
+            "be_imported_by_anything",
+            # Assertion
+            "assert_applies",
+        }
+    )
+
+    # Pattern to extract method calls in fluent chains
+    _METHOD_CALL_PATTERN = re.compile(r"\.([a-z_][a-z0-9_]*)\s*\(", re.IGNORECASE)
+
+    def _check_whitelist(self, code: str) -> GuardResult | None:
+        """Reject any method not in the whitelist."""
+        # Find all method calls in Rule chains
+        # Look for code after Rule() initialization
+        rule_sections = re.split(r"\bRule\s*\(\s*\)", code)
+
+        for section in rule_sections[1:]:  # Skip code before first Rule()
+            methods = self._METHOD_CALL_PATTERN.findall(section)
+
+            for method in methods:
+                if method not in self.WHITELISTED_METHODS:
+                    logger.debug(f"[APIGuard] Non-whitelisted method: .{method}()")
+                    return GuardResult(
+                        passed=False,
+                        feedback=f"Invalid pytestarch method '.{method}()'. "
+                        f"Only these methods are allowed: "
+                        f"{', '.join(sorted(self.WHITELISTED_METHODS))}",
+                    )
+
+        return None  # All methods are whitelisted
 
     def validate(self, artifact: Artifact, **_deps: Any) -> GuardResult:
         """Validate pytestarch API usage."""
@@ -252,6 +299,13 @@ class PytestArchAPIGuard(GuardInterface):
         # Assemble full code
         code = self._assemble_code(suite)
         logger.debug(f"[APIGuard] Assembled {len(code)} chars of code")
+
+        # Check whitelist BEFORE execution (faster feedback)
+        whitelist_result = self._check_whitelist(code)
+        if whitelist_result:
+            return whitelist_result
+
+        logger.debug("[APIGuard] Whitelist check passed")
 
         try:
             # Compile (catches syntax errors)
