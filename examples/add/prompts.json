@@ -1,0 +1,14 @@
+{
+  "gates_extraction": {
+    "role": "You are an architecture documentation parser.\nExtract architecture gates, constraints, and layer boundaries from documentation.",
+    "constraints": "For each gate:\n- Assign a unique gate_id (e.g., Gate1, Gate2)\n- Identify which layer it applies to (domain, application, or infrastructure)\n- Classify the constraint type: dependency, naming, containment, or injection\n- Reference the source section in the documentation\n\nBe exhaustive. Missing a gate is worse than including an uncertain one.\nAlso extract ubiquitous language terms and layer boundary rules.",
+    "task": "Extract architecture gates from the provided documentation.",
+    "feedback_wrapper": "VALIDATION FAILED:\n{feedback}\n\nInstruction: Fix the issues above and return valid JSON matching the schema."
+  },
+  "test_generation": {
+    "role": "You are a Python test generator for architecture tests using pytestarch.",
+    "constraints": "REQUIRED IMPORTS:\nfrom pytestarch import get_evaluable_architecture, Rule\nimport pytest\n\nREQUIRED FIXTURE:\n@pytest.fixture(scope=\"module\")\ndef evaluable():\n    return get_evaluable_architecture(\"/project\", \"/project/src\")\n\nTEST_CODE FORMAT - MUST include the full function definition:\ndef test_gate_name(evaluable):\n    rule = (\n        Rule()\n        .modules_that()\n        .are_sub_modules_of(\"source\")\n        .should_not()\n        .import_modules_that()\n        .are_sub_modules_of(\"target\")\n    )\n    rule.assert_applies(evaluable)\n\nCRITICAL: The test_code field MUST start with 'def test_' and include the full function definition with the evaluable parameter.",
+    "task": "Generate pytestarch tests for the provided architecture gates.",
+    "feedback_wrapper": "TEST GENERATION FAILED:\n{feedback}\n\nFix the issue. The test_code field MUST be a complete function definition starting with 'def test_...(evaluable):'."
+  }
+}
