@@ -35,11 +35,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "click>=8.3.1",
     "matplotlib>=3.10.0",
-    "openai>=2.12.0",
     "openhands-ai>=0.27.0",
-    "rich>=14.0.0",
+    "pydantic-ai>=1.0.0",
+    "pytestarch>=4.0.1",
 ]
 
 [project.urls]
@@ -187,5 +186,7 @@ disallow_untyped_defs = false
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.5.0",
     "python-semantic-release>=9.21.1",
+    "ruff>=0.14.9",
 ]

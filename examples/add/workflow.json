@@ -1,0 +1,31 @@
+{
+  "name": "ADD - Architecture-Driven Development",
+  "description": "Extract architecture gates from documentation and generate pytest-arch tests",
+  "model": "qwen2.5-coder:14b",
+  "rmax": 3,
+  "min_gates": 3,
+  "min_tests": 3,
+  "action_pairs": {
+    "gates_extraction": {
+      "output_type": "GatesExtractionResult",
+      "guard": "gates_extracted",
+      "guard_config": {
+        "min_gates": 3
+      }
+    },
+    "test_generation": {
+      "output_type": "TestSuite",
+      "guard": "composite",
+      "guards": ["test_syntax", "test_naming"],
+      "requires": ["gates_extraction"]
+    },
+    "file_writing": {
+      "output_type": "ArtifactManifest",
+      "guard": "artifact_structure",
+      "guard_config": {
+        "min_tests": 3
+      },
+      "requires": ["test_generation"]
+    }
+  }
+}
