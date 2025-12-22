@@ -322,7 +322,7 @@ class ADDGenerator(GeneratorInterface):
             logger.debug(f"[{pair_name}] Attempt {attempt + 1}/{self._rmax + 1}")
 
             # Generate with provenance tracking
-            # Prior artifacts are accessed via context.dependencies (paper-aligned)
+            # Prior artifacts are accessed via context.dependency_artifacts (paper-aligned)
             logger.debug(f"[{pair_name}] Calling generator...")
             artifact = generator.generate(
                 current_context,

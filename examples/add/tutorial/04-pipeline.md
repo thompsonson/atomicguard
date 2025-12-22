@@ -296,15 +296,15 @@ Configuration:
 3. DocParser extracts (Stage 1):
    {gate_id: "Gate1", constraint_type: "dependency", ...}
    → Artifact stored in ℛ (ArtifactDAG)
-   → Added to context.dependencies["gates"]
+   → Added to context.dependency_artifacts["gates"]
 
 4. TestCodeGen generates (Stage 2):
-   - Reads gates from context.dependencies["gates"]
+   - Reads gates from context.dependency_artifacts["gates"]
    - Reads source_root from Ω for fixture
    "def test_gate1(evaluable):
        rule = Rule().modules_that()..."
    → Artifact stored in ℛ
-   → Added to context.dependencies["test_suite"]
+   → Added to context.dependency_artifacts["test_suite"]
 
 5. Guards validate:
    ✓ Syntax valid
@@ -312,28 +312,29 @@ Configuration:
    ✓ pytestarch API correct
 
 6. FileWriter creates (Stage 3):
-   - Reads test_suite from context.dependencies["test_suite"]
+   - Reads test_suite from context.dependency_artifacts["test_suite"]
    tests/architecture/test_gates.py
 ```
 
 ### Artifact Passing (Paper-Aligned)
 
-Per the paper, generators access prior artifacts via `context.dependencies`:
+Per the paper, generators access prior artifacts via `context.dependency_artifacts`:
 
 ```python
 # In ADDGenerator.generate():
-# After AP1 completes, add artifact to dependencies for AP2
+# After AP1 completes, add artifact ID to dependency_artifacts for AP2
 context = Context(
     ambient=context.ambient,
     specification=context.specification,
-    dependencies=(("gates", gates_artifact),),  # From ℛ
+    dependency_artifacts=(("gates", gates_artifact.artifact_id),),  # ID stored, artifact in ℛ
 )
 
 # In TestCodeGenerator.generate():
-# Read gates from dependencies
-for key, artifact in context.dependencies:
-    if key == "gates":
-        gates = GatesExtractionResult.model_validate_json(artifact.content)
+# Read gates from dependency_artifacts (retrieve from ℛ)
+gates_id = context.get_dependency("gates")
+if gates_id:
+    gates_artifact = context.ambient.repository.get_artifact(gates_id)
+    gates = GatesExtractionResult.model_validate_json(gates_artifact.content)
 ```
 
 ## Viewing the Artifacts

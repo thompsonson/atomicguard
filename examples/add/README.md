@@ -80,18 +80,18 @@ C_total = ⟨ℰ, C_local, H_feedback⟩
 │    ├─ Artifact stored in ℛ                                      │
 │    └─ Output: GatesExtractionResult                             │
 │                                                                 │
-│  ─── Add gates_artifact to context.dependencies ───             │
+│  ─── Add gates_artifact to context.dependency_artifacts ───    │
 │                                                                 │
 │  AP2: TestCodeGen → TestGuard                                   │
-│    ├─ Input: Ψ, Ω, context.dependencies["gates"]                │
+│    ├─ Input: Ψ, Ω, context.dependency_artifacts["gates"]        │
 │    ├─ Reads source_root from Ω for fixture                      │
 │    ├─ Artifact stored in ℛ                                      │
 │    └─ Output: TestSuite                                         │
 │                                                                 │
-│  ─── Add test_artifact to context.dependencies ───              │
+│  ─── Add test_artifact to context.dependency_artifacts ───     │
 │                                                                 │
 │  AP3: FileWriter → ArtifactGuard                                │
-│    ├─ Input: context.dependencies["test_suite"]                 │
+│    ├─ Input: context.dependency_artifacts["test_suite"]         │
 │    └─ Writes test files to disk                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
