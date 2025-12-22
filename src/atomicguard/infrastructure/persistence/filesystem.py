@@ -78,12 +78,6 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
 
     def _dict_to_artifact(self, data: dict) -> Artifact:
         """Deserialize artifact from JSON dict."""
-        # Handle both old format (dependency_ids) and new format (dependency_artifacts)
-        dep_data = data["context"].get("dependency_artifacts", {})
-        if not dep_data:
-            # Backwards compatibility: convert old flat array to empty dict
-            dep_data = {}
-
         context = ContextSnapshot(
             specification=data["context"]["specification"],
             constraints=data["context"]["constraints"],
@@ -92,7 +86,9 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 for fe in data["context"]["feedback_history"]
             ),
             # Deserialize dict → tuple for immutability
-            dependency_artifacts=tuple(dep_data.items()),
+            dependency_artifacts=tuple(
+                data["context"].get("dependency_artifacts", {}).items()
+            ),
         )
         return Artifact(
             artifact_id=data["artifact_id"],
