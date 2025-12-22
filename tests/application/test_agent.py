@@ -197,7 +197,10 @@ class TestDualStateAgentExecute:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
-                specification="", constraints="", feedback_history=(), dependency_ids=()
+                specification="",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
             ),
         )
 
@@ -303,7 +306,10 @@ class TestDualStateAgentContextComposition:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
-                specification="", constraints="", feedback_history=(), dependency_ids=()
+                specification="",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
             ),
         )
 

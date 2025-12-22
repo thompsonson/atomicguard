@@ -179,9 +179,7 @@ def _create_context_snapshot(context: Context) -> ContextSnapshot:
         specification=context.specification,
         constraints=context.ambient.constraints,
         feedback_history=(),
-        dependency_ids=tuple(aid for _, aid in context.dependencies)
-        if context.dependencies
-        else (),
+        dependency_artifacts=context.dependency_artifacts,
     )
 
 
@@ -485,8 +483,9 @@ class TestCodeGenerator(GeneratorInterface):
         """
         Generate test code from architecture gates.
 
-        Reads gates from context.dependencies["gates"] (paper-aligned).
-        Per paper: Generators access prior artifacts via context.dependencies.
+        Reads gates from context.dependency_artifacts["gates"] (paper-aligned).
+        Per paper: Generators access prior artifact IDs via context.dependency_artifacts,
+        then retrieve full artifacts from ℛ (context.ambient.repository).
 
         Args:
             context: Generation context with dependencies from prior action pairs
@@ -497,23 +496,21 @@ class TestCodeGenerator(GeneratorInterface):
         Returns:
             Artifact containing TestSuite as JSON
         """
-        # Get gates artifact from context.dependencies (paper-aligned)
-        # Per paper: Generators access prior artifacts via context.dependencies
-        gates_artifact = None
-        for key, artifact in context.dependencies:
-            if key == "gates":
-                gates_artifact = artifact
-                break
+        # Get gates artifact ID from context.dependency_artifacts (paper-aligned)
+        # Then retrieve full artifact from ℛ
+        gates_id = context.get_dependency("gates")
 
-        if gates_artifact is None:
-            logger.warning("[TestCodeGen] No 'gates' in context.dependencies")
+        if gates_id is None:
+            logger.warning("[TestCodeGen] No 'gates' in context.dependency_artifacts")
             content = json.dumps(
                 {
                     "error": "missing_gates",
-                    "details": "No 'gates' in context.dependencies",
+                    "details": "No 'gates' in context.dependency_artifacts",
                 }
             )
         else:
+            # Retrieve full artifact from ℛ (repository)
+            gates_artifact = context.ambient.repository.get_artifact(gates_id)
             gates = GatesExtractionResult.model_validate_json(gates_artifact.content)
             logger.debug(
                 f"[TestCodeGen] Found {len(gates.gates)} gates to generate tests for"
@@ -651,8 +648,9 @@ class FileWriterGenerator(GeneratorInterface):
         """
         Write test files to filesystem.
 
-        Reads test_suite from context.dependencies["test_suite"] (paper-aligned).
-        Per paper: Generators access prior artifacts via context.dependencies.
+        Reads test_suite from context.dependency_artifacts["test_suite"] (paper-aligned).
+        Per paper: Generators access prior artifact IDs via context.dependency_artifacts,
+        then retrieve full artifacts from ℛ (context.ambient.repository).
 
         Args:
             context: Generation context with dependencies from prior action pairs
@@ -663,23 +661,23 @@ class FileWriterGenerator(GeneratorInterface):
         Returns:
             Artifact containing ArtifactManifest as JSON
         """
-        # Get test_suite artifact from context.dependencies (paper-aligned)
-        # Per paper: Generators access prior artifacts via context.dependencies
-        test_suite_artifact = None
-        for key, artifact in context.dependencies:
-            if key == "test_suite":
-                test_suite_artifact = artifact
-                break
+        # Get test_suite artifact ID from context.dependency_artifacts (paper-aligned)
+        # Then retrieve full artifact from ℛ
+        test_suite_id = context.get_dependency("test_suite")
 
-        if test_suite_artifact is None:
-            logger.warning("[FileWriter] No 'test_suite' in context.dependencies")
+        if test_suite_id is None:
+            logger.warning(
+                "[FileWriter] No 'test_suite' in context.dependency_artifacts"
+            )
             content = json.dumps(
                 {
                     "error": "missing_test_suite",
-                    "details": "No 'test_suite' in context.dependencies",
+                    "details": "No 'test_suite' in context.dependency_artifacts",
                 }
             )
         else:
+            # Retrieve full artifact from ℛ (repository)
+            test_suite_artifact = context.ambient.repository.get_artifact(test_suite_id)
             suite = TestSuite.model_validate_json(test_suite_artifact.content)
             logger.debug(f"[FileWriter] Found TestSuite with {len(suite.tests)} tests")
 

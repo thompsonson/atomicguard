@@ -13,7 +13,7 @@ def context_snapshot() -> ContextSnapshot:
         specification="Write tests",
         constraints="",
         feedback_history=(),
-        dependency_ids=(),
+        dependency_artifacts=(),
     )
 
 

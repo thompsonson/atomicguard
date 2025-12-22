@@ -107,7 +107,9 @@ class DualStateAgent:
             specification=specification,
             current_artifact=None,
             feedback_history=(),
-            dependencies=tuple(dependencies.items()),  # Pass to generator
+            dependency_artifacts=tuple(
+                (k, v.artifact_id) for k, v in dependencies.items()
+            ),  # Store IDs, not full artifacts
         )
 
     def _refine_context(
@@ -127,5 +129,7 @@ class DualStateAgent:
             specification=specification,
             current_artifact=artifact.content,
             feedback_history=tuple((a.content, f) for a, f in feedback_history),
-            dependencies=tuple(dependencies.items()),  # Preserve dependencies on retry
+            dependency_artifacts=tuple(
+                (k, v.artifact_id) for k, v in dependencies.items()
+            ),  # Preserve dependencies on retry
         )
