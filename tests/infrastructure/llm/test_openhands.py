@@ -183,7 +183,7 @@ class TestSemanticAgentGeneratorPromptBuilding:
             specification="Build a REST API",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         with patch(
@@ -209,7 +209,7 @@ class TestSemanticAgentGeneratorPromptBuilding:
             specification="Write code",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         with patch(
@@ -234,7 +234,7 @@ class TestSemanticAgentGeneratorPromptBuilding:
             specification="Write a stack",
             current_artifact=None,
             feedback_history=(("id1", "Missing pop method"),),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         with patch(
@@ -259,7 +259,7 @@ class TestSemanticAgentGeneratorPromptBuilding:
             specification="Write code",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         with patch(

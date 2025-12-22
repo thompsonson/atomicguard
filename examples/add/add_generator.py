@@ -141,7 +141,7 @@ class ADDGenerator(GeneratorInterface):
             specification=context.specification,
             current_artifact=context.current_artifact,
             feedback_history=context.feedback_history,
-            dependencies=context.dependencies,
+            dependency_artifacts=context.dependency_artifacts,
         )
         logger.debug("[ADD] Created new Context with Ω in ambient.constraints")
 
@@ -151,31 +151,33 @@ class ADDGenerator(GeneratorInterface):
         gates_artifact, gates_result = self._execute_gates_extraction(context)
         logger.info(f"[ADD] Extracted {len(gates_result.gates)} gates")
 
-        # Create context with gates artifact in dependencies for AP2
-        # Per paper: Generators access prior artifacts via context.dependencies
+        # Create context with gates artifact ID in dependency_artifacts for AP2
+        # Per paper: Generators access prior artifacts via context.dependency_artifacts
+        # Store artifact ID (not full artifact) - retrieve from ℛ when needed
         context = Context(
             ambient=context.ambient,
             specification=context.specification,
             current_artifact=context.current_artifact,
             feedback_history=(),  # Reset for new action pair
-            dependencies=(("gates", gates_artifact),),
+            dependency_artifacts=(("gates", gates_artifact.artifact_id),),
         )
-        logger.debug("[ADD] Added gates_artifact to context.dependencies")
+        logger.debug("[ADD] Added gates_artifact ID to context.dependency_artifacts")
 
         # Action Pair 2: Generate tests
         logger.info("[ADD] === Action Pair 2: Test Generation ===")
         test_artifact, test_suite = self._execute_test_generation(context)
         logger.info(f"[ADD] Generated {len(test_suite.tests)} tests")
 
-        # Create context with test_suite artifact in dependencies for AP3
+        # Create context with test_suite artifact ID in dependency_artifacts for AP3
+        # Store artifact ID (not full artifact) - retrieve from ℛ when needed
         context = Context(
             ambient=context.ambient,
             specification=context.specification,
             current_artifact=context.current_artifact,
             feedback_history=(),  # Reset for new action pair
-            dependencies=(("test_suite", test_artifact),),
+            dependency_artifacts=(("test_suite", test_artifact.artifact_id),),
         )
-        logger.debug("[ADD] Added test_artifact to context.dependencies")
+        logger.debug("[ADD] Added test_artifact ID to context.dependency_artifacts")
 
         # Action Pair 3: Write files
         logger.info("[ADD] === Action Pair 3: File Writing ===")
@@ -250,7 +252,7 @@ class ADDGenerator(GeneratorInterface):
         """
         Execute test generation action pair with retry loop.
 
-        Reads gates from context.dependencies["gates"].
+        Reads gates from context.dependency_artifacts["gates"].
 
         Returns:
             Tuple of (artifact stored in ℛ, parsed TestSuite)
@@ -282,7 +284,7 @@ class ADDGenerator(GeneratorInterface):
         """
         Execute file writing action pair with retry loop.
 
-        Reads test_suite from context.dependencies["test_suite"].
+        Reads test_suite from context.dependency_artifacts["test_suite"].
 
         Returns:
             Artifact containing ArtifactManifest JSON
@@ -310,7 +312,7 @@ class ADDGenerator(GeneratorInterface):
         Similar to DualStateAgent but simpler - stores artifacts to ℛ (DAG)
         for debugging and tracks provenance across retries.
 
-        Generators access prior artifacts via context.dependencies (paper-aligned).
+        Generators access prior artifacts via context.dependency_artifacts (paper-aligned).
         """
         feedback_history: list[tuple[Artifact, str]] = []
         current_context = context
@@ -379,7 +381,7 @@ class ADDGenerator(GeneratorInterface):
                 (artifact.artifact_id, feedback)
                 for artifact, feedback in feedback_history
             ),
-            dependencies=original_context.dependencies,
+            dependency_artifacts=original_context.dependency_artifacts,
         )
 
     def _create_context_snapshot(self, context: Context) -> ContextSnapshot:
@@ -388,5 +390,5 @@ class ADDGenerator(GeneratorInterface):
             specification=context.specification,
             constraints=context.ambient.constraints,
             feedback_history=(),
-            dependency_ids=(),
+            dependency_artifacts=context.dependency_artifacts,
         )
