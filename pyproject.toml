@@ -186,7 +186,9 @@ disallow_untyped_defs = false
 
 [dependency-groups]
 dev = [
+    "mypy>=1.19.1",
     "pre-commit>=4.5.0",
     "python-semantic-release>=9.21.1",
     "ruff>=0.14.9",
+    "types-jsonschema>=4.25.1.20251009",
 ]

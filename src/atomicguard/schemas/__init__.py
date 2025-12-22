@@ -21,12 +21,17 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import types
 
 try:
-    import jsonschema
+    import jsonschema as _jsonschema
+
+    jsonschema: types.ModuleType | None = _jsonschema
 except ImportError:
-    jsonschema = None  # type: ignore[assignment]
+    jsonschema = None
 
 
 def _load_schema(name: str) -> dict[str, Any]:
@@ -39,7 +44,8 @@ def _load_schema(name: str) -> dict[str, Any]:
         Parsed JSON schema as a dictionary
     """
     schema_text = files("atomicguard.schemas").joinpath(name).read_text()
-    return json.loads(schema_text)
+    result: dict[str, Any] = json.loads(schema_text)
+    return result
 
 
 def get_workflow_schema() -> dict[str, Any]:
