@@ -148,32 +148,52 @@ Use the individual generators directly:
 
 ```python
 from examples.add.generators import (
+    ConfigExtractorGenerator,
     DocParserGenerator,
     TestCodeGenerator,
     FileWriterGenerator,
 )
-from examples.add.models import GatesExtractionResult
+from examples.add.models import GatesExtractionResult, ProjectConfig
+from atomicguard.domain.models import AmbientEnvironment, Context
+
+# Stage 0: Extract config (Ω)
+config_gen = ConfigExtractorGenerator(
+    model="ollama:qwen2.5-coder:14b",
+    base_url="http://localhost:11434/v1",
+)
+config_artifact = config_gen.generate(context)
+config = ProjectConfig.model_validate_json(config_artifact.content)
+print(f"Extracted Ω: source_root={config.source_root}")
+
+# Update context with Ω
+updated_ambient = AmbientEnvironment(
+    repository=context.ambient.repository,
+    constraints=config.model_dump_json(),
+)
+context = Context(ambient=updated_ambient, specification=context.specification)
 
 # Stage 1: Extract gates
 parser = DocParserGenerator(
     model="ollama:qwen2.5-coder:14b",
     base_url="http://localhost:11434/v1",
 )
-
-artifact = parser.generate(context)
-gates = GatesExtractionResult.model_validate_json(artifact.content)
+gates_artifact = parser.generate(context)
+gates = GatesExtractionResult.model_validate_json(gates_artifact.content)
 print(f"Extracted {len(gates.gates)} gates")
 
-# Stage 2: Generate tests (requires gates in internal_state)
+# Stage 2: Generate tests
+# Per paper: Pass prior artifacts via context.dependencies
+context_with_gates = Context(
+    ambient=context.ambient,
+    specification=context.specification,
+    dependencies=(("gates", gates_artifact),),  # Paper-aligned!
+)
+
 test_gen = TestCodeGenerator(
     model="ollama:qwen2.5-coder:14b",
     base_url="http://localhost:11434/v1",
 )
-
-artifact = test_gen.generate(
-    context,
-    internal_state={"gates": gates},
-)
+test_artifact = test_gen.generate(context_with_gates)
 ```
 
 ## Accessing Guards
@@ -182,12 +202,21 @@ Validate artifacts manually:
 
 ```python
 from examples.add.guards import (
+    ConfigGuard,
     GatesExtractedGuard,
     TestSyntaxGuard,
     TestNamingGuard,
     PytestArchAPIGuard,
 )
 from atomicguard.guards import CompositeGuard
+
+# Config guard (Stage 0)
+config_guard = ConfigGuard()
+result = config_guard.validate(config_artifact)
+if result.passed:
+    print(f"Config valid: {result.feedback}")
+else:
+    print(f"Config invalid: {result.feedback}")
 
 # Single guard
 guard = GatesExtractedGuard(min_gates=5)

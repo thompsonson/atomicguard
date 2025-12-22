@@ -14,6 +14,7 @@ from typing import Any
 from atomicguard.domain.exceptions import EscalationRequired
 from atomicguard.domain.interfaces import ArtifactDAGInterface, GeneratorInterface
 from atomicguard.domain.models import (
+    AmbientEnvironment,
     Artifact,
     Context,
     ContextSnapshot,
@@ -22,15 +23,21 @@ from atomicguard.domain.models import (
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.guards import CompositeGuard
 
-from .generators import DocParserGenerator, FileWriterGenerator, TestCodeGenerator
+from .generators import (
+    ConfigExtractorGenerator,
+    DocParserGenerator,
+    FileWriterGenerator,
+    TestCodeGenerator,
+)
 from .guards import (
     ArtifactStructureGuard,
+    ConfigGuard,
     GatesExtractedGuard,
     PytestArchAPIGuard,
     TestNamingGuard,
     TestSyntaxGuard,
 )
-from .models import GatesExtractionResult, TestSuite
+from .models import GatesExtractionResult, ProjectConfig, TestSuite
 
 logger = logging.getLogger("add_workflow")
 
@@ -39,10 +46,19 @@ class ADDGenerator(GeneratorInterface):
     """
     Architecture-Driven Development generator.
 
-    Internally orchestrates 3 action pairs:
+    Internally orchestrates 4 action pairs:
+    0. ConfigExtractor → ConfigGuard (extracts Ω)
     1. DocParser → GatesExtractedGuard
     2. TestCodeGen → TestSyntaxGuard + TestNamingGuard
     3. FileWriter → ArtifactStructureGuard
+
+    Per the paper's Hierarchical Context Composition:
+        C_total = ⟨ℰ, C_local, H_feedback⟩
+        ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+
+    Action Pair 0 extracts Ω (Global Constraints) from the specification.
+    After AP0, a NEW Context is created with Ω in context.ambient.constraints.
+    All subsequent action pairs receive Ω via the updated context.
 
     From the parent workflow's perspective, this generator is atomic -
     it receives documentation context and returns a JSON manifest of
@@ -108,33 +124,107 @@ class ADDGenerator(GeneratorInterface):
             f"[ADD] Doc length: {len(context.specification)} chars, rmax={self._rmax}"
         )
 
-        internal_state: dict[str, Any] = {}
+        # Action Pair 0: Extract project config (Ω)
+        # Per paper: Ω = Global Constraints, stored in context.ambient.constraints
+        logger.info("[ADD] === Action Pair 0: Config Extraction ===")
+        config_artifact, config_result = self._execute_config_extraction(context)
+        logger.info(f"[ADD] Extracted Ω: source_root={config_result.source_root}")
+
+        # Create NEW Context with populated Ω
+        # Context is frozen (immutable), so we must create a new instance
+        updated_ambient = AmbientEnvironment(
+            repository=context.ambient.repository,
+            constraints=config_result.model_dump_json(),
+        )
+        context = Context(
+            ambient=updated_ambient,
+            specification=context.specification,
+            current_artifact=context.current_artifact,
+            feedback_history=context.feedback_history,
+            dependencies=context.dependencies,
+        )
+        logger.debug("[ADD] Created new Context with Ω in ambient.constraints")
 
         # Action Pair 1: Extract gates
+        # Artifact stored in ℛ (ArtifactDAG) by _run_action_pair()
         logger.info("[ADD] === Action Pair 1: Gates Extraction ===")
-        gates_result = self._execute_gates_extraction(context, internal_state)
-        internal_state["gates"] = gates_result
+        gates_artifact, gates_result = self._execute_gates_extraction(context)
         logger.info(f"[ADD] Extracted {len(gates_result.gates)} gates")
+
+        # Create context with gates artifact in dependencies for AP2
+        # Per paper: Generators access prior artifacts via context.dependencies
+        context = Context(
+            ambient=context.ambient,
+            specification=context.specification,
+            current_artifact=context.current_artifact,
+            feedback_history=(),  # Reset for new action pair
+            dependencies=(("gates", gates_artifact),),
+        )
+        logger.debug("[ADD] Added gates_artifact to context.dependencies")
 
         # Action Pair 2: Generate tests
         logger.info("[ADD] === Action Pair 2: Test Generation ===")
-        test_suite = self._execute_test_generation(context, internal_state)
-        internal_state["test_suite"] = test_suite
+        test_artifact, test_suite = self._execute_test_generation(context)
         logger.info(f"[ADD] Generated {len(test_suite.tests)} tests")
+
+        # Create context with test_suite artifact in dependencies for AP3
+        context = Context(
+            ambient=context.ambient,
+            specification=context.specification,
+            current_artifact=context.current_artifact,
+            feedback_history=(),  # Reset for new action pair
+            dependencies=(("test_suite", test_artifact),),
+        )
+        logger.debug("[ADD] Added test_artifact to context.dependencies")
 
         # Action Pair 3: Write files
         logger.info("[ADD] === Action Pair 3: File Writing ===")
-        manifest_artifact = self._execute_file_writing(context, internal_state)
+        manifest_artifact = self._execute_file_writing(context)
         logger.info("[ADD] Files written successfully")
 
         return manifest_artifact
 
+    def _execute_config_extraction(
+        self,
+        context: Context,
+    ) -> tuple[Artifact, ProjectConfig]:
+        """
+        Execute config extraction action pair with retry loop.
+
+        This is Action Pair 0 - it extracts Ω (Global Constraints) from
+        the specification before any other action pairs run.
+
+        Returns:
+            Tuple of (artifact stored in ℛ, parsed ProjectConfig)
+        """
+        generator = ConfigExtractorGenerator(
+            self._model,
+            base_url=self._base_url,
+            prompt_template=self._prompts.get("config_extraction"),
+        )
+        guard = ConfigGuard()
+
+        artifact = self._run_action_pair(
+            generator=generator,
+            guard=guard,
+            context=context,
+            pair_name="config_extraction",
+        )
+
+        # Parse result
+        data = json.loads(artifact.content)
+        return artifact, ProjectConfig.model_validate(data)
+
     def _execute_gates_extraction(
         self,
         context: Context,
-        internal_state: dict[str, Any],
-    ) -> GatesExtractionResult:
-        """Execute gate extraction action pair with retry loop."""
+    ) -> tuple[Artifact, GatesExtractionResult]:
+        """
+        Execute gate extraction action pair with retry loop.
+
+        Returns:
+            Tuple of (artifact stored in ℛ, parsed GatesExtractionResult)
+        """
         generator = DocParserGenerator(
             self._model,
             base_url=self._base_url,
@@ -146,20 +236,25 @@ class ADDGenerator(GeneratorInterface):
             generator=generator,
             guard=guard,
             context=context,
-            internal_state=internal_state,
             pair_name="gates_extraction",
         )
 
         # Parse result
         data = json.loads(artifact.content)
-        return GatesExtractionResult.model_validate(data)
+        return artifact, GatesExtractionResult.model_validate(data)
 
     def _execute_test_generation(
         self,
         context: Context,
-        internal_state: dict[str, Any],
-    ) -> TestSuite:
-        """Execute test generation action pair with retry loop."""
+    ) -> tuple[Artifact, TestSuite]:
+        """
+        Execute test generation action pair with retry loop.
+
+        Reads gates from context.dependencies["gates"].
+
+        Returns:
+            Tuple of (artifact stored in ℛ, parsed TestSuite)
+        """
         generator = TestCodeGenerator(
             self._model,
             base_url=self._base_url,
@@ -173,20 +268,25 @@ class ADDGenerator(GeneratorInterface):
             generator=generator,
             guard=guard,
             context=context,
-            internal_state=internal_state,
             pair_name="test_generation",
         )
 
         # Parse result
         data = json.loads(artifact.content)
-        return TestSuite.model_validate(data)
+        return artifact, TestSuite.model_validate(data)
 
     def _execute_file_writing(
         self,
         context: Context,
-        internal_state: dict[str, Any],
     ) -> Artifact:
-        """Execute file writing action pair with retry loop."""
+        """
+        Execute file writing action pair with retry loop.
+
+        Reads test_suite from context.dependencies["test_suite"].
+
+        Returns:
+            Artifact containing ArtifactManifest JSON
+        """
         generator = FileWriterGenerator(workdir=self._workdir)
         guard = ArtifactStructureGuard(min_tests=self._min_tests)
 
@@ -194,7 +294,6 @@ class ADDGenerator(GeneratorInterface):
             generator=generator,
             guard=guard,
             context=context,
-            internal_state=internal_state,
             pair_name="file_writing",
         )
 
@@ -203,14 +302,15 @@ class ADDGenerator(GeneratorInterface):
         generator: GeneratorInterface,
         guard: Any,  # GuardInterface or CompositeGuard
         context: Context,
-        internal_state: dict[str, Any],
         pair_name: str,
     ) -> Artifact:
         """
         Run an action pair with retry logic.
 
-        Similar to DualStateAgent but simpler - stores artifacts to DAG
+        Similar to DualStateAgent but simpler - stores artifacts to ℛ (DAG)
         for debugging and tracks provenance across retries.
+
+        Generators access prior artifacts via context.dependencies (paper-aligned).
         """
         feedback_history: list[tuple[Artifact, str]] = []
         current_context = context
@@ -219,12 +319,12 @@ class ADDGenerator(GeneratorInterface):
         for attempt in range(self._rmax + 1):
             logger.debug(f"[{pair_name}] Attempt {attempt + 1}/{self._rmax + 1}")
 
-            # Generate with internal state and provenance tracking
+            # Generate with provenance tracking
+            # Prior artifacts are accessed via context.dependencies (paper-aligned)
             logger.debug(f"[{pair_name}] Calling generator...")
             artifact = generator.generate(
                 current_context,
                 template=None,
-                internal_state=internal_state,  # type: ignore
                 previous_attempt_id=previous_attempt_id,  # type: ignore
                 attempt_number=attempt + 1,  # type: ignore
             )
