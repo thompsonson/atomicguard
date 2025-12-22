@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomicguard/workflow.schema.json",
+  "title": "AtomicGuard Workflow Definition",
+  "description": "Formal workflow specification aligned with Definition 9 (Workflow Orchestration)",
+  "type": "object",
+  "required": ["name", "action_pairs"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable workflow identifier"
+    },
+    "description": {
+      "type": "string",
+      "description": "Extended workflow description"
+    },
+    "specification": {
+      "$ref": "#/$defs/SpecificationSource",
+      "description": "Ψ - Specification source reference (external to workflow)"
+    },
+    "constraints": {
+      "type": "string",
+      "description": "Ω - Global constraints (ambient environment)"
+    },
+    "model": {
+      "type": "string",
+      "description": "Default LLM model identifier for generators",
+      "default": "qwen2.5-coder:7b"
+    },
+    "rmax": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3,
+      "description": "R_max - Maximum retry attempts per action pair (Definition 8)"
+    },
+    "action_pairs": {
+      "type": "object",
+      "description": "Map of action_pair_id → ActionPair definition (Definition 6)",
+      "additionalProperties": {
+        "$ref": "#/$defs/ActionPair"
+      }
+    }
+  },
+  "$defs": {
+    "SpecificationSource": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Inline specification text (for simple cases)"
+        },
+        {
+          "type": "object",
+          "description": "External specification reference",
+          "required": ["type", "ref"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["file", "folder", "service", "inline"],
+              "description": "Specification source type"
+            },
+            "ref": {
+              "type": "string",
+              "description": "Reference path or URI (e.g., 'specs/architecture.md', 'jira://PROJ-123')"
+            },
+            "glob": {
+              "type": "string",
+              "description": "For folder type: glob pattern to select files (e.g., '**/*.md')"
+            }
+          }
+        }
+      ]
+    },
+    "ActionPair": {
+      "type": "object",
+      "description": "A = ⟨ρ, a_gen, G⟩ - Atomic generation-verification unit (Definition 6)",
+      "required": ["guard"],
+      "properties": {
+        "guard": {
+          "type": "string",
+          "description": "Guard type identifier (G). Built-in types: syntax, import, type, dynamic_test, human, composite. Custom guards use snake_case identifiers.",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "guards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "For composite guards: ordered list of sub-guards (fail-fast)"
+        },
+        "guard_config": {
+          "type": "object",
+          "description": "Guard-specific configuration parameters (θ)",
+          "additionalProperties": true
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ρ - Precondition: action_pair_ids that must be satisfied (⊤) before execution"
+        },
+        "output_type": {
+          "type": "string",
+          "description": "Expected artifact type (for structured output parsing)"
+        },
+        "human_prompt_title": {
+          "type": "string",
+          "description": "Title for human review guard prompts"
+        }
+      }
+    }
+  }
+}
