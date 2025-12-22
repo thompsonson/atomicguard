@@ -62,7 +62,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -84,7 +84,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -106,7 +106,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -130,7 +130,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -152,7 +152,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -176,7 +176,7 @@ class TestPromptTemplateRender:
                 ("bad code v1", "Syntax error on line 1"),
                 ("bad code v2", "Missing return statement"),
             ),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -201,7 +201,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)
@@ -223,7 +223,7 @@ class TestPromptTemplateRender:
             specification="test",
             current_artifact=None,
             feedback_history=(("code", "Bad stuff"),),
-            dependencies=(),
+            dependency_artifacts=(),
         )
 
         result = template.render(context)

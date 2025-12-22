@@ -71,12 +71,19 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                     {"artifact_id": fe.artifact_id, "feedback": fe.feedback}
                     for fe in artifact.context.feedback_history
                 ],
-                "dependency_ids": list(artifact.context.dependency_ids),
+                # Serialize tuple → dict for JSON object format (matches schema)
+                "dependency_artifacts": dict(artifact.context.dependency_artifacts),
             },
         }
 
     def _dict_to_artifact(self, data: dict) -> Artifact:
         """Deserialize artifact from JSON dict."""
+        # Handle both old format (dependency_ids) and new format (dependency_artifacts)
+        dep_data = data["context"].get("dependency_artifacts", {})
+        if not dep_data:
+            # Backwards compatibility: convert old flat array to empty dict
+            dep_data = {}
+
         context = ContextSnapshot(
             specification=data["context"]["specification"],
             constraints=data["context"]["constraints"],
@@ -84,7 +91,8 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 FeedbackEntry(artifact_id=fe["artifact_id"], feedback=fe["feedback"])
                 for fe in data["context"]["feedback_history"]
             ),
-            dependency_ids=tuple(data["context"]["dependency_ids"]),
+            # Deserialize dict → tuple for immutability
+            dependency_artifacts=tuple(dep_data.items()),
         )
         return Artifact(
             artifact_id=data["artifact_id"],

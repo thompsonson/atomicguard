@@ -71,10 +71,10 @@ class TestContextSnapshot:
             specification="Test spec",
             constraints="Test constraints",
             feedback_history=feedback,
-            dependency_ids=("dep-001",),
+            dependency_artifacts=(("dep-key", "dep-001"),),
         )
         assert len(snapshot.feedback_history) == 2
-        assert len(snapshot.dependency_ids) == 1
+        assert len(snapshot.dependency_artifacts) == 1
 
 
 class TestArtifact:

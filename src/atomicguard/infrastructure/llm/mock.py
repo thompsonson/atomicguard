@@ -47,7 +47,7 @@ class MockGenerator(GeneratorInterface):
                 specification="",
                 constraints="",
                 feedback_history=(),
-                dependency_ids=(),
+                dependency_artifacts=(),
             ),
         )
 

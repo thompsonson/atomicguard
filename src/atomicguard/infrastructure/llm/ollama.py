@@ -91,7 +91,7 @@ class OllamaGenerator(GeneratorInterface):
                 specification=context.specification,
                 constraints=context.ambient.constraints,
                 feedback_history=(),
-                dependency_ids=(),
+                dependency_artifacts=context.dependency_artifacts,
             ),
         )
 

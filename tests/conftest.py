@@ -20,7 +20,7 @@ def sample_context_snapshot() -> ContextSnapshot:
         specification="Write a function that adds two numbers",
         constraints="Must be pure Python, no imports",
         feedback_history=(),
-        dependency_ids=(),
+        dependency_artifacts=(),
     )
 
 
@@ -92,5 +92,5 @@ def sample_context(ambient_env: AmbientEnvironment) -> Context:
         specification="Write a function that adds two numbers",
         current_artifact=None,
         feedback_history=(),
-        dependencies=(),
+        dependency_artifacts=(),
     )
