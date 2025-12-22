@@ -10,6 +10,32 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # =============================================================================
+# Global Constraints (Ω) - Project Configuration
+# =============================================================================
+
+
+class ProjectConfig(BaseModel):
+    """
+    Structured global constraints (Ω) for ADD workflow.
+
+    Per the paper's Hierarchical Context Composition:
+    ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+
+    This model represents Ω - project-wide configuration that applies
+    to ALL action pairs, extracted deterministically before the workflow starts.
+    """
+
+    source_root: str = Field(
+        default="",
+        description="Path to Python package root, e.g., 'src/myapp'",
+    )
+    package_name: str = Field(
+        default="",
+        description="Python package name, e.g., 'myapp'",
+    )
+
+
+# =============================================================================
 # Action Pair 1: Gate Extraction
 # =============================================================================
 
@@ -31,7 +57,12 @@ class ArchitectureGate(BaseModel):
 
 
 class GatesExtractionResult(BaseModel):
-    """Output of DocParserGenerator - extracted architecture gates."""
+    """
+    Output of DocParserGenerator - extracted architecture gates.
+
+    Note: source_root is NOT included here as it belongs to Ω (Global Constraints),
+    not to the gates artifact (ℛ). See ProjectConfig for source_root.
+    """
 
     gates: list[ArchitectureGate] = Field(
         description="List of architecture gates extracted from documentation"

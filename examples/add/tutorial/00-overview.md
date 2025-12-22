@@ -16,15 +16,18 @@ By the end of this tutorial, you will be able to:
 
 ADD (Architecture-Driven Development) is a workflow that:
 
-1. Takes your **architecture documentation** (written in markdown)
-2. **Extracts architecture gates** (rules about what can import what)
-3. **Generates pytestarch tests** that enforce those gates
-4. **Writes test files** to your project
+1. Takes your **architecture documentation** (Ψ - specification)
+2. **Extracts project config** (Ω - global constraints like source_root)
+3. **Extracts architecture gates** (rules about what can import what)
+4. **Generates pytestarch tests** that enforce those gates
+5. **Writes test files** to your project
+
+ADD orchestrates **4 action pairs** internally, each with its own retry loop.
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   architecture  │────▶│  ADD Generator   │────▶│  test_gates.py  │
-│      .md        │     │                  │     │                 │
+│      .md (Ψ)    │     │  (4 stages)      │     │                 │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
 

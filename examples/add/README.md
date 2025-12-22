@@ -31,14 +31,70 @@ The ADD Agent:
 
 ```
 ADDGenerator (GeneratorInterface)
+├── ActionPair₀: ConfigExtractorGenerator + ConfigGuard (extracts Ω)
 ├── ActionPair₁: DocParserGenerator + GatesExtractedGuard
 ├── ActionPair₂: TestCodeGenerator + TestSyntaxGuard + TestNamingGuard
 └── ActionPair₃: FileWriterGenerator + ArtifactStructureGuard
 ```
 
 From the parent workflow's perspective, `ADDGenerator` appears as a single
-atomic generator. Internally, it orchestrates three action pairs with their
+atomic generator. Internally, it orchestrates four action pairs with their
 own retry loops.
+
+## Paper Definitions
+
+ADD implements the paper's **Hierarchical Context Composition**:
+
+```
+C_total = ⟨ℰ, C_local, H_feedback⟩
+ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+```
+
+| Symbol | Name | Implementation | Description |
+|--------|------|----------------|-------------|
+| **Ψ** | Specification | `context.specification` | Input documentation (immutable) |
+| **Ω** | Global Constraints | `context.ambient.constraints` | Project-wide config (source_root) |
+| **ℛ** | Repository | `context.ambient.repository` | ArtifactDAG storing all generated artifacts |
+| **H** | Feedback History | `context.feedback_history` | Accumulated guard rejections for retry |
+
+## Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ADDGenerator                                │
+├─────────────────────────────────────────────────────────────────┤
+│  Context starts: Ω = "" (empty)                                 │
+│                                                                 │
+│  AP0: ConfigExtractor → ConfigGuard                             │
+│    ├─ Input: Ψ (specification)                                  │
+│    ├─ LLM extracts: {"source_root": "src/myapp", ...}           │
+│    ├─ Artifact stored in ℛ                                      │
+│    └─ Output: ProjectConfig                                     │
+│                                                                 │
+│  ─── Create NEW Context with Ω ───                              │
+│  Ω = '{"source_root": "src/myapp", "package_name": "myapp"}'    │
+│  context.ambient.constraints = Ω                                │
+│                                                                 │
+│  AP1: DocParser → GatesGuard                                    │
+│    ├─ Input: Ψ, Ω                                               │
+│    ├─ Artifact stored in ℛ                                      │
+│    └─ Output: GatesExtractionResult                             │
+│                                                                 │
+│  ─── Add gates_artifact to context.dependencies ───             │
+│                                                                 │
+│  AP2: TestCodeGen → TestGuard                                   │
+│    ├─ Input: Ψ, Ω, context.dependencies["gates"]                │
+│    ├─ Reads source_root from Ω for fixture                      │
+│    ├─ Artifact stored in ℛ                                      │
+│    └─ Output: TestSuite                                         │
+│                                                                 │
+│  ─── Add test_artifact to context.dependencies ───              │
+│                                                                 │
+│  AP3: FileWriter → ArtifactGuard                                │
+│    ├─ Input: context.dependencies["test_suite"]                 │
+│    └─ Writes test files to disk                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Requirements
 

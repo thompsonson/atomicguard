@@ -29,8 +29,146 @@ from .models import (
     ArtifactManifest,
     FileToWrite,
     GatesExtractionResult,
+    ProjectConfig,
     TestSuite,
 )
+
+# =============================================================================
+# ConfigExtractorGenerator (Action Pair 0)
+# =============================================================================
+
+CONFIG_EXTRACTOR_SYSTEM_PROMPT = """You are a project configuration extractor.
+Extract project metadata from architecture documentation.
+
+Look for:
+- Source root path (e.g., "src/myapp", "src/ml_agents_v2")
+- Package name (e.g., "myapp", "ml_agents_v2")
+
+These are typically in a "Package Configuration" or "Project Setup" section.
+If not explicitly stated, infer from layer paths mentioned (e.g., "src/myapp/domain/").
+"""
+
+
+class ConfigExtractorGenerator(GeneratorInterface):
+    """
+    Extracts ProjectConfig (Ω) from documentation using LLM.
+
+    This is Action Pair 0 in the ADD workflow. It extracts global constraints
+    that apply to all subsequent action pairs.
+
+    Per the paper's Hierarchical Context Composition:
+        ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+
+    The extracted ProjectConfig becomes Ω in context.ambient.constraints.
+    """
+
+    def __init__(
+        self,
+        model: str = "ollama:qwen2.5-coder:14b",
+        base_url: str | None = None,
+        prompt_template: PromptTemplate | None = None,
+    ):
+        self._model = model
+        self._base_url = base_url
+        self._prompt_template = prompt_template
+
+        # Build system prompt from template or use default
+        if prompt_template:
+            system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
+        else:
+            system_prompt = CONFIG_EXTRACTOR_SYSTEM_PROMPT
+
+        pydantic_model = _create_ollama_model(model, base_url)
+        self._agent = Agent(
+            pydantic_model,
+            output_type=PromptedOutput(ProjectConfig),
+            system_prompt=system_prompt,
+            retries=0,  # Retries handled by AtomicGuard layer
+        )
+
+    def generate(
+        self,
+        context: Context,
+        template: Any = None,  # noqa: ARG002
+        internal_state: dict[str, Any] | None = None,  # noqa: ARG002
+        previous_attempt_id: str | None = None,
+        attempt_number: int = 1,
+    ) -> Artifact:
+        """
+        Extract project configuration from documentation.
+
+        Args:
+            context: Contains documentation in specification field
+            template: Unused
+            internal_state: Unused for this generator
+            previous_attempt_id: ID of previous failed attempt for provenance
+            attempt_number: Current attempt number (1-indexed)
+
+        Returns:
+            Artifact containing ProjectConfig as JSON
+        """
+        logger.debug("[ConfigExtractor] Building prompt...")
+        prompt = f"Extract project configuration from:\n\n{context.specification}"
+
+        # Add retry feedback if present
+        if context.feedback_history:
+            feedback = context.feedback_history[-1][1]  # Last feedback message
+            if self._prompt_template and self._prompt_template.feedback_wrapper:
+                feedback_prompt = self._prompt_template.feedback_wrapper.format(
+                    feedback=feedback
+                )
+                prompt += f"\n\n{feedback_prompt}"
+            else:
+                prompt += f"\n\nPrevious attempt feedback: {feedback}"
+            logger.debug("[ConfigExtractor] Including feedback from previous attempt")
+
+        logger.debug(f"[ConfigExtractor] Prompt length: {len(prompt)} chars")
+
+        messages: list = []
+        try:
+            logger.info("[ConfigExtractor] Calling LLM...")
+            with capture_run_messages() as messages:
+                result = self._agent.run_sync(prompt)
+            logger.info("[ConfigExtractor] Got valid structured response")
+            content = result.output.model_dump_json(indent=2)
+        except UnexpectedModelBehavior as e:
+            logger.warning(f"[ConfigExtractor] Output validation failed: {e}")
+            model_response = ""
+            if messages:
+                for msg in messages:
+                    if hasattr(msg, "text") and msg.text:
+                        model_response += msg.text
+                if model_response:
+                    logger.debug(
+                        f"[ConfigExtractor] Raw model response: {model_response[:500]}..."
+                    )
+            content = json.dumps(
+                {
+                    "error": "output_validation_failed",
+                    "details": str(e),
+                    "hint": "Model output did not match expected schema",
+                    "model_response": model_response[:2000]
+                    if model_response
+                    else "unknown",
+                }
+            )
+        except ValidationError as e:
+            logger.warning(f"[ConfigExtractor] Schema validation failed: {e}")
+            content = json.dumps({"error": "validation_failed", "details": str(e)})
+
+        return Artifact(
+            artifact_id=str(uuid4()),
+            content=content,
+            previous_attempt_id=previous_attempt_id,
+            action_pair_id="add_config_extractor",
+            created_at=datetime.now().isoformat(),
+            attempt_number=attempt_number,
+            status=ArtifactStatus.PENDING,
+            guard_result=None,
+            feedback="",
+            context=_create_context_snapshot(context),
+        )
+
 
 logger = logging.getLogger("add_workflow")
 
@@ -341,40 +479,83 @@ class TestCodeGenerator(GeneratorInterface):
         self,
         context: Context,
         template: Any = None,  # noqa: ARG002
-        internal_state: dict[str, Any] | None = None,
         previous_attempt_id: str | None = None,
         attempt_number: int = 1,
     ) -> Artifact:
         """
         Generate test code from architecture gates.
 
+        Reads gates from context.dependencies["gates"] (paper-aligned).
+        Per paper: Generators access prior artifacts via context.dependencies.
+
         Args:
-            context: Generation context
+            context: Generation context with dependencies from prior action pairs
             template: Unused
-            internal_state: Must contain 'gates' key with GatesExtractionResult
             previous_attempt_id: ID of previous failed attempt for provenance
             attempt_number: Current attempt number (1-indexed)
 
         Returns:
             Artifact containing TestSuite as JSON
         """
-        internal_state = internal_state or {}
+        # Get gates artifact from context.dependencies (paper-aligned)
+        # Per paper: Generators access prior artifacts via context.dependencies
+        gates_artifact = None
+        for key, artifact in context.dependencies:
+            if key == "gates":
+                gates_artifact = artifact
+                break
 
-        if "gates" not in internal_state:
-            logger.warning("[TestCodeGen] No gates in internal_state")
+        if gates_artifact is None:
+            logger.warning("[TestCodeGen] No 'gates' in context.dependencies")
             content = json.dumps(
-                {"error": "missing_gates", "details": "No gates in internal_state"}
+                {
+                    "error": "missing_gates",
+                    "details": "No 'gates' in context.dependencies",
+                }
             )
         else:
-            gates: GatesExtractionResult = internal_state["gates"]
+            gates = GatesExtractionResult.model_validate_json(gates_artifact.content)
             logger.debug(
                 f"[TestCodeGen] Found {len(gates.gates)} gates to generate tests for"
             )
 
+            # Get source_root from Ω (context.ambient.constraints)
+            # Per paper: ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+            source_root = ""
+            if context.ambient.constraints:
+                try:
+                    project_config = ProjectConfig.model_validate_json(
+                        context.ambient.constraints
+                    )
+                    source_root = project_config.source_root
+                    logger.debug(f"[TestCodeGen] Got source_root from Ω: {source_root}")
+                except Exception as e:
+                    logger.warning(f"[TestCodeGen] Failed to parse Ω: {e}")
+
+            # Build fixture configuration
+            if source_root:
+                fixture_config = f"""
+FIXTURE CONFIGURATION:
+Source root from global constraints (Ω): {source_root}
+Generate the fixture as:
+@pytest.fixture(scope="module")
+def evaluable():
+    return get_evaluable_architecture("{source_root}", "{source_root}")
+"""
+            else:
+                fixture_config = """
+FIXTURE CONFIGURATION:
+No source root found in Ω. Use placeholder:
+@pytest.fixture(scope="module")
+def evaluable():
+    return get_evaluable_architecture("/project", "/project/src")
+"""
+                logger.warning("[TestCodeGen] No source_root in Ω, using placeholder")
+
             prompt = f"""Generate pytest-arch tests for these architecture gates:
 
 {gates.model_dump_json(indent=2)}
-
+{fixture_config}
 Layer boundaries to enforce:
 {chr(10).join(f"- {b}" for b in gates.layer_boundaries)}
 """
@@ -464,35 +645,42 @@ class FileWriterGenerator(GeneratorInterface):
         self,
         context: Context,
         template: Any = None,  # noqa: ARG002
-        internal_state: dict[str, Any] | None = None,
         previous_attempt_id: str | None = None,
         attempt_number: int = 1,
     ) -> Artifact:
         """
         Write test files to filesystem.
 
+        Reads test_suite from context.dependencies["test_suite"] (paper-aligned).
+        Per paper: Generators access prior artifacts via context.dependencies.
+
         Args:
-            context: Generation context
+            context: Generation context with dependencies from prior action pairs
             template: Unused
-            internal_state: Must contain 'test_suite' key with TestSuite
             previous_attempt_id: ID of previous failed attempt for provenance
             attempt_number: Current attempt number (1-indexed)
 
         Returns:
             Artifact containing ArtifactManifest as JSON
         """
-        internal_state = internal_state or {}
+        # Get test_suite artifact from context.dependencies (paper-aligned)
+        # Per paper: Generators access prior artifacts via context.dependencies
+        test_suite_artifact = None
+        for key, artifact in context.dependencies:
+            if key == "test_suite":
+                test_suite_artifact = artifact
+                break
 
-        if "test_suite" not in internal_state:
-            logger.warning("[FileWriter] No test_suite in internal_state")
+        if test_suite_artifact is None:
+            logger.warning("[FileWriter] No 'test_suite' in context.dependencies")
             content = json.dumps(
                 {
                     "error": "missing_test_suite",
-                    "details": "No test_suite in internal_state",
+                    "details": "No 'test_suite' in context.dependencies",
                 }
             )
         else:
-            suite: TestSuite = internal_state["test_suite"]
+            suite = TestSuite.model_validate_json(test_suite_artifact.content)
             logger.debug(f"[FileWriter] Found TestSuite with {len(suite.tests)} tests")
 
             # Assemble test file content

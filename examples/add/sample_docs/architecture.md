@@ -1,5 +1,10 @@
 # Architecture Documentation
 
+## Package Configuration
+
+- **Source Root**: `src/myapp`
+- **Package Name**: `myapp`
+
 ## Overview
 
 This document defines the architecture gates for a Python application

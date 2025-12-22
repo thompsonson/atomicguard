@@ -1,27 +1,106 @@
-# Part 4: The Three-Stage Pipeline
+# Part 4: The Four-Stage Pipeline
 
 Understand how ADD works internally.
 
+## Paper Definitions
+
+ADD implements the paper's **Hierarchical Context Composition**:
+
+```
+C_total = ⟨ℰ, C_local, H_feedback⟩
+ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+```
+
+| Symbol | Name | Implementation | Description |
+|--------|------|----------------|-------------|
+| **Ψ** | Specification | `context.specification` | Input documentation (immutable) |
+| **Ω** | Global Constraints | `context.ambient.constraints` | Project-wide config (source_root) |
+| **ℛ** | Repository | `context.ambient.repository` | ArtifactDAG storing all generated artifacts |
+| **H** | Feedback History | `context.feedback_history` | Accumulated guard rejections for retry |
+
 ## Overview
 
-ADD is a **composite generator** that orchestrates three internal action pairs:
+ADD is a **composite generator** that orchestrates four internal action pairs:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                      ADDGenerator                                │
 │                                                                  │
 │  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐        │
-│  │  Stage 1    │     │  Stage 2    │     │  Stage 3    │        │
-│  │ DocParser   │────▶│ TestCodeGen │────▶│ FileWriter  │        │
-│  └─────────────┘     └─────────────┘     └─────────────┘        │
-│        │                   │                   │                 │
-│        ▼                   ▼                   ▼                 │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐        │
-│  │ GatesGuard  │     │ Composite   │     │ Structure   │        │
-│  │             │     │   Guard     │     │   Guard     │        │
-│  └─────────────┘     └─────────────┘     └─────────────┘        │
+│  │  Stage 0    │     │  Stage 1    │     │  Stage 2    │        │
+│  │ ConfigExtr  │────▶│ DocParser   │────▶│ TestCodeGen │───┐    │
+│  └─────────────┘     └─────────────┘     └─────────────┘   │    │
+│        │                   │                   │            │    │
+│        ▼                   ▼                   ▼            │    │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐   │    │
+│  │ ConfigGuard │     │ GatesGuard  │     │ Composite   │   │    │
+│  │  (sets Ω)   │     │             │     │   Guard     │   │    │
+│  └─────────────┘     └─────────────┘     └─────────────┘   │    │
+│                                                            │    │
+│  ┌─────────────────────────────────────────────────────────┘    │
+│  │                                                               │
+│  │  ┌─────────────┐                                              │
+│  └─▶│  Stage 3    │                                              │
+│     │ FileWriter  │                                              │
+│     └─────────────┘                                              │
+│           │                                                      │
+│           ▼                                                      │
+│     ┌─────────────┐                                              │
+│     │ Structure   │                                              │
+│     │   Guard     │                                              │
+│     └─────────────┘                                              │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
+```
+
+## Stage 0: Config Extraction (Ω)
+
+**File**: `generators.py` → `ConfigExtractorGenerator`
+
+### Purpose
+
+Extracts global constraints (Ω) from the documentation before other stages run.
+This is the first action pair, ensuring Ω is available to ALL subsequent generators.
+
+### Input
+
+- Ψ (architecture documentation)
+
+### Process
+
+1. LLM reads the documentation
+2. Extracts `ProjectConfig` (source_root, package_name) using PydanticAI
+3. ADDGenerator creates NEW Context with Ω in `ambient.constraints`
+
+### Output
+
+```json
+{
+  "source_root": "src/myapp",
+  "package_name": "myapp"
+}
+```
+
+### Guard: ConfigGuard
+
+**File**: `guards.py` → `ConfigGuard`
+
+Validates:
+
+- Valid JSON structure
+- `source_root` is non-empty
+
+### Why a New Context?
+
+Context is frozen (immutable). After extracting Ω, ADDGenerator creates
+a new Context with populated `ambient.constraints`:
+
+```python
+updated_ambient = AmbientEnvironment(
+    repository=context.ambient.repository,
+    constraints=config_result.model_dump_json(),  # Ω as JSON string
+)
+context = Context(ambient=updated_ambient, ...)
 ```
 
 ## Stage 1: Gate Extraction
@@ -208,22 +287,53 @@ Configuration:
 ## Data Flow Example
 
 ```
-1. Input: "Domain MUST NOT import from infrastructure"
+1. Input: Ψ = "Architecture documentation with source_root: src/myapp"
 
-2. DocParser extracts:
+2. ConfigExtractor extracts (Stage 0):
+   Ω = {source_root: "src/myapp", package_name: "myapp"}
+   → Stored in context.ambient.constraints
+
+3. DocParser extracts (Stage 1):
    {gate_id: "Gate1", constraint_type: "dependency", ...}
+   → Artifact stored in ℛ (ArtifactDAG)
+   → Added to context.dependencies["gates"]
 
-3. TestCodeGen generates:
+4. TestCodeGen generates (Stage 2):
+   - Reads gates from context.dependencies["gates"]
+   - Reads source_root from Ω for fixture
    "def test_gate1(evaluable):
        rule = Rule().modules_that()..."
+   → Artifact stored in ℛ
+   → Added to context.dependencies["test_suite"]
 
-4. Guards validate:
+5. Guards validate:
    ✓ Syntax valid
    ✓ Name starts with test_
    ✓ pytestarch API correct
 
-5. FileWriter creates:
+6. FileWriter creates (Stage 3):
+   - Reads test_suite from context.dependencies["test_suite"]
    tests/architecture/test_gates.py
+```
+
+### Artifact Passing (Paper-Aligned)
+
+Per the paper, generators access prior artifacts via `context.dependencies`:
+
+```python
+# In ADDGenerator.generate():
+# After AP1 completes, add artifact to dependencies for AP2
+context = Context(
+    ambient=context.ambient,
+    specification=context.specification,
+    dependencies=(("gates", gates_artifact),),  # From ℛ
+)
+
+# In TestCodeGenerator.generate():
+# Read gates from dependencies
+for key, artifact in context.dependencies:
+    if key == "gates":
+        gates = GatesExtractionResult.model_validate_json(artifact.content)
 ```
 
 ## Viewing the Artifacts

@@ -375,6 +375,10 @@ def main() -> int:
     docs = load_docs(docs_path)
     logger.info(f"Loaded documentation ({len(docs)} chars)")
 
+    # Note: Ω (Global Constraints) is now extracted by Action Pair 0 inside ADDGenerator
+    # Per paper: ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
+    # AP0 extracts ProjectConfig from Ψ (specification) and populates context.ambient.constraints
+
     # Get config values (CLI args override workflow.json)
     model = args.model or workflow_config.get("model", "qwen2.5-coder:14b")
     rmax = args.rmax if args.rmax != 3 else workflow_config.get("rmax", 3)
@@ -420,7 +424,7 @@ def main() -> int:
         action_pair=action_pair,
         artifact_dag=dag,
         rmax=2,  # Outer retry budget (in addition to internal retries)
-        constraints="Generate pytest-arch compatible tests",
+        constraints="",  # Ω starts empty - AP0 populates it inside ADDGenerator
     )
 
     print("=" * 60)

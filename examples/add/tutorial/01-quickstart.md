@@ -41,6 +41,11 @@ Max retries: 3
 Executing ADD workflow...
 
 INFO     | [ADD] Starting generation pipeline
+INFO     | [ADD] === Action Pair 0: Config Extraction ===
+INFO     | [ConfigExtractor] Calling LLM...
+INFO     | [ConfigExtractor] Got valid structured response
+INFO     | [config_extraction] ✓ Passed: Config extracted: source_root=src/myapp
+INFO     | [ADD] Extracted Ω: source_root=src/myapp
 INFO     | [ADD] === Action Pair 1: Gates Extraction ===
 INFO     | [DocParser] Calling Ollama...
 INFO     | [DocParser] Got valid structured response
@@ -124,11 +129,14 @@ ls examples/add/output/artifacts/
 
 ## What Just Happened?
 
-1. **ADD read the sample documentation** from `sample_docs/architecture.md`
-2. **Extracted 8 architecture gates** (rules about layer dependencies)
-3. **Generated 8 pytestarch tests** (one for each gate)
-4. **Validated the generated code** using guards (syntax, naming, API correctness)
-5. **Wrote the test files** to the output directory
+ADD ran 4 action pairs in sequence:
+
+1. **AP0: Extracted project config (Ω)** from documentation (source_root, package_name)
+2. **AP1: Extracted 8 architecture gates** (rules about layer dependencies)
+3. **AP2: Generated 8 pytestarch tests** (one for each gate, using Ω for fixture)
+4. **AP3: Wrote the test files** to the output directory
+
+Each action pair validated its output using guards (syntax, naming, API correctness).
 
 ## Next Steps
 
