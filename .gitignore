@@ -71,3 +71,9 @@ examples/add/output/artifacts/
 
 # documentation not for git
 docs/paper
+
+# Experiment results
+results/*.json
+
+# Example output artifacts
+examples/*/output/artifacts/

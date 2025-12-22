@@ -65,7 +65,6 @@ from atomicguard.guards import (
 from atomicguard.infrastructure.llm import (
     MockGenerator,
     OllamaGenerator,
-    SemanticAgentGenerator,
 )
 
 # Infrastructure (explicit import encouraged for dependency injection)
@@ -112,7 +111,6 @@ __all__ = [
     # Infrastructure - LLM
     "MockGenerator",
     "OllamaGenerator",
-    "SemanticAgentGenerator",
     # Guards
     "CompositeGuard",
     "SyntaxGuard",
