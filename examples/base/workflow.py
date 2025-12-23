@@ -1,4 +1,4 @@
-"""Abstract workflow runner for AtomicGuard examples."""
+"""Abstract runners for AtomicGuard examples."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from atomicguard import (
     ActionPair,
+    Artifact,
+    DualStateAgent,
     FilesystemArtifactDAG,
     OllamaGenerator,
     PromptTemplate,
@@ -32,12 +34,20 @@ if TYPE_CHECKING:
     pass
 
 
-class BaseWorkflowRunner(ABC):
-    """
-    Abstract base class for workflow runners.
+# Type alias for execution results
+ExecutionResult = WorkflowResult | Artifact
 
-    Provides common workflow execution infrastructure while allowing
-    subclasses to customize workflow building and result handling.
+
+class BaseRunner(ABC):
+    """
+    Abstract base class for example runners.
+
+    Supports both multi-step workflows (via Workflow class) and
+    single-step execution (via DualStateAgent directly).
+
+    Subclasses implement:
+    - build(): Returns either a Workflow or DualStateAgent
+    - get_specification(): Returns the input specification/prompt
     """
 
     def __init__(
@@ -70,25 +80,28 @@ class BaseWorkflowRunner(ABC):
 
     @property
     def workflow_name(self) -> str:
-        """Get workflow name."""
-        return str(self.workflow_config.get("name", "Unknown Workflow"))
+        """Get workflow/agent name."""
+        return str(self.workflow_config.get("name", "Unknown"))
+
+    @property
+    def constraints(self) -> str:
+        """Get global constraints (Ω)."""
+        return str(self.workflow_config.get("constraints", ""))
 
     @abstractmethod
-    def build_workflow(self) -> Workflow:
+    def build(self) -> Workflow | DualStateAgent:
         """
-        Build the workflow instance.
-
-        Subclasses implement this to customize workflow construction.
+        Build the executor instance.
 
         Returns:
-            Configured Workflow instance
+            Configured Workflow (multi-step) or DualStateAgent (single-step)
         """
         pass
 
     @abstractmethod
     def get_specification(self) -> str:
         """
-        Get the specification/prompt for workflow execution.
+        Get the specification/prompt for execution.
 
         Returns:
             Specification string
@@ -102,42 +115,50 @@ class BaseWorkflowRunner(ABC):
             generator_kwargs["base_url"] = normalize_base_url(self.host)
         return OllamaGenerator(**generator_kwargs)
 
-    def execute(self) -> tuple[WorkflowResult, float]:
+    def execute(self) -> tuple[ExecutionResult, float]:
         """
-        Execute the workflow.
+        Execute the workflow or agent.
 
         Returns:
-            Tuple of (WorkflowResult, duration_seconds)
+            Tuple of (WorkflowResult or Artifact, duration_seconds)
         """
-        workflow = self.build_workflow()
+        executor = self.build()
         specification = self.get_specification()
 
         start_time = datetime.now()
-        self.logger.info(f"Executing workflow: {self.workflow_name}")
+        self.logger.info(f"Executing: {self.workflow_name}")
 
-        result = workflow.execute(specification)
+        result = executor.execute(specification)
         duration = (datetime.now() - start_time).total_seconds()
 
-        if result.status == WorkflowStatus.SUCCESS:
-            self.logger.info(f"Workflow completed successfully in {duration:.2f}s")
-        else:
-            self.logger.warning(
-                f"Workflow {result.status.value} at step '{result.failed_step}' "
-                f"after {duration:.2f}s"
-            )
-
+        self._log_result(result, duration)
         return result, duration
 
+    def _log_result(self, result: ExecutionResult, duration: float) -> None:
+        """Log execution result."""
+        if isinstance(result, WorkflowResult):
+            if result.status == WorkflowStatus.SUCCESS:
+                self.logger.info(f"Completed successfully in {duration:.2f}s")
+            else:
+                self.logger.warning(
+                    f"Failed at step '{result.failed_step}' after {duration:.2f}s"
+                )
+        else:
+            # Artifact from DualStateAgent
+            self.logger.info(
+                f"Completed in {duration:.2f}s (attempt {result.attempt_number})"
+            )
 
-class StandardWorkflowRunner(BaseWorkflowRunner):
+
+class WorkflowRunner(BaseRunner):
     """
-    Standard workflow runner for TDD-style workflows.
+    Multi-step workflow runner using the Workflow class.
 
-    Handles workflows defined with action_pairs configuration
-    (tdd_human_review, tdd_import_guard).
+    Use this for workflows with multiple dependent steps
+    (e.g., TDD: generate tests → generate implementation).
     """
 
-    def build_workflow(self) -> Workflow:
+    def build(self) -> Workflow:
         """Build workflow from action_pairs configuration."""
         generator = self.create_generator()
         workflow = Workflow(artifact_dag=self.artifact_dag, rmax=self.rmax)
@@ -170,20 +191,69 @@ class StandardWorkflowRunner(BaseWorkflowRunner):
         return str(self.workflow_config["specification"])
 
 
+class AgentRunner(BaseRunner):
+    """
+    Single-step runner using DualStateAgent directly.
+
+    Use this for single-step execution where you have one complex
+    ActionPair (e.g., ADD workflow with custom generator).
+    """
+
+    def __init__(
+        self,
+        workflow_config: dict[str, Any],
+        prompts: dict[str, PromptTemplate],
+        artifact_dag: FilesystemArtifactDAG,
+        action_pair: ActionPair,
+        host: str | None = None,
+        model_override: str | None = None,
+        logger: logging.Logger | None = None,
+    ):
+        super().__init__(
+            workflow_config=workflow_config,
+            prompts=prompts,
+            artifact_dag=artifact_dag,
+            host=host,
+            model_override=model_override,
+            logger=logger,
+        )
+        self.action_pair = action_pair
+
+    def build(self) -> DualStateAgent:
+        """Build DualStateAgent with the configured ActionPair."""
+        return DualStateAgent(
+            action_pair=self.action_pair,
+            artifact_dag=self.artifact_dag,
+            rmax=self.rmax,
+            constraints=self.constraints,
+        )
+
+    def get_specification(self) -> str:
+        """Get specification from workflow config or override."""
+        return str(self.workflow_config.get("specification", ""))
+
+
+# Keep old names as aliases for backwards compatibility
+BaseWorkflowRunner = BaseRunner
+StandardWorkflowRunner = WorkflowRunner
+
+
 def save_workflow_results(
     output_path: str,
     workflow_config: dict[str, Any],
-    result: WorkflowResult,
+    result: ExecutionResult,
     model: str,
     duration: float,
 ) -> None:
     """
-    Save workflow results to JSON file.
+    Save execution results to JSON file.
+
+    Works with both WorkflowResult (multi-step) and Artifact (single-step).
 
     Args:
         output_path: Path to save results
         workflow_config: Original workflow configuration
-        result: WorkflowResult from execution
+        result: WorkflowResult or Artifact from execution
         model: Model name used
         duration: Execution duration in seconds
     """
@@ -191,6 +261,22 @@ def save_workflow_results(
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
+    if isinstance(result, WorkflowResult):
+        data = _build_workflow_result_data(workflow_config, result, model, duration)
+    else:
+        data = _build_artifact_result_data(workflow_config, result, model, duration)
+
+    with open(output_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _build_workflow_result_data(
+    workflow_config: dict[str, Any],
+    result: WorkflowResult,
+    model: str,
+    duration: float,
+) -> dict[str, Any]:
+    """Build result data dict for WorkflowResult."""
     total_attempts = len(result.artifacts) + len(result.provenance)
 
     data: dict[str, Any] = {
@@ -219,30 +305,73 @@ def save_workflow_results(
             for i, (artifact, feedback) in enumerate(result.provenance)
         ]
 
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
+    return data
+
+
+def _build_artifact_result_data(
+    workflow_config: dict[str, Any],
+    artifact: Artifact,
+    model: str,
+    duration: float,
+) -> dict[str, Any]:
+    """Build result data dict for single Artifact."""
+    data: dict[str, Any] = {
+        "workflow_name": workflow_config.get("name", "Unknown"),
+        "model": model,
+        "timestamp": datetime.now().isoformat(),
+        "duration_seconds": round(duration, 2),
+        "success": True,
+        "artifact_id": artifact.artifact_id,
+        "attempt_number": artifact.attempt_number,
+    }
+
+    # Try to parse content as JSON manifest
+    try:
+        data["manifest"] = json.loads(artifact.content)
+    except json.JSONDecodeError:
+        data["content"] = artifact.content
+
+    return data
 
 
 def display_workflow_result(
-    result: WorkflowResult,
+    result: ExecutionResult,
     output_path: str,
     artifact_dir: str,
     log_file: str,
     artifact_keys: tuple[str, ...] = ("g_test", "g_impl"),
 ) -> int:
     """
-    Display workflow result and return exit code.
+    Display execution result and return exit code.
+
+    Works with both WorkflowResult (multi-step) and Artifact (single-step).
 
     Args:
-        result: WorkflowResult from execution
+        result: WorkflowResult or Artifact from execution
         output_path: Path where results were saved
         artifact_dir: Directory where artifacts were saved
         log_file: Path to log file
-        artifact_keys: Keys of artifacts to display on success
+        artifact_keys: Keys of artifacts to display (for WorkflowResult)
 
     Returns:
         Exit code (0 for success, 1 for failure)
     """
+    if isinstance(result, WorkflowResult):
+        return _display_workflow_result(
+            result, output_path, artifact_dir, log_file, artifact_keys
+        )
+    else:
+        return _display_artifact_result(result, output_path, artifact_dir, log_file)
+
+
+def _display_workflow_result(
+    result: WorkflowResult,
+    output_path: str,
+    artifact_dir: str,
+    log_file: str,
+    artifact_keys: tuple[str, ...],
+) -> int:
+    """Display WorkflowResult."""
     if result.status == WorkflowStatus.SUCCESS:
         print_success("Workflow Complete")
 
@@ -265,3 +394,37 @@ def display_workflow_result(
         console.print(f"\nResults saved to: {output_path}")
         console.print(f"Log file: {log_file}")
         return 1
+
+
+def _display_artifact_result(
+    artifact: Artifact,
+    output_path: str,
+    artifact_dir: str,
+    log_file: str,
+) -> int:
+    """Display single Artifact result."""
+    print_success("Execution Complete")
+
+    console.print(f"\n[bold]Artifact ID:[/bold] {artifact.artifact_id}")
+    console.print(f"[bold]Attempt:[/bold] {artifact.attempt_number}")
+
+    # Try to parse and display as manifest
+    try:
+        manifest = json.loads(artifact.content)
+        if "files" in manifest:
+            console.print(
+                f"\n[bold]Files created:[/bold] {manifest.get('file_count', len(manifest['files']))}"
+            )
+            for filepath in manifest.get("files", {}):
+                console.print(f"  - {filepath}")
+    except json.JSONDecodeError:
+        # Show raw content preview
+        content = artifact.content
+        if len(content) > 500:
+            content = content[:500] + "\n... (truncated)"
+        console.print(f"\n[bold]Content:[/bold]\n{content}")
+
+    console.print(f"\nResults saved to: {output_path}")
+    console.print(f"Artifacts saved to: {artifact_dir}")
+    console.print(f"Log file: {log_file}")
+    return 0

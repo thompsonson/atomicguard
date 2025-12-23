@@ -1,13 +1,16 @@
 """
 Base module for AtomicGuard examples.
 
-Provides reusable utilities for building workflow runners:
+Provides reusable utilities for building example runners:
 - Configuration loading (load_prompts, load_workflow_config)
 - Logging setup (setup_logging)
 - CLI utilities (common_options, add_options)
 - Console output (print_header, print_error, print_success, etc.)
 - Guard building (build_guard, register_guard)
-- Workflow execution (BaseWorkflowRunner, StandardWorkflowRunner)
+- Runners:
+  - BaseRunner (ABC) - abstract base for all runners
+  - WorkflowRunner - multi-step orchestration via Workflow
+  - AgentRunner - single-step execution via DualStateAgent
 """
 
 from .cli import add_options, common_options
@@ -32,8 +35,11 @@ from .exceptions import ConfigurationError
 from .guards import GUARD_REGISTRY, build_guard, register_guard
 from .logging_setup import setup_logging
 from .workflow import (
+    AgentRunner,
+    BaseRunner,
     BaseWorkflowRunner,
     StandardWorkflowRunner,
+    WorkflowRunner,
     display_workflow_result,
     save_workflow_results,
 )
@@ -65,9 +71,14 @@ __all__ = [
     "GUARD_REGISTRY",
     "build_guard",
     "register_guard",
-    # Workflow
+    # Runners
+    "BaseRunner",
+    "WorkflowRunner",
+    "AgentRunner",
+    # Backwards compatibility aliases
     "BaseWorkflowRunner",
     "StandardWorkflowRunner",
+    # Result utilities
     "save_workflow_results",
     "display_workflow_result",
 ]

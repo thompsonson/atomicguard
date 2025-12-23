@@ -20,241 +20,40 @@ Requirements:
     - pydantic-ai installed
 """
 
-import argparse
+from __future__ import annotations
+
 import json
 import logging
-import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
+import click
+from examples.base import (
+    AgentRunner,
+    ConfigurationError,
+    add_options,
+    common_options,
+    console,
+    display_workflow_result,
+    load_prompts,
+    load_workflow_config,
+    normalize_base_url,
+    normalize_model_name,
+    print_error,
+    print_failure,
+    print_header,
+    print_provenance,
+    print_workflow_info,
+    save_workflow_results,
+    setup_logging,
+)
+
+from atomicguard import Artifact, FilesystemArtifactDAG
 from atomicguard.application.action_pair import ActionPair
-from atomicguard.application.agent import DualStateAgent
 from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
-from atomicguard.domain.prompts import PromptTemplate
-from atomicguard.infrastructure.persistence import FilesystemArtifactDAG
 
 from .add_generator import ADDGenerator
 from .guards import ArtifactStructureGuard
-
-# =============================================================================
-# Exceptions
-# =============================================================================
-
-
-class ConfigurationError(Exception):
-    """Raised when configuration files are invalid or missing."""
-
-    pass
-
-
-# =============================================================================
-# JSON Loaders
-# =============================================================================
-
-
-def load_prompts(path: Path) -> dict[str, PromptTemplate]:
-    """
-    Load prompt templates from JSON file.
-
-    Args:
-        path: Path to prompts.json
-
-    Returns:
-        Dict mapping step ID to PromptTemplate
-
-    Raises:
-        ConfigurationError: If file is missing or invalid
-    """
-    if not path.exists():
-        raise ConfigurationError(f"Prompts file not found: {path}")
-
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        raise ConfigurationError(f"Invalid JSON in {path}: {e}") from e
-
-    if not isinstance(data, dict):
-        raise ConfigurationError(f"Expected dict in {path}, got {type(data).__name__}")
-
-    prompts = {}
-    for step_id, prompt_data in data.items():
-        if not isinstance(prompt_data, dict):
-            raise ConfigurationError(
-                f"Invalid prompt config for '{step_id}': expected dict"
-            )
-        prompts[step_id] = PromptTemplate(
-            role=prompt_data.get("role", ""),
-            constraints=prompt_data.get("constraints", ""),
-            task=prompt_data.get("task", ""),
-            feedback_wrapper=prompt_data.get("feedback_wrapper", "{feedback}"),
-        )
-    return prompts
-
-
-def load_workflow_config(path: Path) -> dict:
-    """
-    Load workflow configuration from JSON file.
-
-    Args:
-        path: Path to workflow.json
-
-    Returns:
-        Workflow configuration dict
-
-    Raises:
-        ConfigurationError: If file is missing or invalid
-    """
-    if not path.exists():
-        raise ConfigurationError(f"Workflow file not found: {path}")
-
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        raise ConfigurationError(f"Invalid JSON in {path}: {e}") from e
-
-    # Validate required fields
-    required_fields = ["name"]
-    missing = [f for f in required_fields if f not in data]
-    if missing:
-        raise ConfigurationError(
-            f"Missing required fields in {path}: {', '.join(missing)}"
-        )
-
-    return data
-
-
-def setup_logging(
-    log_file: str | None = None,
-    verbose: bool = False,
-) -> logging.Logger:
-    """
-    Configure dual-handler logging (console + file).
-
-    Args:
-        log_file: Path to log file (None for no file logging)
-        verbose: Enable DEBUG level on console (default INFO)
-
-    Returns:
-        Configured logger instance
-    """
-    logger = logging.getLogger("add_workflow")
-    logger.setLevel(logging.DEBUG)
-
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
-    console_handler.setFormatter(logging.Formatter("%(levelname)-8s | %(message)s"))
-    logger.addHandler(console_handler)
-
-    # File handler (if path provided)
-    if log_file:
-        log_dir = os.path.dirname(log_file)
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        file_handler = logging.FileHandler(log_file, mode="w")
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s | %(levelname)-8s | %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        logger.addHandler(file_handler)
-
-    # Suppress noisy 3rd party loggers
-    for noisy in ["httpx", "openai", "httpcore", "urllib3"]:
-        logging.getLogger(noisy).setLevel(logging.WARNING)
-
-    return logger
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="ADD Agent - Architecture-Driven Development",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python -m examples.add.run
-  python -m examples.add.run --host http://gpu:11434
-  python -m examples.add.run --model openai/qwen2.5-coder:14b
-  python -m examples.add.run --output results/add_experiment.json
-  python -m examples.add.run --docs path/to/architecture.md
-        """,
-    )
-    parser.add_argument(
-        "--host",
-        default="http://localhost:11434",
-        help="Ollama API URL (default: http://localhost:11434)",
-    )
-    parser.add_argument(
-        "--model",
-        default="ollama:qwen2.5-coder:14b",
-        help="Model to use (default: ollama:qwen2.5-coder:14b)",
-    )
-    parser.add_argument(
-        "--output",
-        default=None,
-        help="Path to save results JSON (optional)",
-    )
-    parser.add_argument(
-        "--docs",
-        default=None,
-        help="Path to architecture documentation (default: sample_docs/architecture.md)",
-    )
-    parser.add_argument(
-        "--workdir",
-        default=None,
-        help="Output directory for generated tests (default: examples/add/output)",
-    )
-    parser.add_argument(
-        "--rmax",
-        type=int,
-        default=3,
-        help="Maximum retry attempts per action pair (default: 3)",
-    )
-    parser.add_argument(
-        "--min-gates",
-        type=int,
-        default=3,
-        help="Minimum number of gates required (default: 3)",
-    )
-    parser.add_argument(
-        "--min-tests",
-        type=int,
-        default=3,
-        help="Minimum number of tests required (default: 3)",
-    )
-    parser.add_argument(
-        "--artifact-dir",
-        default=None,
-        help="Directory for artifact storage (default: ./output/artifacts)",
-    )
-    parser.add_argument(
-        "--log-file",
-        default=None,
-        help="Path to log file (default: derived from --output)",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose (DEBUG) logging to console",
-    )
-    parser.add_argument(
-        "--prompts",
-        default=None,
-        help="Path to prompts.json (default: ./prompts.json)",
-    )
-    parser.add_argument(
-        "--workflow",
-        default=None,
-        help="Path to workflow.json (default: ./workflow.json)",
-    )
-    return parser.parse_args()
 
 
 def load_docs(docs_path: Path | None) -> str:
@@ -294,229 +93,282 @@ Never the reverse.
 """
 
 
-def save_results(
-    output_path: str,
-    artifact: object,
-    duration: float,
-    success: bool,
-    error: str | None = None,
+class ADDAgentRunner(AgentRunner):
+    """ADD-specific runner with documentation loading and custom generator."""
+
+    def __init__(
+        self,
+        workflow_config: dict,
+        prompts: dict,
+        artifact_dag: FilesystemArtifactDAG,
+        action_pair: ActionPair,
+        docs: str,
+        host: str | None = None,
+        model_override: str | None = None,
+        logger: logging.Logger | None = None,
+    ):
+        super().__init__(
+            workflow_config=workflow_config,
+            prompts=prompts,
+            artifact_dag=artifact_dag,
+            action_pair=action_pair,
+            host=host,
+            model_override=model_override,
+            logger=logger,
+        )
+        self._docs = docs
+
+    def get_specification(self) -> str:
+        """Return loaded documentation as specification."""
+        return self._docs
+
+
+@click.command()
+@common_options
+@add_options
+def main(
+    host: str,
+    model: str | None,
+    prompts: str | None,
+    workflow: str | None,
+    output: str | None,
+    artifact_dir: str | None,
+    log_file: str | None,
+    verbose: bool,
+    docs: str | None,
+    workdir: str | None,
+    rmax: int,
+    min_gates: int,
+    min_tests: int,
 ) -> None:
-    """Save results to JSON file."""
+    """ADD Agent - Architecture-Driven Development."""
+    script_dir = Path(__file__).parent
+
+    # Resolve paths
+    prompts_path = Path(prompts) if prompts else script_dir / "prompts.json"
+    workflow_path = Path(workflow) if workflow else script_dir / "workflow.json"
+    output_dir = Path(workdir) if workdir else script_dir / "output"
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    output_path = Path(output) if output else None
+    artifact_path = Path(artifact_dir) if artifact_dir else output_dir / "artifacts"
+    artifact_path.mkdir(exist_ok=True, parents=True)
+
+    log_path = log_file
+    if not log_path and output_path:
+        log_path = str(output_path.with_suffix(".log"))
+    elif not log_path:
+        log_path = str(output_dir / "run.log")
+
+    # Setup logging
+    logger = setup_logging("add_workflow", log_path, verbose)
+    logger.info("Starting ADD Agent Example")
+
+    # Load configuration
+    try:
+        logger.debug(f"Loading prompts from: {prompts_path}")
+        prompts_data = load_prompts(prompts_path)
+        logger.debug(f"Loading workflow from: {workflow_path}")
+        workflow_config = load_workflow_config(workflow_path, required_fields=("name",))
+        logger.info("Configuration loaded successfully")
+    except ConfigurationError as e:
+        logger.error(f"Configuration error: {e}")
+        print_error(str(e), "Check that your JSON files exist and are valid.")
+        sys.exit(1)
+
+    # Load documentation
+    docs_path = Path(docs) if docs else None
+    docs_content = load_docs(docs_path)
+    logger.info(f"Loaded documentation ({len(docs_content)} chars)")
+
+    # Get config values (CLI args override workflow.json)
+    effective_model = model or workflow_config.get("model", "qwen2.5-coder:14b")
+    effective_rmax = rmax if rmax != 3 else workflow_config.get("rmax", 3)
+    effective_min_gates = (
+        min_gates if min_gates != 3 else workflow_config.get("min_gates", 3)
+    )
+    effective_min_tests = (
+        min_tests if min_tests != 3 else workflow_config.get("min_tests", 3)
+    )
+    effective_host = normalize_base_url(host)
+    normalized_model = normalize_model_name(effective_model)
+
+    # Display workflow info
+    print_header(f"Workflow: {workflow_config.get('name', 'ADD Agent')}")
+    print_workflow_info(
+        workflow_name=workflow_config.get("name", "ADD Agent"),
+        model=normalized_model,
+        host=effective_host,
+        rmax=effective_rmax,
+        output_path=str(output_path) if output_path else "N/A",
+        artifact_dir=str(artifact_path),
+        log_file=log_path,
+        extra_info={
+            "Min gates": effective_min_gates,
+            "Min tests": effective_min_tests,
+            "Docs": str(docs_path) if docs_path else "sample_docs/architecture.md",
+        },
+    )
+
+    # Create artifact storage
+    artifact_dag = FilesystemArtifactDAG(str(artifact_path))
+    logger.debug(f"Artifact storage initialized: {artifact_path}")
+
+    # Update workflow config with effective values
+    workflow_config["rmax"] = 2  # Outer retry budget
+    workflow_config["constraints"] = ""  # Ω starts empty - AP0 populates it
+
+    # Create ADDGenerator with artifact_dag for internal persistence
+    add_generator = ADDGenerator(
+        model=normalized_model,
+        base_url=effective_host,
+        rmax=effective_rmax,
+        workdir=output_dir,
+        min_gates=effective_min_gates,
+        min_tests=effective_min_tests,
+        artifact_dag=artifact_dag,
+        prompts=prompts_data,
+    )
+
+    # Create action pair with ADD generator
+    action_pair = ActionPair(
+        generator=add_generator,
+        guard=ArtifactStructureGuard(min_tests=effective_min_tests),
+    )
+
+    # Create runner
+    runner = ADDAgentRunner(
+        workflow_config=workflow_config,
+        prompts=prompts_data,
+        artifact_dag=artifact_dag,
+        action_pair=action_pair,
+        docs=docs_content,
+        host=host,
+        model_override=model,
+        logger=logger,
+    )
+
+    console.print("\nExecuting ADD workflow...\n")
+
+    try:
+        result, duration = runner.execute()
+
+        # Save results
+        if output_path:
+            save_workflow_results(
+                str(output_path), workflow_config, result, normalized_model, duration
+            )
+            logger.info(f"Results saved to: {output_path}")
+
+        # Display result
+        exit_code = display_workflow_result(
+            result,
+            str(output_path) if output_path else "N/A",
+            str(artifact_path),
+            log_path,
+        )
+
+        # Show generated files (result is always Artifact for AgentRunner)
+        if isinstance(result, Artifact):
+            try:
+                manifest = json.loads(result.content)
+                console.print(
+                    f"\n[bold]Test count:[/bold] {manifest.get('test_count', 0)}"
+                )
+                console.print(
+                    f"[bold]Gates covered:[/bold] {manifest.get('gates_covered', [])}"
+                )
+                console.print(
+                    f"\nCheck [cyan]{output_dir}[/cyan] to see the generated files"
+                )
+            except json.JSONDecodeError:
+                pass
+
+        sys.exit(exit_code)
+
+    except EscalationRequired as e:
+        logger.error(f"Escalation required: {e.feedback}")
+        print_failure(
+            "Escalation Required",
+            details="Fatal error requiring human intervention",
+        )
+        console.print(f"\n[bold]Feedback:[/bold] {e.feedback}")
+        if output_path:
+            _save_error_result(str(output_path), workflow_config, e.feedback)
+        sys.exit(1)
+
+    except RmaxExhausted as e:
+        logger.error(f"Max retries exhausted after {len(e.provenance)} attempts")
+        print_failure(
+            f"Failed after {len(e.provenance)} attempts",
+            details="Could not generate valid output",
+        )
+        print_provenance(e.provenance)
+        if output_path:
+            _save_error_result(str(output_path), workflow_config, str(e))
+        sys.exit(1)
+
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user")
+        click.echo("\n\nInterrupted by user.")
+        sys.exit(130)
+
+    except Exception as e:
+        logger.error(f"Workflow error: {type(e).__name__}: {e}")
+        _handle_error(e, effective_host, normalized_model)
+        if output_path:
+            _save_error_result(
+                str(output_path), workflow_config, f"{type(e).__name__}: {e}"
+            )
+        sys.exit(1)
+
+
+def _save_error_result(output_path: str, workflow_config: dict, error: str) -> None:
+    """Save error result to JSON file."""
     import os
+    from datetime import datetime
 
     output_dir = os.path.dirname(output_path)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
     data = {
+        "workflow_name": workflow_config.get("name", "Unknown"),
         "timestamp": datetime.now().isoformat(),
-        "duration_seconds": round(duration, 2),
-        "success": success,
+        "success": False,
+        "error": error,
     }
-
-    if success and artifact:
-        data["artifact_id"] = artifact.artifact_id  # type: ignore[attr-defined]
-        data["attempt_number"] = artifact.attempt_number  # type: ignore[attr-defined]
-        data["manifest"] = json.loads(artifact.content)  # type: ignore[attr-defined]
-    elif error:
-        data["error"] = error
 
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
 
 
-def main() -> int:
-    """Run the ADD example."""
-    args = parse_args()
-
-    # Resolve paths relative to this script
-    script_dir = Path(__file__).parent
-    prompts_path = Path(args.prompts) if args.prompts else script_dir / "prompts.json"
-    workflow_path = (
-        Path(args.workflow) if args.workflow else script_dir / "workflow.json"
-    )
-
-    # Resolve output paths
-    output_dir = Path(args.workdir) if args.workdir else script_dir / "output"
-    output_dir.mkdir(exist_ok=True, parents=True)
-
-    # Resolve log file path
-    log_file = args.log_file
-    if not log_file and args.output:
-        log_file = str(Path(args.output).with_suffix(".log"))
-    elif not log_file:
-        log_file = str(output_dir / "run.log")
-
-    # Setup logging
-    logger = setup_logging(log_file=log_file, verbose=args.verbose)
-    logger.info("Starting ADD Agent Example")
-
-    # Load configuration files
-    try:
-        logger.debug(f"Loading prompts from: {prompts_path}")
-        prompts = load_prompts(prompts_path)
-        logger.debug(f"Loading workflow from: {workflow_path}")
-        workflow_config = load_workflow_config(workflow_path)
-        logger.info("Configuration loaded successfully")
-    except ConfigurationError as e:
-        logger.error(f"Configuration error: {e}")
-        print(f"ERROR: {e}")
-        return 1
-
-    # Resolve artifact directory
-    artifact_dir = (
-        Path(args.artifact_dir) if args.artifact_dir else output_dir / "artifacts"
-    )
-    artifact_dir.mkdir(exist_ok=True, parents=True)
-    logger.debug(f"Artifact storage: {artifact_dir}")
-
-    # Load documentation
-    docs_path = Path(args.docs) if args.docs else None
-    docs = load_docs(docs_path)
-    logger.info(f"Loaded documentation ({len(docs)} chars)")
-
-    # Note: Ω (Global Constraints) is now extracted by Action Pair 0 inside ADDGenerator
-    # Per paper: ℰ (Ambient Environment) = ⟨ℛ, Ω⟩
-    # AP0 extracts ProjectConfig from Ψ (specification) and populates context.ambient.constraints
-
-    # Get config values (CLI args override workflow.json)
-    model = args.model or workflow_config.get("model", "qwen2.5-coder:14b")
-    rmax = args.rmax if args.rmax != 3 else workflow_config.get("rmax", 3)
-    min_gates = (
-        args.min_gates if args.min_gates != 3 else workflow_config.get("min_gates", 3)
-    )
-    min_tests = (
-        args.min_tests if args.min_tests != 3 else workflow_config.get("min_tests", 3)
-    )
-
-    # Normalize model string for PydanticAI
-    # PydanticAI expects "ollama:model" format
-    if not model.startswith(("ollama:", "openai:", "anthropic:")):
-        model = f"ollama:{model}"
-
-    # Normalize base_url (ensure /v1 suffix for OpenAI-compatible API)
-    base_url = args.host.rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url = f"{base_url}/v1"
-
-    # Create agent with filesystem artifact storage
-    dag = FilesystemArtifactDAG(str(artifact_dir))
-
-    # Create ADDGenerator with artifact_dag for internal persistence
-    add_generator = ADDGenerator(
-        model=model,
-        base_url=base_url,
-        rmax=rmax,
-        workdir=output_dir,
-        min_gates=min_gates,
-        min_tests=min_tests,
-        artifact_dag=dag,
-        prompts=prompts,
-    )
-
-    # Create action pair with ADD generator
-    # The outer guard validates the final manifest
-    action_pair = ActionPair(
-        generator=add_generator,
-        guard=ArtifactStructureGuard(min_tests=args.min_tests),
-    )
-    agent = DualStateAgent(
-        action_pair=action_pair,
-        artifact_dag=dag,
-        rmax=2,  # Outer retry budget (in addition to internal retries)
-        constraints="",  # Ω starts empty - AP0 populates it inside ADDGenerator
-    )
-
-    print("=" * 60)
-    print(f"Workflow: {workflow_config.get('name', 'ADD Agent')}")
-    print("=" * 60)
-    print(f"Model: {model}")
-    print(f"Base URL: {base_url}")
-    print(f"Output dir: {output_dir}")
-    print(f"Prompts: {prompts_path}")
-    print(f"Min gates: {min_gates}")
-    print(f"Min tests: {min_tests}")
-    print(f"Max retries: {rmax}")
-    if args.output:
-        print(f"Results: {args.output}")
-    print("=" * 60)
-    print("\nExecuting ADD workflow...\n")
-
-    start_time = datetime.now()
-    artifact = None
-
-    try:
-        artifact = agent.execute(docs)
-        duration = (datetime.now() - start_time).total_seconds()
-
-        print("=== SUCCESS ===\n")
-        print(f"Artifact ID: {artifact.artifact_id}")
-        print(f"Attempt: {artifact.attempt_number}")
-        print(f"Duration: {duration:.2f}s")
-
-        # Print manifest
-        manifest = json.loads(artifact.content)
-        print(f"\nTest count: {manifest.get('test_count', 0)}")
-        print(f"Gates covered: {manifest.get('gates_covered', [])}")
-
-        print("\n--- Generated Files ---")
-        for f in manifest.get("files", []):
-            print(f"  - {f['path']}")
-
-        print(f"\nCheck {output_dir} to see the generated files")
-
-        if args.output:
-            save_results(args.output, artifact, duration, success=True)
-            print(f"\nResults saved to: {args.output}")
-
-        return 0
-
-    except EscalationRequired as e:
-        duration = (datetime.now() - start_time).total_seconds()
-        print("=== ESCALATION ===")
-        print("Fatal error requiring human intervention")
-        print(f"Duration: {duration:.2f}s")
-        print(f"Feedback: {e.feedback}")
-
-        if args.output:
-            save_results(args.output, None, duration, success=False, error=e.feedback)
-
-        return 1
-
-    except RmaxExhausted as e:
-        duration = (datetime.now() - start_time).total_seconds()
-        print("=== FAILED ===")
-        print(f"Could not generate valid output after {len(e.provenance)} attempts")
-        print(f"Duration: {duration:.2f}s")
-        print("\nAttempt history:")
-        for i, (_artifact, feedback) in enumerate(e.provenance, 1):
-            print(f"\n--- Attempt {i} ---")
-            print(f"Feedback: {feedback}")
-
-        if args.output:
-            save_results(args.output, None, duration, success=False, error=str(e))
-
-        return 1
-
-    except KeyboardInterrupt:
-        print("\n\nInterrupted by user.")
-        return 130
-
-    except Exception as e:
-        duration = (datetime.now() - start_time).total_seconds()
-        print(f"\nError: {type(e).__name__}: {e}")
-
-        if args.output:
-            save_results(
-                args.output,
-                None,
-                duration,
-                success=False,
-                error=f"{type(e).__name__}: {e}",
-            )
-
-        return 1
+def _handle_error(e: Exception, host: str, model: str) -> None:
+    """Handle and display execution errors."""
+    error_str = str(e).lower()
+    if "connection" in error_str or "refused" in error_str:
+        print_error(
+            f"Cannot connect to Ollama at {host}",
+            hint=(
+                "Make sure Ollama is running:\n"
+                "  1. Start Ollama: ollama serve\n"
+                "  2. Or specify a different host: --host http://your-server:11434\n"
+                "  3. Verify the model is available: ollama list"
+            ),
+        )
+    elif "model" in error_str and "not found" in error_str:
+        print_error(
+            f"Model '{model}' not found",
+            hint=f"Pull the model first: ollama pull {model}",
+        )
+    elif "timeout" in error_str:
+        print_error(
+            "Request timed out",
+            hint="The model may be loading or the server is slow. Try again.",
+        )
+    else:
+        print_error(f"Unexpected error: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
