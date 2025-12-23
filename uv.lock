@@ -287,6 +287,10 @@ dev = [
     { name = "ruff" },
     { name = "types-jsonschema" },
 ]
+examples = [
+    { name = "click" },
+    { name = "rich" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -309,6 +313,10 @@ dev = [
     { name = "python-semantic-release", specifier = ">=9.21.1" },
     { name = "ruff", specifier = ">=0.14.9" },
     { name = "types-jsonschema", specifier = ">=4.25.1.20251009" },
+]
+examples = [
+    { name = "click", specifier = ">=8.1.0" },
+    { name = "rich", specifier = ">=13.0.0" },
 ]
 
 [[package]]
