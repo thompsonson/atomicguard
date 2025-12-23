@@ -193,3 +193,7 @@ dev = [
     "ruff>=0.14.9",
     "types-jsonschema>=4.25.1.20251009",
 ]
+examples = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+]
