@@ -2,7 +2,7 @@
 
 import pytest
 
-from atomicguard.domain.models import Artifact
+from atomicguard.domain.models import Artifact, ArtifactStatus
 from atomicguard.infrastructure.llm.mock import MockGenerator
 
 
@@ -175,3 +175,75 @@ class TestMockGeneratorReset:
 
         assert artifact1.content == "x"
         assert artifact2.content == "x"
+
+
+class TestMockGeneratorArtifactMetadata:
+    """Tests documenting current generator behavior for artifact metadata.
+
+    These tests verify what the generator currently produces.
+    The issues stem from generator-set values not being overridden by agent.
+    """
+
+    def test_generate_uses_global_call_count_for_attempt_number(
+        self,
+        sample_context,  # noqa: ANN001
+    ) -> None:
+        """Generator uses its global call count as attempt_number.
+
+        This documents current behavior. The issue is that agent.py
+        should override this with a per-action-pair counter.
+        """
+        generator = MockGenerator(responses=["a", "b", "c"])
+
+        artifact1 = generator.generate(sample_context)
+        artifact2 = generator.generate(sample_context)
+        artifact3 = generator.generate(sample_context)
+
+        # Generator uses global call count (current behavior)
+        assert artifact1.attempt_number == 1
+        assert artifact2.attempt_number == 2
+        assert artifact3.attempt_number == 3
+
+    def test_generate_always_sets_previous_attempt_id_to_none(
+        self,
+        sample_context,  # noqa: ANN001
+    ) -> None:
+        """Generator always sets previous_attempt_id=None.
+
+        This documents current behavior. The issue is that agent.py
+        should link artifacts during retries.
+        """
+        generator = MockGenerator(responses=["a", "b"])
+
+        artifact1 = generator.generate(sample_context)
+        artifact2 = generator.generate(sample_context)
+
+        # All artifacts from generator have None (current behavior)
+        assert artifact1.previous_attempt_id is None
+        assert artifact2.previous_attempt_id is None
+
+    def test_generate_sets_empty_feedback_history_in_context(
+        self,
+        sample_context,  # noqa: ANN001
+    ) -> None:
+        """Generator sets empty feedback_history in context snapshot.
+
+        This documents current behavior. The issue is that agent.py
+        should populate feedback_history during retries.
+        """
+        generator = MockGenerator(responses=["a"])
+
+        artifact = generator.generate(sample_context)
+
+        assert artifact.context.feedback_history == ()
+
+    def test_generate_sets_pending_status(
+        self,
+        sample_context,  # noqa: ANN001
+    ) -> None:
+        """Generator correctly sets status=PENDING (agent updates after guard)."""
+        generator = MockGenerator(responses=["a"])
+
+        artifact = generator.generate(sample_context)
+
+        assert artifact.status == ArtifactStatus.PENDING
