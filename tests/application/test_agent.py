@@ -188,6 +188,7 @@ class TestDualStateAgentExecute:
 
         dep = Artifact(
             artifact_id="dep-001",
+            workflow_id="test-workflow-001",
             content="# dep",
             previous_attempt_id=None,
             action_pair_id="ap-dep",
@@ -197,6 +198,7 @@ class TestDualStateAgentExecute:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id="test-workflow-001",
                 specification="",
                 constraints="",
                 feedback_history=(),
@@ -297,6 +299,7 @@ class TestDualStateAgentContextComposition:
 
         artifact = Artifact(
             artifact_id="test-001",
+            workflow_id="test-workflow-001",
             content="bad code",
             previous_attempt_id=None,
             action_pair_id="ap-001",
@@ -306,6 +309,7 @@ class TestDualStateAgentContextComposition:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id="test-workflow-001",
                 specification="",
                 constraints="",
                 feedback_history=(),
