@@ -1,14 +1,19 @@
 {
-  "name": "TDD Stack with Import Guard (GUI Demo)",
+  "name": "Multi-Agent TDD Stack (GUI Demo)",
+  "description": "Demonstrates multi-agent workflow with explicit generator specification per action pair. Per Remark 5, each generator may be an autonomous Semantic Agent.",
   "specification": "Write pytest-style unit tests for a Stack implementation.\n\nRequirements for tests:\n1. Test class named `TestStack`\n2. Test push() and pop() operations\n3. Test peek() returns top element without removing it\n4. Test is_empty() returns correct boolean\n5. Test stack underflow (pop on empty stack raises IndexError)\n6. Use assert statements\n\nReturn only the Python test code, no implementation.",
   "model": "qwen2.5-coder:14b",
   "rmax": 3,
   "action_pairs": {
     "g_test": {
+      "generator": "OllamaGenerator",
+      "generator_config": {},
       "guard": "composite",
       "guards": ["syntax", "import"]
     },
     "g_impl": {
+      "generator": "OllamaGenerator",
+      "generator_config": {},
       "guard": "dynamic_test",
       "requires": ["g_test"]
     }

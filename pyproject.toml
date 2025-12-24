@@ -48,6 +48,10 @@ Documentation = "https://github.com/thompsonson/atomicguard#readme"
 Issues = "https://github.com/thompsonson/atomicguard/issues"
 Changelog = "https://github.com/thompsonson/atomicguard/blob/main/CHANGELOG.md"
 
+[project.entry-points."atomicguard.generators"]
+OllamaGenerator = "atomicguard.infrastructure.llm:OllamaGenerator"
+MockGenerator = "atomicguard.infrastructure.llm:MockGenerator"
+
 # Note: Dev dependencies are in [dependency-groups] below, not here.
 # [project.optional-dependencies] is for end-user extras only.
 
