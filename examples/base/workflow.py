@@ -20,6 +20,8 @@ from atomicguard import (
     WorkflowResult,
     WorkflowStatus,
 )
+from atomicguard.domain.interfaces import GeneratorInterface
+from atomicguard.infrastructure import GeneratorRegistry
 
 from .config import normalize_base_url
 from .console import (
@@ -108,12 +110,44 @@ class BaseRunner(ABC):
         """
         pass
 
-    def create_generator(self) -> OllamaGenerator:
-        """Create the LLM generator."""
-        generator_kwargs: dict[str, Any] = {"model": self.model}
-        if self.host:
-            generator_kwargs["base_url"] = normalize_base_url(self.host)
-        return OllamaGenerator(**generator_kwargs)
+    def create_generator(
+        self,
+        generator_name: str | None = None,
+        generator_config: dict[str, Any] | None = None,
+    ) -> GeneratorInterface:
+        """
+        Create a generator instance.
+
+        If generator_name is provided (from schema), uses the registry with
+        the schema-provided config as-is (typed config dataclass will validate).
+
+        Otherwise falls back to OllamaGenerator with workflow-level defaults.
+
+        Args:
+            generator_name: Generator type from schema (e.g., "OllamaGenerator")
+            generator_config: Generator-specific config from schema
+
+        Returns:
+            GeneratorInterface instance
+        """
+        config = generator_config.copy() if generator_config else {}
+
+        if generator_name:
+            # Use registry for schema-specified generators
+            # Pass config as-is - let the generator's config_class validate
+            # Only inject model/base_url for OllamaGenerator (maintains backward compat)
+            if generator_name == "OllamaGenerator":
+                if "model" not in config:
+                    config["model"] = self.model
+                if self.host and "base_url" not in config:
+                    config["base_url"] = normalize_base_url(self.host)
+            return GeneratorRegistry.create(generator_name, **config)
+        else:
+            # Default: OllamaGenerator with standard config
+            config["model"] = self.model
+            if self.host:
+                config["base_url"] = normalize_base_url(self.host)
+            return OllamaGenerator(**config)
 
     def execute(self) -> tuple[ExecutionResult, float]:
         """
@@ -160,7 +194,8 @@ class WorkflowRunner(BaseRunner):
 
     def build(self) -> Workflow:
         """Build workflow from action_pairs configuration."""
-        generator = self.create_generator()
+        # Create a default generator for steps that don't specify one
+        default_generator = self.create_generator()
         workflow = Workflow(artifact_dag=self.artifact_dag, rmax=self.rmax)
 
         action_pairs_config = self.workflow_config["action_pairs"]
@@ -168,6 +203,15 @@ class WorkflowRunner(BaseRunner):
         for step_id, ap_config in action_pairs_config.items():
             guard = build_guard(ap_config)
             prompt_template = self.prompts.get(step_id)
+
+            # Use schema-specified generator if present, otherwise default
+            generator_name = ap_config.get("generator")
+            generator_config = ap_config.get("generator_config")
+
+            if generator_name:
+                generator = self.create_generator(generator_name, generator_config)
+            else:
+                generator = default_generator
 
             action_pair = ActionPair(
                 generator=generator,

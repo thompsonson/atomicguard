@@ -6,6 +6,7 @@ Connects to Ollama instances via the OpenAI-compatible API.
 
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
@@ -21,31 +22,43 @@ from atomicguard.domain.prompts import PromptTemplate
 DEFAULT_OLLAMA_URL = "http://localhost:11434/v1"
 
 
+@dataclass
+class OllamaGeneratorConfig:
+    """Configuration for OllamaGenerator.
+
+    This typed config ensures unknown fields are rejected at construction time.
+    """
+
+    model: str = "qwen2.5-coder:7b"
+    base_url: str = DEFAULT_OLLAMA_URL
+    timeout: float = 120.0
+
+
 class OllamaGenerator(GeneratorInterface):
     """Connects to Ollama instance using OpenAI-compatible API."""
 
-    def __init__(
-        self,
-        model: str = "qwen2.5-coder:7b",
-        base_url: str = DEFAULT_OLLAMA_URL,
-        timeout: float = 120.0,
-    ):
+    config_class = OllamaGeneratorConfig
+
+    def __init__(self, config: OllamaGeneratorConfig | None = None, **kwargs: Any):
         """
         Args:
-            model: Ollama model name
-            base_url: Ollama API URL
-            timeout: Request timeout in seconds
+            config: Typed configuration object (preferred)
+            **kwargs: Legacy kwargs for backward compatibility (deprecated)
         """
+        # Support both config object and legacy kwargs
+        if config is None:
+            config = OllamaGeneratorConfig(**kwargs)
+
         try:
             from openai import OpenAI
         except ImportError as err:
             raise ImportError("openai library required: pip install openai") from err
 
-        self._model = model
+        self._model = config.model
         self._client = OpenAI(
-            base_url=base_url,
+            base_url=config.base_url,
             api_key="ollama",  # required but unused
-            timeout=timeout,
+            timeout=config.timeout,
         )
         self._version_counter = 0
 
