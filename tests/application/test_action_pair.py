@@ -122,6 +122,7 @@ class TestActionPairExecute:
 
         dep_artifact = Artifact(
             artifact_id="dep-001",
+            workflow_id="test-workflow-001",
             content="# dependency",
             previous_attempt_id=None,
             action_pair_id="ap-dep",
@@ -131,6 +132,7 @@ class TestActionPairExecute:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id="test-workflow-001",
                 specification="",
                 constraints="",
                 feedback_history=(),

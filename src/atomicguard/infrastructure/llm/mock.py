@@ -24,7 +24,11 @@ class MockGenerator(GeneratorInterface):
         self._call_count = 0
 
     def generate(
-        self, _context: Context, _template: PromptTemplate | None = None
+        self,
+        _context: Context,
+        _template: PromptTemplate | None = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ) -> Artifact:
         """Return the next predefined response."""
         if self._call_count >= len(self._responses):
@@ -35,15 +39,17 @@ class MockGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid.uuid4()),
+            workflow_id=workflow_id,
             content=content,
             previous_attempt_id=None,
-            action_pair_id="mock",
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=self._call_count,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id=workflow_id,
                 specification="",
                 constraints="",
                 feedback_history=(),
