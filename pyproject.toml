@@ -48,16 +48,8 @@ Documentation = "https://github.com/thompsonson/atomicguard#readme"
 Issues = "https://github.com/thompsonson/atomicguard/issues"
 Changelog = "https://github.com/thompsonson/atomicguard/blob/main/CHANGELOG.md"
 
-[project.optional-dependencies]
-dev = [
-    "mypy>=1.13.0",
-    "pre-commit>=4.5.0",
-    "ruff>=0.14.0",
-]
-test = [
-    "pytest>=8.0.0",
-    "pytest-cov>=6.0.0",
-]
+# Note: Dev dependencies are in [dependency-groups] below, not here.
+# [project.optional-dependencies] is for end-user extras only.
 
 [build-system]
 requires = ["setuptools>=75.0.0", "wheel"]
@@ -193,7 +185,13 @@ dev = [
     "ruff>=0.14.9",
     "types-jsonschema>=4.25.1.20251009",
 ]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+]
 examples = [
     "click>=8.1.0",
+    "gradio>=4.0.0",
     "rich>=13.0.0",
+    "typer>=0.9.0",
 ]
