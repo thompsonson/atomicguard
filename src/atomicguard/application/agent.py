@@ -33,6 +33,8 @@ class DualStateAgent:
         artifact_dag: ArtifactDAGInterface,
         rmax: int = 3,
         constraints: str = "",
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ):
         """
         Args:
@@ -40,11 +42,15 @@ class DualStateAgent:
             artifact_dag: Repository for storing artifacts
             rmax: Maximum retry attempts (default: 3)
             constraints: Global constraints for the ambient environment
+            action_pair_id: Identifier for this action pair (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
         """
         self._action_pair = action_pair
         self._artifact_dag = artifact_dag
         self._rmax = rmax
         self._constraints = constraints
+        self._action_pair_id = action_pair_id
+        self._workflow_id = workflow_id
 
     def execute(
         self,
@@ -71,7 +77,9 @@ class DualStateAgent:
         retry_count = 0
 
         while retry_count <= self._rmax:
-            artifact, result = self._action_pair.execute(context, dependencies)
+            artifact, result = self._action_pair.execute(
+                context, dependencies, self._action_pair_id, self._workflow_id
+            )
 
             self._artifact_dag.store(artifact)
 

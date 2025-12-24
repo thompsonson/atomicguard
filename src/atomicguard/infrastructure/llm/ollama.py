@@ -50,7 +50,11 @@ class OllamaGenerator(GeneratorInterface):
         self._version_counter = 0
 
     def generate(
-        self, context: Context, template: PromptTemplate | None = None
+        self,
+        context: Context,
+        template: PromptTemplate | None = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ) -> Artifact:
         """Generate an artifact based on context."""
         # Build prompt
@@ -79,15 +83,17 @@ class OllamaGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid.uuid4()),
+            workflow_id=workflow_id,
             content=code,
             previous_attempt_id=None,
-            action_pair_id="ollama",
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=self._version_counter,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id=workflow_id,
                 specification=context.specification,
                 constraints=context.ambient.constraints,
                 feedback_history=(),

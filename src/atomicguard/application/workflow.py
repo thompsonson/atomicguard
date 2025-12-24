@@ -4,6 +4,7 @@ Workflow: Orchestrates ActionPair execution across multiple steps.
 Owns WorkflowState and infers preconditions from step dependencies.
 """
 
+import uuid
 from dataclasses import dataclass
 
 from atomicguard.application.action_pair import ActionPair
@@ -94,6 +95,9 @@ class Workflow:
         Returns:
             WorkflowResult with success status and artifacts
         """
+        # Generate a unique workflow_id for this execution
+        workflow_id = str(uuid.uuid4())
+
         while not self._is_goal_state():
             step = self._find_applicable()
 
@@ -117,6 +121,8 @@ class Workflow:
                 artifact_dag=self._dag,
                 rmax=self._rmax,
                 constraints=self._constraints,
+                action_pair_id=step.guard_id,
+                workflow_id=workflow_id,
             )
 
             try:

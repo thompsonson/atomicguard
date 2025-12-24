@@ -43,7 +43,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 result: dict[str, Any] = json.load(f)
                 return result
 
-        return {"version": "1.0", "artifacts": {}, "action_pairs": {}}
+        return {"version": "1.0", "artifacts": {}, "action_pairs": {}, "workflows": {}}
 
     def _update_index_atomic(self) -> None:
         """Atomically update index.json using write-to-temp + rename."""
@@ -56,6 +56,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         """Serialize artifact to JSON-compatible dict."""
         return {
             "artifact_id": artifact.artifact_id,
+            "workflow_id": artifact.workflow_id,
             "content": artifact.content,
             "previous_attempt_id": artifact.previous_attempt_id,
             "action_pair_id": artifact.action_pair_id,
@@ -65,6 +66,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             "guard_result": artifact.guard_result,
             "feedback": artifact.feedback,
             "context": {
+                "workflow_id": artifact.context.workflow_id,
                 "specification": artifact.context.specification,
                 "constraints": artifact.context.constraints,
                 "feedback_history": [
@@ -79,6 +81,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
     def _dict_to_artifact(self, data: dict) -> Artifact:
         """Deserialize artifact from JSON dict."""
         context = ContextSnapshot(
+            workflow_id=data["context"].get("workflow_id", "unknown"),
             specification=data["context"]["specification"],
             constraints=data["context"]["constraints"],
             feedback_history=tuple(
@@ -92,6 +95,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         )
         return Artifact(
             artifact_id=data["artifact_id"],
+            workflow_id=data.get("workflow_id", "unknown"),
             content=data["content"],
             previous_attempt_id=data["previous_attempt_id"],
             action_pair_id=data["action_pair_id"],
@@ -130,6 +134,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # 3. Update index
         self._index["artifacts"][artifact.artifact_id] = {
             "path": str(object_path.relative_to(self._base_dir)),
+            "workflow_id": artifact.workflow_id,
             "action_pair_id": artifact.action_pair_id,
             "status": artifact.status.value,
             "created_at": artifact.created_at,
@@ -141,6 +146,13 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         self._index["action_pairs"][artifact.action_pair_id].append(
             artifact.artifact_id
         )
+
+        # Track by workflow
+        if "workflows" not in self._index:
+            self._index["workflows"] = {}
+        if artifact.workflow_id not in self._index["workflows"]:
+            self._index["workflows"][artifact.workflow_id] = []
+        self._index["workflows"][artifact.workflow_id].append(artifact.artifact_id)
 
         # 4. Atomically update index
         self._update_index_atomic()
@@ -210,6 +222,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # Create updated artifact (immutable, so we create new instance)
         updated = Artifact(
             artifact_id=artifact.artifact_id,
+            workflow_id=artifact.workflow_id,
             content=artifact.content,
             previous_attempt_id=artifact.previous_attempt_id,
             action_pair_id=artifact.action_pair_id,
@@ -233,3 +246,13 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
 
         # Update cache
         self._cache[artifact_id] = updated
+
+    def get_by_workflow(self, workflow_id: str) -> list[Artifact]:
+        """Get all artifacts for a workflow execution."""
+        if "workflows" not in self._index:
+            return []
+        if workflow_id not in self._index["workflows"]:
+            return []
+
+        artifact_ids = self._index["workflows"][workflow_id]
+        return [self.get_artifact(aid) for aid in artifact_ids]
