@@ -5,13 +5,17 @@ Manages only EnvironmentState (the retry loop).
 WorkflowState is managed by Workflow.
 """
 
+from dataclasses import replace
+
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
 from atomicguard.domain.interfaces import ArtifactDAGInterface
 from atomicguard.domain.models import (
     AmbientEnvironment,
     Artifact,
+    ArtifactStatus,
     Context,
+    FeedbackEntry,
 )
 
 
@@ -75,12 +79,33 @@ class DualStateAgent:
         context = self._compose_context(specification, dependencies)
         feedback_history: list[tuple[Artifact, str]] = []
         retry_count = 0
+        previous_id: str | None = None  # Track chain linkage
 
         while retry_count <= self._rmax:
             artifact, result = self._action_pair.execute(
                 context, dependencies, self._action_pair_id, self._workflow_id
             )
 
+            # Build feedback history for context snapshot
+            fb_entries = tuple(
+                FeedbackEntry(artifact_id=a.artifact_id, feedback=f)
+                for a, f in feedback_history
+            )
+
+            # Update artifact with guard result AND provenance metadata
+            artifact = replace(
+                artifact,
+                previous_attempt_id=previous_id,
+                status=ArtifactStatus.ACCEPTED
+                if result.passed
+                else ArtifactStatus.REJECTED,
+                guard_result=result.passed,
+                feedback=result.feedback,
+                context=replace(
+                    artifact.context,
+                    feedback_history=fb_entries,
+                ),
+            )
             self._artifact_dag.store(artifact)
 
             if result.passed:
@@ -91,6 +116,7 @@ class DualStateAgent:
             else:
                 # Recoverable failure - retry
                 feedback_history.append((artifact, result.feedback))
+                previous_id = artifact.artifact_id  # Track for next iteration
                 retry_count += 1
                 context = self._refine_context(
                     specification, artifact, feedback_history, dependencies
