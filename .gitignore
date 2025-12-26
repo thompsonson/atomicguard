@@ -67,6 +67,13 @@ results/*.txt
 # Artifacts directory (benchmark outputs)
 artifacts/*
 !artifacts/.gitkeep
+examples/add/output/artifacts/
 
 # documentation not for git
 docs/paper
+
+# Experiment results
+results/*.json
+
+# Example output artifacts
+examples/*/output/artifacts/

@@ -1,7 +1,7 @@
 """
 Infrastructure layer for the Dual-State Framework.
 
-Contains adapters for external concerns (persistence, LLMs, etc.).
+Contains adapters for external concerns (persistence, LLMs, registry, etc.).
 """
 
 from atomicguard.infrastructure.llm import (
@@ -12,6 +12,7 @@ from atomicguard.infrastructure.persistence import (
     FilesystemArtifactDAG,
     InMemoryArtifactDAG,
 )
+from atomicguard.infrastructure.registry import GeneratorRegistry
 
 __all__ = [
     # Persistence
@@ -20,4 +21,6 @@ __all__ = [
     # LLM
     "OllamaGenerator",
     "MockGenerator",
+    # Registry
+    "GeneratorRegistry",
 ]

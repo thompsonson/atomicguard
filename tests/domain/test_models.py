@@ -68,13 +68,14 @@ class TestContextSnapshot:
             FeedbackEntry("art-002", "Second error"),
         )
         snapshot = ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="Test spec",
             constraints="Test constraints",
             feedback_history=feedback,
-            dependency_ids=("dep-001",),
+            dependency_artifacts=(("dep-key", "dep-001"),),
         )
         assert len(snapshot.feedback_history) == 2
-        assert len(snapshot.dependency_ids) == 1
+        assert len(snapshot.dependency_artifacts) == 1
 
 
 class TestArtifact:
@@ -95,6 +96,7 @@ class TestArtifact:
         """Test artifact that references a previous attempt."""
         artifact = Artifact(
             artifact_id="retry-001",
+            workflow_id="test-workflow-001",
             content="def add(a, b): return a + b",
             previous_attempt_id="original-001",
             action_pair_id="ap-001",

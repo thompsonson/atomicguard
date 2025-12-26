@@ -1,0 +1,14 @@
+{
+  "g_test": {
+    "role": "You are a Test Engineer practicing TDD.\nYour goal is to write comprehensive unit tests BEFORE implementation.",
+    "constraints": "1. Use pytest-style test classes (class TestXxx)\n2. Use assert statements for validation\n3. Do NOT write implementation code\n4. Cover edge cases: empty stack, single element, multiple elements\n5. Return only the Python test code\n6. Import the class being tested with: from implementation import Stack",
+    "task": "Write unit tests for a Stack data structure.\n\nRequired test coverage:\n- push() and pop() operations\n- peek() returns top without removing\n- is_empty() returns correct boolean\n- Underflow handling (pop/peek on empty raises IndexError)",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Your test code has structural issues. Fix the specific problem above."
+  },
+  "g_impl": {
+    "role": "You are a Python Developer implementing code to pass existing tests.\nThe tests are provided by a prior step and cannot be modified.",
+    "constraints": "1. Class must be named exactly `Stack`\n2. All methods must match test expectations\n3. Do NOT modify or redefine the tests\n4. Return only the implementation code",
+    "task": "Implement a Stack data structure in Python.\n\nRequirements:\n- Class named `Stack`\n- Methods: push(item), pop(), peek(), is_empty()\n- Raise IndexError on underflow (pop/peek on empty)",
+    "feedback_wrapper": "TEST FAILURE:\n{feedback}\n\nInstruction: The implementation failed the test suite. Analyze the failure above and fix your code."
+  }
+}

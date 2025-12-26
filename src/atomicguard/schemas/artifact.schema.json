@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomicguard/artifact.schema.json",
+  "title": "AtomicGuard Artifact",
+  "description": "Immutable versioned artifact in DAG (Definition 2)",
+  "type": "object",
+  "required": ["artifact_id", "workflow_id", "content", "action_pair_id", "attempt_number", "status"],
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique artifact identifier"
+    },
+    "workflow_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the workflow execution instance"
+    },
+    "content": {
+      "type": "string",
+      "description": "Generated artifact content (α ∈ 𝒜)"
+    },
+    "action_pair_id": {
+      "type": "string",
+      "description": "Owning action pair identifier"
+    },
+    "attempt_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Attempt index within action pair (1-indexed)"
+    },
+    "previous_attempt_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Parent artifact in retry chain (null for first attempt)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "rejected", "accepted", "superseded"],
+      "description": "Artifact lifecycle status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of artifact creation"
+    },
+    "guard_result": {
+      "$ref": "#/$defs/GuardResult"
+    },
+    "context": {
+      "$ref": "#/$defs/Context"
+    }
+  },
+  "$defs": {
+    "GuardResult": {
+      "type": "object",
+      "description": "G(α, C) → {v, φ} (Definition 6)",
+      "properties": {
+        "passed": {
+          "type": "boolean",
+          "description": "v = ⊤ (passed) or v ∈ {⊥_retry, ⊥_fatal} (failed)"
+        },
+        "feedback": {
+          "type": "string",
+          "description": "φ - Guard feedback signal"
+        },
+        "fatal": {
+          "type": "boolean",
+          "default": false,
+          "description": "v = ⊥_fatal (non-recoverable, requires escalation)"
+        }
+      }
+    },
+    "Context": {
+      "type": "object",
+      "description": "C_total = ⟨ℰ, C_local, H_feedback⟩ (Definition 3)",
+      "properties": {
+        "workflow_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution instance ID"
+        },
+        "specification": {
+          "type": "string",
+          "description": "Ψ - Static specification"
+        },
+        "constraints": {
+          "type": "string",
+          "description": "Ω - Global constraints"
+        },
+        "feedback_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "artifact_id": {
+                "type": "string",
+                "description": "ID of the rejected artifact"
+              },
+              "feedback": {
+                "type": "string",
+                "description": "Guard feedback for this attempt"
+              }
+            },
+            "required": ["artifact_id", "feedback"]
+          },
+          "description": "H = [(aₖ, φₖ), ...] - Feedback history"
+        },
+        "dependency_artifacts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Map of action_pair_id → artifact_id for resolved dependencies"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "atomicguard/prompts.schema.json",
+  "title": "AtomicGuard Prompt Templates",
+  "description": "Prompt templates for action pair generators (a_gen)",
+  "type": "object",
+  "additionalProperties": {
+    "$ref": "#/$defs/PromptTemplate"
+  },
+  "$defs": {
+    "PromptTemplate": {
+      "type": "object",
+      "description": "Structured prompt template for generator context composition",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "System role description (persona)"
+        },
+        "constraints": {
+          "type": "string",
+          "description": "Ω_local - Step-specific constraints (merged with global Ω)"
+        },
+        "task": {
+          "type": "string",
+          "description": "Ψ_local - Task-specific specification"
+        },
+        "feedback_wrapper": {
+          "type": "string",
+          "description": "Template for wrapping guard feedback φ into context. Use {feedback} placeholder.",
+          "default": "{feedback}"
+        }
+      }
+    }
+  }
+}

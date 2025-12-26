@@ -27,6 +27,10 @@
 | Guard signature | `G(artifact, **dependencies)` | `G(artifact)` or `G(artifact, context)` |
 | Prompt management | `PromptTemplate` dataclass | String concatenation |
 | Evaluation order | Sequential O(n) | Tree/HTN O(log n) |
+| ADD placement | Example (`examples/add/`) | Core package |
+| PydanticAI for structured output | Add as dependency | Manual JSON parsing like AiderGenerator |
+| PydanticAI retries | Disabled (`retries=0`) | Merge with AtomicGuard rmax |
+| pytestarch API validation | Whitelist-only (no blocklist) | Blocklist of known bad patterns |
 
 ## Paper Changes Required
 
@@ -47,3 +51,6 @@
 | HTN/Tree | O(log n) precondition eval; needed at scale (100s guards, multi-agent) |
 | Guard library | DDD guards (ACL integrity, architecture fitness, DI container) |
 | Parallel guard | ThreadPoolExecutor for independent checks |
+| ADD as package | Could become `atomicguard-add` if adoption warrants |
+| Structured output library | PydanticAI vs Instructor vs Outlines evaluation |
+| pytestarch error hints | Add common hallucination→fix mappings if needed - Currently whitelist-only; no hints |
