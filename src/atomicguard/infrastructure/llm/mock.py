@@ -5,22 +5,41 @@ Returns predefined responses in sequence.
 """
 
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from atomicguard.domain.interfaces import GeneratorInterface
 from atomicguard.domain.models import Artifact, ArtifactStatus, Context, ContextSnapshot
 from atomicguard.domain.prompts import PromptTemplate
 
 
+@dataclass
+class MockGeneratorConfig:
+    """Configuration for MockGenerator.
+
+    This typed config ensures unknown fields are rejected at construction time.
+    """
+
+    responses: list[str] = field(default_factory=list)
+
+
 class MockGenerator(GeneratorInterface):
     """Returns predefined responses for testing."""
 
-    def __init__(self, responses: list[str]):
+    config_class = MockGeneratorConfig
+
+    def __init__(self, config: MockGeneratorConfig | None = None, **kwargs: Any):
         """
         Args:
-            responses: List of response strings to return in sequence
+            config: Typed configuration object (preferred)
+            **kwargs: Legacy kwargs for backward compatibility (deprecated)
         """
-        self._responses = responses
+        # Support both config object and legacy kwargs
+        if config is None:
+            config = MockGeneratorConfig(**kwargs)
+
+        self._responses = config.responses
         self._call_count = 0
 
     def generate(
