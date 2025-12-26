@@ -42,7 +42,9 @@ class ContextSnapshot:
     specification: str  # Ψ - static specification
     constraints: str  # Ω - global constraints
     feedback_history: tuple[FeedbackEntry, ...]  # H - accumulated rejections
-    dependency_ids: tuple[str, ...]  # Artifact IDs from prior workflow steps
+    dependency_artifacts: tuple[
+        tuple[str, str], ...
+    ] = ()  # (action_pair_id, artifact_id) - matches schema
 
 
 @dataclass(frozen=True)
@@ -59,7 +61,7 @@ class Artifact:
 
     # DAG Structure
     previous_attempt_id: str | None  # Retry chain within same action pair
-    # Cross-step deps are in context.dependency_ids
+    # Cross-step deps are in context.dependency_artifacts
 
     # Action Pair Coupling (Definition 6: A = ⟨ρ, a_gen, G⟩)
     action_pair_id: str  # Which action pair produced this
@@ -108,9 +110,16 @@ class Context:
     specification: str
     current_artifact: str | None = None
     feedback_history: tuple[tuple[str, str], ...] = ()
-    dependencies: tuple[
-        tuple[str, "Artifact"], ...
-    ] = ()  # (key, artifact) pairs from prior steps
+    dependency_artifacts: tuple[
+        tuple[str, str], ...
+    ] = ()  # (action_pair_id, artifact_id) - matches schema
+
+    def get_dependency(self, action_pair_id: str) -> str | None:
+        """Look up artifact_id by action_pair_id."""
+        for key, artifact_id in self.dependency_artifacts:
+            if key == action_pair_id:
+                return artifact_id
+        return None
 
 
 # =============================================================================

@@ -36,7 +36,7 @@ def sample_fs_artifact() -> Artifact:
             specification="Write an add function",
             constraints="Pure Python",
             feedback_history=(),
-            dependency_ids=(),
+            dependency_artifacts=(),
         ),
     )
 
@@ -222,7 +222,7 @@ class TestFilesystemArtifactDAGGetProvenance:
             specification="test",
             constraints="",
             feedback_history=(),
-            dependency_ids=(),
+            dependency_artifacts=(),
         )
 
         # Create chain: artifact1 -> artifact2 -> artifact3
@@ -286,7 +286,7 @@ class TestFilesystemArtifactDAGGetByActionPair:
             specification="test",
             constraints="",
             feedback_history=(),
-            dependency_ids=(),
+            dependency_artifacts=(),
         )
 
         artifact1 = Artifact(
@@ -339,7 +339,7 @@ class TestFilesystemArtifactDAGGetAccepted:
             specification="test",
             constraints="",
             feedback_history=(),
-            dependency_ids=(),
+            dependency_artifacts=(),
         )
 
         rejected = Artifact(
@@ -384,7 +384,7 @@ class TestFilesystemArtifactDAGGetAccepted:
             specification="test",
             constraints="",
             feedback_history=(),
-            dependency_ids=(),
+            dependency_artifacts=(),
         )
 
         pending = Artifact(
@@ -462,7 +462,7 @@ class TestFilesystemArtifactDAGSerialization:
             feedback_history=(
                 FeedbackEntry(artifact_id="prev-001", feedback="Bad code"),
             ),
-            dependency_ids=("dep-001", "dep-002"),
+            dependency_artifacts=(("dep-key-1", "dep-001"), ("dep-key-2", "dep-002")),
         )
 
         artifact = Artifact(
@@ -496,4 +496,7 @@ class TestFilesystemArtifactDAGSerialization:
         assert loaded.context.constraints == artifact.context.constraints
         assert len(loaded.context.feedback_history) == 1
         assert loaded.context.feedback_history[0].feedback == "Bad code"
-        assert loaded.context.dependency_ids == ("dep-001", "dep-002")
+        assert loaded.context.dependency_artifacts == (
+            ("dep-key-1", "dep-001"),
+            ("dep-key-2", "dep-002"),
+        )
