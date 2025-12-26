@@ -31,6 +31,7 @@ def make_artifact(content: str, context: ContextSnapshot) -> Artifact:
         workflow_id="test-workflow-001",
         content=content,
         previous_attempt_id=None,
+        parent_action_pair_id=None,
         action_pair_id="ap-001",
         created_at="2025-01-01T00:00:00Z",
         attempt_number=1,
