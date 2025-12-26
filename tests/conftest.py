@@ -33,6 +33,7 @@ def sample_artifact(sample_context_snapshot: ContextSnapshot) -> Artifact:
         workflow_id="test-workflow-001",
         content="def add(a, b):\n    return a + b",
         previous_attempt_id=None,
+        parent_action_pair_id=None,
         action_pair_id="ap-001",
         created_at="2025-01-01T00:00:00Z",
         attempt_number=1,
@@ -51,6 +52,7 @@ def invalid_syntax_artifact(sample_context_snapshot: ContextSnapshot) -> Artifac
         workflow_id="test-workflow-001",
         content="def add(a, b\n    return a + b",  # Missing closing paren
         previous_attempt_id=None,
+        parent_action_pair_id=None,
         action_pair_id="ap-001",
         created_at="2025-01-01T00:00:00Z",
         attempt_number=1,

@@ -99,6 +99,7 @@ class TestArtifact:
             workflow_id="test-workflow-001",
             content="def add(a, b): return a + b",
             previous_attempt_id="original-001",
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:01Z",
             attempt_number=2,
