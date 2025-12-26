@@ -43,7 +43,11 @@ class GeneratorInterface(ABC):
 
     @abstractmethod
     def generate(
-        self, context: "Context", template: Optional["PromptTemplate"] = None
+        self,
+        context: "Context",
+        template: Optional["PromptTemplate"] = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ) -> "Artifact":
         """
         Generate an artifact based on context.
@@ -51,6 +55,8 @@ class GeneratorInterface(ABC):
         Args:
             context: The generation context including specification and feedback
             template: Optional prompt template for structured generation
+            action_pair_id: Identifier for the action pair requesting generation
+            workflow_id: UUID of the workflow execution instance
 
         Returns:
             A new Artifact containing the generated content

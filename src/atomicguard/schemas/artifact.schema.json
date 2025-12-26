@@ -4,12 +4,17 @@
   "title": "AtomicGuard Artifact",
   "description": "Immutable versioned artifact in DAG (Definition 2)",
   "type": "object",
-  "required": ["artifact_id", "content", "action_pair_id", "attempt_number", "status"],
+  "required": ["artifact_id", "workflow_id", "content", "action_pair_id", "attempt_number", "status"],
   "properties": {
     "artifact_id": {
       "type": "string",
       "format": "uuid",
       "description": "Unique artifact identifier"
+    },
+    "workflow_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the workflow execution instance"
     },
     "content": {
       "type": "string",
@@ -70,6 +75,11 @@
       "type": "object",
       "description": "C_total = ⟨ℰ, C_local, H_feedback⟩ (Definition 3)",
       "properties": {
+        "workflow_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Workflow execution instance ID"
+        },
         "specification": {
           "type": "string",
           "description": "Ψ - Static specification"

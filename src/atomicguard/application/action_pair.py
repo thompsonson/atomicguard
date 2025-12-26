@@ -48,6 +48,8 @@ class ActionPair:
         self,
         context: Context,
         dependencies: dict[str, Artifact] | None = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ) -> tuple[Artifact, GuardResult]:
         """
         Execute the atomic generate-then-validate transaction.
@@ -55,11 +57,15 @@ class ActionPair:
         Args:
             context: Generation context
             dependencies: Artifacts from prior workflow steps
+            action_pair_id: Identifier for this action pair
+            workflow_id: UUID of the workflow execution instance
 
         Returns:
             Tuple of (generated artifact, guard result)
         """
         dependencies = dependencies or {}
-        artifact = self._generator.generate(context, self._prompt_template)
+        artifact = self._generator.generate(
+            context, self._prompt_template, action_pair_id, workflow_id
+        )
         result = self._guard.validate(artifact, **dependencies)
         return artifact, result

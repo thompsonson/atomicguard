@@ -10,6 +10,7 @@ from atomicguard.guards import ImportGuard
 def context_snapshot() -> ContextSnapshot:
     """Create a sample context snapshot."""
     return ContextSnapshot(
+        workflow_id="test-workflow-001",
         specification="Write tests",
         constraints="",
         feedback_history=(),
@@ -27,6 +28,7 @@ def make_artifact(content: str, context: ContextSnapshot) -> Artifact:
     """Create an artifact with given content."""
     return Artifact(
         artifact_id="test-001",
+        workflow_id="test-workflow-001",
         content=content,
         previous_attempt_id=None,
         action_pair_id="ap-001",

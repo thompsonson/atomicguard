@@ -17,6 +17,7 @@ from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
 def sample_context_snapshot() -> ContextSnapshot:
     """Create a sample ContextSnapshot for testing."""
     return ContextSnapshot(
+        workflow_id="test-workflow-001",
         specification="Write a function that adds two numbers",
         constraints="Must be pure Python, no imports",
         feedback_history=(),
@@ -29,6 +30,7 @@ def sample_artifact(sample_context_snapshot: ContextSnapshot) -> Artifact:
     """Create a sample Artifact for testing."""
     return Artifact(
         artifact_id="test-artifact-001",
+        workflow_id="test-workflow-001",
         content="def add(a, b):\n    return a + b",
         previous_attempt_id=None,
         action_pair_id="ap-001",
@@ -46,6 +48,7 @@ def invalid_syntax_artifact(sample_context_snapshot: ContextSnapshot) -> Artifac
     """Create an artifact with invalid Python syntax."""
     return Artifact(
         artifact_id="invalid-syntax-001",
+        workflow_id="test-workflow-001",
         content="def add(a, b\n    return a + b",  # Missing closing paren
         previous_attempt_id=None,
         action_pair_id="ap-001",

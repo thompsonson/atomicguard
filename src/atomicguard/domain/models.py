@@ -39,6 +39,7 @@ class FeedbackEntry:
 class ContextSnapshot:
     """Immutable context C that conditioned generation (Definition 5)."""
 
+    workflow_id: str  # UUID of the workflow execution instance
     specification: str  # Ψ - static specification
     constraints: str  # Ω - global constraints
     feedback_history: tuple[FeedbackEntry, ...]  # H - accumulated rejections
@@ -57,6 +58,7 @@ class Artifact:
 
     # Identity
     artifact_id: str  # Unique identifier (UUID)
+    workflow_id: str  # UUID of the workflow execution instance
     content: str  # The generated code/text
 
     # DAG Structure
