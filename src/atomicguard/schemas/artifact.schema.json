@@ -34,6 +34,10 @@
       "format": "uuid",
       "description": "Parent artifact in retry chain (null for first attempt)"
     },
+    "parent_action_pair_id": {
+      "type": ["string", "null"],
+      "description": "Parent action pair ID for hierarchical generators (e.g., ADDGenerator's internal steps)"
+    },
     "status": {
       "type": "string",
       "enum": ["pending", "rejected", "accepted", "superseded"],

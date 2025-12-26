@@ -63,6 +63,7 @@ class Artifact:
 
     # DAG Structure
     previous_attempt_id: str | None  # Retry chain within same action pair
+    parent_action_pair_id: str | None  # Parent hierarchy for composite generators
     # Cross-step deps are in context.dependency_artifacts
 
     # Action Pair Coupling (Definition 6: A = ⟨ρ, a_gen, G⟩)

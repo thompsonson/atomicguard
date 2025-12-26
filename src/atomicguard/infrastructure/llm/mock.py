@@ -61,6 +61,7 @@ class MockGenerator(GeneratorInterface):
             workflow_id=workflow_id,
             content=content,
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=self._call_count,

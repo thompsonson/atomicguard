@@ -99,6 +99,7 @@ class OllamaGenerator(GeneratorInterface):
             workflow_id=workflow_id,
             content=code,
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=self._version_counter,
