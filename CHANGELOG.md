@@ -1,12 +1,100 @@
 # CHANGELOG
 
 
+## v1.0.0 (2025-12-26)
+
+### Bug Fixes
+
+- **schemas**: Resolve mypy type errors
+  ([`9c5f6f4`](https://github.com/thompsonson/atomicguard/commit/9c5f6f48f5b826f154077637d0f7aa3d2331f50e))
+
+- Remove backwards compatibility (not needed)
+  ([`c971f49`](https://github.com/thompsonson/atomicguard/commit/c971f49c3bd2fb472129354892de82bd0100d014))
+
+### Build System
+
+- **deps**: Bump actions/setup-python from 5 to 6
+  ([`1d91e43`](https://github.com/thompsonson/atomicguard/commit/1d91e435f0f5c7fa4178a229965d9d9d9ada3baa))
+
+Bumps [actions/setup-python](https://github.com/actions/setup-python) from 5 to 6. - [Release
+  notes](https://github.com/actions/setup-python/releases) -
+  [Commits](https://github.com/actions/setup-python/compare/v5...v6)
+
+--- updated-dependencies: - dependency-name: actions/setup-python dependency-version: '6'
+  dependency-type: direct:production update-type: version-update:semver-major ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+- **deps**: Bump python-semantic-release/publish-action
+  ([`bb08fef`](https://github.com/thompsonson/atomicguard/commit/bb08fefaa2da4bf2c1d7d37dbc7d88a22b469320))
+
+Bumps
+  [python-semantic-release/publish-action](https://github.com/python-semantic-release/publish-action)
+  from 9.14.0 to 10.5.3. - [Release
+  notes](https://github.com/python-semantic-release/publish-action/releases) -
+  [Changelog](https://github.com/python-semantic-release/publish-action/blob/main/releaserc.toml) -
+  [Commits](https://github.com/python-semantic-release/publish-action/compare/v9.14.0...v10.5.3)
+
+--- updated-dependencies: - dependency-name: python-semantic-release/publish-action
+  dependency-version: 10.5.3 dependency-type: direct:production update-type:
+  version-update:semver-major ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+### Features
+
+- **schema**: Add JSON Schema definitions and dependency_artifacts refactor
+  ([#12](https://github.com/thompsonson/atomicguard/pull/12),
+  [`09ae1c1`](https://github.com/thompsonson/atomicguard/commit/09ae1c11f1d30de275324f03778f8d976d47ea2a))
+
+- Add formal JSON Schema definitions for workflows, prompts, and artifacts - Refactor dependency_ids
+  → dependency_artifacts to store (action_pair_id, artifact_id) tuples - Align domain models with
+  schema format
+
+- **schemas**: Add formal JSON Schema definitions aligned with paper framework
+  ([`05b8d76`](https://github.com/thompsonson/atomicguard/commit/05b8d76801d2a7b90be977cd603c66995a0e50d9))
+
+Add JSON Schema package for AtomicGuard configuration validation:
+
+- workflow.schema.json: Workflow definition with action pairs, guards, preconditions -
+  prompts.schema.json: Prompt templates for generators (a_gen) - artifact.schema.json: Artifact
+  storage format in DAG
+
+Schema aligns with paper's formal notation: - Ψ (specification) supports file/folder/service/inline
+  sources - Ω (constraints) via workflow.constraints and guard_config - A = ⟨ρ, a_gen, G⟩ maps to
+  action_pairs with requires/guard fields - G_θ (parameterized guards) via guard_config for
+  thresholds - α (artifacts) with context hierarchy C = ⟨ℰ, C_local, H⟩
+
+Includes validation utilities and README documentation.
+
+### Refactoring
+
+- **models**: Align dependency_artifacts with JSON schema format
+  ([`f7406f6`](https://github.com/thompsonson/atomicguard/commit/f7406f6298f345c773e1d52f88c0f8870a9bfbe2))
+
+Rename and retype context dependency fields to match the formal artifact.schema.json. This ensures
+  semantic keys (action_pair_id) are preserved and artifacts are retrieved from ℛ (repository) by
+  ID.
+
+Changes: - ContextSnapshot.dependency_ids → dependency_artifacts: tuple[tuple[str, str], ...] -
+  Context.dependencies → dependency_artifacts: tuple[tuple[str, str], ...] - Add
+  Context.get_dependency(action_pair_id) helper method - Update filesystem serialization: dict for
+  JSON, tuple for Python - Generators now retrieve full artifacts from ℛ via get_artifact() - Store
+  artifact IDs in context, not full Artifact objects
+
+Per paper Definition 5: Generators access prior artifacts via context.dependency_artifacts, then
+  retrieve from ℛ when needed.
+
+
 ## v0.2.0 (2025-12-19)
 
 ### Bug Fixes
 
 - Correcting the semantic release auth process
   ([`2360d1d`](https://github.com/thompsonson/atomicguard/commit/2360d1ddc56daddac697c113bc010b026e632020))
+
+- Correcting the semantic release auth process
+  ([`6e91806`](https://github.com/thompsonson/atomicguard/commit/6e918065b115823231233ffaac7f9661d9a4ac5e))
 
 - Pushing the fixed tests
   ([`80cdf83`](https://github.com/thompsonson/atomicguard/commit/80cdf836be3af916e767c1c622a0a472b5c77ad4))
@@ -68,7 +156,30 @@ Signed-off-by: dependabot[bot] <support@github.com>
 - Removing paper from git tracking
   ([`8043bff`](https://github.com/thompsonson/atomicguard/commit/8043bffd04c87b8fc05f01e9c9e09e2b68b4274b))
 
+### Documentation
+
+- Add semantic agency remark to documentation and generator interface docs
+  ([`06dba7c`](https://github.com/thompsonson/atomicguard/commit/06dba7c3c29e5d5fd9014deccbe1d5e1583f7482))
+
+- Updated documentation to include the workflow status enum and handle the fatal response
+  ([`a9ff9d8`](https://github.com/thompsonson/atomicguard/commit/a9ff9d8178bb2867731e6152e9710efc6f635f8d))
+
 ### Features
+
+- **domain**: Add fatal escalation support to guard result
+  ([`7eee0e5`](https://github.com/thompsonson/atomicguard/commit/7eee0e5b809308f95c91cdc9c40a00bf2d9d99f4))
+
+Implement guard fatal state (⊥_fatal) to distinguish non-recoverable failures from retryable ones,
+  aligning with paper Definition 6.
+
+Changes: - Add 'fatal: bool' field to GuardResult (defaults False for backwards compat) - Add
+  WorkflowStatus enum (SUCCESS, FAILED, ESCALATION) - Add EscalationRequired exception for fatal
+  guard failures - Update DualStateAgent to raise EscalationRequired on fatal, skip retries - Update
+  Workflow to catch EscalationRequired and return ESCALATION status - Add escalation_artifact and
+  escalation_feedback to WorkflowResult - Update GeneratorInterface docstring with idempotency
+  requirements
+
+BREAKING CHANGE: WorkflowResult.success replaced with WorkflowResult.status
 
 - **examples**: Add TDD workflow examples with guard composition
   ([`a491c74`](https://github.com/thompsonson/atomicguard/commit/a491c74659628d0c29182ce4eb3d4938f80774fb))
