@@ -134,13 +134,11 @@ class BaseRunner(ABC):
 
         if generator_name:
             # Use registry for schema-specified generators
-            # Pass config as-is - let the generator's config_class validate
-            # Only inject model/base_url for OllamaGenerator (maintains backward compat)
-            if generator_name == "OllamaGenerator":
-                if "model" not in config:
-                    config["model"] = self.model
-                if self.host and "base_url" not in config:
-                    config["base_url"] = normalize_base_url(self.host)
+            # Inject model and base_url for all generators that accept them
+            if "model" not in config:
+                config["model"] = self.model
+            if self.host and "base_url" not in config:
+                config["base_url"] = normalize_base_url(self.host)
             return GeneratorRegistry.create(generator_name, **config)
         else:
             # Default: OllamaGenerator with standard config

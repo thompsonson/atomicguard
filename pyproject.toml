@@ -49,8 +49,17 @@ Issues = "https://github.com/thompsonson/atomicguard/issues"
 Changelog = "https://github.com/thompsonson/atomicguard/blob/main/CHANGELOG.md"
 
 [project.entry-points."atomicguard.generators"]
+# Core generators
 OllamaGenerator = "atomicguard.infrastructure.llm:OllamaGenerator"
 MockGenerator = "atomicguard.infrastructure.llm:MockGenerator"
+
+# ADD example generators
+ADDGenerator = "examples.add.add_generator:ADDGenerator"
+ConfigExtractorGenerator = "examples.add.generators:ConfigExtractorGenerator"
+
+# SDLC example generators
+BDDGenerator = "examples.sdlc.generators.bdd:BDDGenerator"
+CoderGenerator = "examples.sdlc.generators.coder:CoderGenerator"
 
 # Note: Dev dependencies are in [dependency-groups] below, not here.
 # [project.optional-dependencies] is for end-user extras only.

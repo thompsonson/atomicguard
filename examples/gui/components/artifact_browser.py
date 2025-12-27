@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import gradio as gr
@@ -29,6 +30,64 @@ def _status_color(status: str) -> str:
         "pending": "#9CA3AF",  # gray
     }
     return colors.get(status.lower(), "#9CA3AF")
+
+
+def _get_workflow_choices(
+    artifact_dag: FilesystemArtifactDAG | None,
+) -> list[tuple[str, str | None]]:
+    """
+    Build workflow dropdown choices with date/time, sorted by most recent.
+
+    Returns:
+        List of (display_label, workflow_id) tuples, starting with "All Workflows"
+    """
+    if artifact_dag is None:
+        return [("All Workflows", None)]
+
+    try:
+        index = artifact_dag._index
+        workflows_index = index.get("workflows", {})
+        artifacts_index = index.get("artifacts", {})
+
+        if not workflows_index:
+            return [("All Workflows", None)]
+
+        workflow_info: list[tuple[str, str, int]] = []
+        for wf_id, artifact_ids in workflows_index.items():
+            # Find earliest timestamp for this workflow
+            timestamps = [
+                artifacts_index.get(aid, {}).get("created_at", "")
+                for aid in artifact_ids
+            ]
+            valid_timestamps = [t for t in timestamps if t]
+            earliest = min(valid_timestamps) if valid_timestamps else ""
+            workflow_info.append((wf_id, earliest, len(artifact_ids)))
+
+        # Sort by timestamp descending (most recent first)
+        workflow_info.sort(key=lambda x: x[1], reverse=True)
+
+        # Build choices: (display_label, workflow_id)
+        choices: list[tuple[str, str | None]] = [("All Workflows", None)]
+        for wf_id, timestamp, count in workflow_info:
+            if timestamp:
+                try:
+                    dt = datetime.fromisoformat(timestamp)
+                    date_str = dt.strftime("%Y-%m-%d %H:%M")
+                except ValueError:
+                    date_str = "Unknown"
+            else:
+                date_str = "Unknown"
+
+            # Format: "2025-12-26 19:56 - abc12345... (N artifacts)"
+            wf_display = wf_id if len(wf_id) <= 10 else f"{wf_id[:8]}..."
+            artifact_word = "artifact" if count == 1 else "artifacts"
+            label = f"{date_str} - {wf_display} ({count} {artifact_word})"
+            choices.append((label, wf_id))
+
+        return choices
+
+    except Exception:
+        return [("All Workflows", None)]
 
 
 def _build_artifact_diagram(
@@ -127,6 +186,7 @@ def _build_artifact_diagram(
 
 def create_artifact_browser() -> (
     tuple[
+        gr.Dropdown,  # workflow_dropdown (filter by workflow)
         gr.Dataframe,  # artifact_tree (clickable table)
         gr.State,  # artifact_id_map (row_idx -> artifact_id)
         gr.Markdown,  # artifact_diagram
@@ -142,6 +202,7 @@ def create_artifact_browser() -> (
         Callable[..., Any],  # load_artifact_fn
         Callable[..., Any],  # update_diagram_fn
         Callable[..., Any],  # compare_fn
+        Callable[..., Any],  # get_workflow_choices_fn
     ]
 ):
     """
@@ -152,6 +213,14 @@ def create_artifact_browser() -> (
     """
     with gr.Column():
         gr.Markdown("## Artifact Browser")
+
+        # Workflow filter dropdown
+        workflow_dropdown = gr.Dropdown(
+            label="Filter by Workflow",
+            choices=[("All Workflows", None)],
+            value=None,
+            interactive=True,
+        )
 
         with gr.Row():
             # Left column: Clickable artifact list and diagram
@@ -270,38 +339,79 @@ def create_artifact_browser() -> (
                 artifact_ids: list[str],
                 show_workflow_prefix: bool = False,
             ) -> None:
-                """Build tree rows for a single workflow."""
+                """Build tree rows for a single workflow with hierarchy support."""
                 # Group by action_pair_id
                 by_action_pair: dict[str, list[str]] = {}
+                # Track parent relationships
+                parent_map: dict[
+                    str, str | None
+                ] = {}  # action_pair_id -> parent_action_pair_id
+
                 for artifact_id in artifact_ids:
                     meta = index.get("artifacts", {}).get(artifact_id, {})
                     action_pair_id = meta.get("action_pair_id", "unknown")
+                    parent_action_pair_id = meta.get("parent_action_pair_id")
+
                     if action_pair_id not in by_action_pair:
                         by_action_pair[action_pair_id] = []
                     by_action_pair[action_pair_id].append(artifact_id)
 
-                # Preserve insertion order (execution order) - don't alphabetize
-                action_pairs = list(by_action_pair.keys())
-                for action_pair_id in action_pairs:
-                    # Add action pair header row (non-selectable)
-                    if show_workflow_prefix:
-                        header = f"📦 [{wf_id[:8]}] {action_pair_id}"
+                    # Track parent (use first seen)
+                    if action_pair_id not in parent_map:
+                        parent_map[action_pair_id] = parent_action_pair_id
+
+                # Build hierarchy: separate root action pairs from children
+                root_action_pairs: list[str] = []
+                children_by_parent: dict[str, list[str]] = {}
+
+                for action_pair_id in by_action_pair:
+                    parent_id = parent_map.get(action_pair_id)
+                    if parent_id is None:
+                        root_action_pairs.append(action_pair_id)
                     else:
-                        header = f"📦 {action_pair_id}"
+                        if parent_id not in children_by_parent:
+                            children_by_parent[parent_id] = []
+                        children_by_parent[parent_id].append(action_pair_id)
+
+                # Handle virtual parents: if children reference a parent that doesn't
+                # have its own artifacts, create a virtual entry for it
+                for parent_id in list(children_by_parent.keys()):
+                    if parent_id not in by_action_pair:
+                        root_action_pairs.append(parent_id)
+                        by_action_pair[parent_id] = []  # No artifacts, just a container
+
+                def _render_action_pair(
+                    action_pair_id: str,
+                    indent: str = "",
+                    is_child: bool = False,
+                ) -> None:
+                    """Render an action pair and its artifacts, then recurse into children."""
+                    # Add action pair header row (non-selectable)
+                    header_prefix = f"{indent}├─ 📦" if is_child else "📦"
+
+                    if show_workflow_prefix and not is_child:
+                        header = f"{header_prefix} [{wf_id[:8]}] {action_pair_id}"
+                    else:
+                        header = f"{header_prefix} {action_pair_id}"
                     tree_rows.append([header])
                     id_map[len(tree_rows) - 1] = None  # Header row, not selectable
 
-                    artifacts = by_action_pair[action_pair_id]
+                    artifacts = by_action_pair.get(action_pair_id, [])
+                    child_indent = indent + "│   " if is_child else "    "
+
+                    # Check if this action pair has children
+                    has_children = action_pair_id in children_by_parent
+
                     for i, artifact_id in enumerate(artifacts, 1):
                         meta = index.get("artifacts", {}).get(artifact_id, {})
                         status = meta.get("status", "unknown")
                         icon = _status_icon(status)
 
-                        is_last_attempt = i == len(artifacts)
+                        is_last_attempt = i == len(artifacts) and not has_children
                         branch = "└─" if is_last_attempt else "├─"
 
                         # Indented attempt row
-                        tree_rows.append([f"    {branch} {icon} Attempt {i}"])
+                        tree_rows.append([f"{child_indent}{branch} {icon} Attempt {i}"])
                         id_map[len(tree_rows) - 1] = artifact_id
 
                         # Build flat label for comparison dropdowns
@@ -311,6 +421,19 @@ def create_artifact_browser() -> (
                                 f"{icon} [{wf_id[:8]}] {action_pair_id} / Attempt {i}"
                             )
                         flat_choices.append((flat_label, artifact_id))
+
+                    # Render children of this action pair
+                    children = children_by_parent.get(action_pair_id, [])
+                    for child_action_pair_id in children:
+                        _render_action_pair(
+                            child_action_pair_id,
+                            indent=child_indent,
+                            is_child=True,
+                        )
+
+                # Render all root action pairs
+                for action_pair_id in root_action_pairs:
+                    _render_action_pair(action_pair_id)
 
             if workflow_id and workflow_id in workflows_index:
                 artifact_ids = workflows_index[workflow_id]
@@ -362,6 +485,7 @@ def create_artifact_browser() -> (
                 "artifact_id": artifact.artifact_id,
                 "workflow_id": artifact.workflow_id,
                 "action_pair_id": artifact.action_pair_id,
+                "parent_action_pair_id": artifact.parent_action_pair_id,
                 "attempt_number": artifact.attempt_number,
                 "status": artifact.status.value if artifact.status else None,
                 "created_at": artifact.created_at,
@@ -458,7 +582,14 @@ def create_artifact_browser() -> (
 
         return left_content, right_content
 
+    def get_workflow_choices(
+        artifact_dag: FilesystemArtifactDAG | None,
+    ) -> list[tuple[str, str | None]]:
+        """Get workflow choices for the dropdown."""
+        return _get_workflow_choices(artifact_dag)
+
     return (
+        workflow_dropdown,
         artifact_tree,
         artifact_id_map,
         artifact_diagram,
@@ -474,4 +605,5 @@ def create_artifact_browser() -> (
         load_artifact,
         update_diagram,
         compare_artifacts,
+        get_workflow_choices,
     )

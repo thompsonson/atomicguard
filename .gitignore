@@ -75,5 +75,8 @@ docs/paper
 # Experiment results
 results/*.json
 
-# Example output artifacts
-examples/*/output/artifacts/
+# Example output directories (generated files)
+examples/*/output/
+
+# Mock projects for architecture testing (generated stubs)
+examples/add/sample_docs/*/mock_project/

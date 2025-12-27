@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import gradio as gr
+from examples.base import load_prompts, load_workflow_config
 
 from atomicguard import FilesystemArtifactDAG
-from examples.base import load_prompts, load_workflow_config
 
 from .adapters.log_handler import cleanup_gui_logging, setup_gui_logging
 from .adapters.observable_workflow import ObservableWorkflow
@@ -100,6 +100,7 @@ def create_app(
             # Tab 2: Artifacts
             with gr.Tab("Artifacts"):
                 (
+                    workflow_dropdown,
                     artifact_tree,
                     artifact_id_map,
                     artifact_diagram,
@@ -115,6 +116,7 @@ def create_app(
                     load_artifact_fn,
                     update_diagram_fn,
                     compare_fn,
+                    get_workflow_choices_fn,
                 ) = create_artifact_browser()
 
                 refresh_btn = gr.Button("Refresh Artifacts", size="sm")
@@ -271,12 +273,32 @@ def create_app(
                 diagram_update,
             )
 
-        def refresh_artifacts_handler() -> tuple[Any, Any, Any, Any, str]:
+        def refresh_artifacts_handler() -> tuple[Any, Any, Any, Any, str, Any]:
             """Refresh artifact list (shows current workflow only)."""
             tree_update, id_map_update, left_update, right_update = (
                 refresh_artifacts_fn(artifact_dag, current_workflow_id)
             )
             diagram_md = update_diagram_fn(artifact_dag, current_workflow_id, None)
+            workflow_choices = get_workflow_choices_fn(artifact_dag)
+            return (
+                tree_update,
+                id_map_update,
+                left_update,
+                right_update,
+                diagram_md,
+                gr.update(choices=workflow_choices, value=current_workflow_id),
+            )
+
+        def on_workflow_filter_change(
+            workflow_id: str | None,
+        ) -> tuple[Any, Any, Any, Any, str]:
+            """Filter artifacts by selected workflow."""
+            nonlocal current_workflow_id
+            current_workflow_id = workflow_id
+            tree_update, id_map_update, left_update, right_update = (
+                refresh_artifacts_fn(artifact_dag, workflow_id)
+            )
+            diagram_md = update_diagram_fn(artifact_dag, workflow_id, None)
             return tree_update, id_map_update, left_update, right_update, diagram_md
 
         def on_tree_select(
@@ -364,6 +386,20 @@ def create_app(
         refresh_btn.click(
             fn=refresh_artifacts_handler,
             inputs=[],
+            outputs=[
+                artifact_tree,
+                artifact_id_map,
+                compare_left,
+                compare_right,
+                artifact_diagram,
+                workflow_dropdown,
+            ],
+        )
+
+        # Workflow filter dropdown
+        workflow_dropdown.change(
+            fn=on_workflow_filter_change,
+            inputs=[workflow_dropdown],
             outputs=[
                 artifact_tree,
                 artifact_id_map,

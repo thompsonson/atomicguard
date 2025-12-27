@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from examples.base import load_prompts
 from pydantic import ValidationError
 from pydantic_ai import Agent, capture_run_messages
 from pydantic_ai.exceptions import UnexpectedModelBehavior
@@ -22,7 +23,13 @@ from pydantic_ai.output import PromptedOutput
 from pydantic_ai.providers.ollama import OllamaProvider
 
 from atomicguard.domain.interfaces import GeneratorInterface
-from atomicguard.domain.models import Artifact, ArtifactStatus, Context, ContextSnapshot
+from atomicguard.domain.models import (
+    Artifact,
+    ArtifactStatus,
+    Context,
+    ContextSnapshot,
+    FeedbackEntry,
+)
 from atomicguard.domain.prompts import PromptTemplate
 
 from .models import (
@@ -36,17 +43,6 @@ from .models import (
 # =============================================================================
 # ConfigExtractorGenerator (Action Pair 0)
 # =============================================================================
-
-CONFIG_EXTRACTOR_SYSTEM_PROMPT = """You are a project configuration extractor.
-Extract project metadata from architecture documentation.
-
-Look for:
-- Source root path (e.g., "src/myapp", "src/ml_agents_v2")
-- Package name (e.g., "myapp", "ml_agents_v2")
-
-These are typically in a "Package Configuration" or "Project Setup" section.
-If not explicitly stated, infer from layer paths mentioned (e.g., "src/myapp/domain/").
-"""
 
 
 class ConfigExtractorGenerator(GeneratorInterface):
@@ -66,17 +62,26 @@ class ConfigExtractorGenerator(GeneratorInterface):
         self,
         model: str = "ollama:qwen2.5-coder:14b",
         base_url: str | None = None,
+        prompts_file: str | Path | None = None,
         prompt_template: PromptTemplate | None = None,
     ):
         self._model = model
         self._base_url = base_url
+
+        # Load from file if provided
+        if prompts_file and prompt_template is None:
+            prompts = load_prompts(Path(prompts_file))
+            prompt_template = prompts.get("config_extraction")
+
         self._prompt_template = prompt_template
 
-        # Build system prompt from template or use default
-        if prompt_template:
-            system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
-        else:
-            system_prompt = CONFIG_EXTRACTOR_SYSTEM_PROMPT
+        # Require prompt template - no fallback to hardcoded prompts
+        if prompt_template is None:
+            raise ValueError(
+                "prompt_template is required for ConfigExtractorGenerator - "
+                "provide prompts_file or prompt_template"
+            )
+        system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
 
         pydantic_model = _create_ollama_model(model, base_url)
         self._agent = Agent(
@@ -90,9 +95,12 @@ class ConfigExtractorGenerator(GeneratorInterface):
         self,
         context: Context,
         template: Any = None,  # noqa: ARG002
-        internal_state: dict[str, Any] | None = None,  # noqa: ARG002
+        action_pair_id: str = "add_config_extractor",
+        workflow_id: str = "unknown",
+        *,
         previous_attempt_id: str | None = None,
         attempt_number: int = 1,
+        parent_action_pair_id: str | None = None,
     ) -> Artifact:
         """
         Extract project configuration from documentation.
@@ -100,7 +108,8 @@ class ConfigExtractorGenerator(GeneratorInterface):
         Args:
             context: Contains documentation in specification field
             template: Unused
-            internal_state: Unused for this generator
+            action_pair_id: Action pair identifier (from workflow)
+            workflow_id: UUID of the workflow execution
             previous_attempt_id: ID of previous failed attempt for provenance
             attempt_number: Current attempt number (1-indexed)
 
@@ -158,27 +167,33 @@ class ConfigExtractorGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid4()),
+            workflow_id=workflow_id,
             content=content,
             previous_attempt_id=previous_attempt_id,
-            action_pair_id="add_config_extractor",
+            parent_action_pair_id=parent_action_pair_id,
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=attempt_number,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
-            context=_create_context_snapshot(context),
+            context=_create_context_snapshot(context, workflow_id),
         )
 
 
 logger = logging.getLogger("add_workflow")
 
 
-def _create_context_snapshot(context: Context) -> ContextSnapshot:
+def _create_context_snapshot(context: Context, workflow_id: str) -> ContextSnapshot:
     """Create a ContextSnapshot from a Context."""
     return ContextSnapshot(
-        specification=context.specification,
+        workflow_id=workflow_id,
+        specification=context.specification[:500],  # Truncate for storage
         constraints=context.ambient.constraints,
-        feedback_history=(),
+        feedback_history=tuple(
+            FeedbackEntry(artifact_id=aid, feedback=fb)
+            for aid, fb in context.feedback_history
+        ),
         dependency_artifacts=context.dependency_artifacts,
     )
 
@@ -214,22 +229,6 @@ def _create_ollama_model(
 # DocParserGenerator
 # =============================================================================
 
-DOC_PARSER_SYSTEM_PROMPT = """You are an architecture documentation parser.
-Extract architecture gates, constraints, and layer boundaries from documentation.
-
-For each gate:
-- Assign a unique gate_id (e.g., Gate1, Gate2, Gate10A)
-- Identify which layer it applies to (domain, application, or infrastructure)
-- Classify the constraint type:
-  - dependency: Controls what modules can import what
-  - naming: Enforces naming conventions
-  - containment: Specifies what belongs in which layer
-  - injection: Controls dependency injection patterns
-- Reference the source section in the documentation
-
-Be exhaustive. Missing a gate is worse than including an uncertain one.
-Also extract ubiquitous language terms and layer boundary rules."""
-
 
 class DocParserGenerator(GeneratorInterface):
     """
@@ -243,17 +242,26 @@ class DocParserGenerator(GeneratorInterface):
         self,
         model: str = "ollama:qwen2.5-coder:14b",
         base_url: str | None = None,
+        prompts_file: str | Path | None = None,
         prompt_template: PromptTemplate | None = None,
     ):
         self._model = model
         self._base_url = base_url
+
+        # Load from file if provided
+        if prompts_file and prompt_template is None:
+            prompts = load_prompts(Path(prompts_file))
+            prompt_template = prompts.get("gates_extraction")
+
         self._prompt_template = prompt_template
 
-        # Build system prompt from template or use default
-        if prompt_template:
-            system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
-        else:
-            system_prompt = DOC_PARSER_SYSTEM_PROMPT
+        # Require prompt template - no fallback to hardcoded prompts
+        if prompt_template is None:
+            raise ValueError(
+                "prompt_template is required for DocParserGenerator - "
+                "provide prompts_file or prompt_template"
+            )
+        system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
 
         pydantic_model = _create_ollama_model(model, base_url)
         self._agent = Agent(
@@ -267,9 +275,12 @@ class DocParserGenerator(GeneratorInterface):
         self,
         context: Context,
         template: Any = None,  # noqa: ARG002
-        internal_state: dict[str, Any] | None = None,  # noqa: ARG002
+        action_pair_id: str = "add_doc_parser",
+        workflow_id: str = "unknown",
+        *,
         previous_attempt_id: str | None = None,
         attempt_number: int = 1,
+        parent_action_pair_id: str | None = None,
     ) -> Artifact:
         """
         Parse documentation and extract architecture gates.
@@ -277,7 +288,8 @@ class DocParserGenerator(GeneratorInterface):
         Args:
             context: Contains documentation in specification field
             template: Unused
-            internal_state: Unused for this generator
+            action_pair_id: Action pair identifier (from workflow)
+            workflow_id: UUID of the workflow execution
             previous_attempt_id: ID of previous failed attempt for provenance
             attempt_number: Current attempt number (1-indexed)
 
@@ -342,102 +354,23 @@ class DocParserGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid4()),
+            workflow_id=workflow_id,
             content=content,
             previous_attempt_id=previous_attempt_id,
-            action_pair_id="add_doc_parser",
+            parent_action_pair_id=parent_action_pair_id,
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=attempt_number,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
-            context=_create_context_snapshot(context),
+            context=_create_context_snapshot(context, workflow_id),
         )
 
 
 # =============================================================================
 # TestCodeGenerator
 # =============================================================================
-
-TEST_CODEGEN_SYSTEM_PROMPT = """You are a Python test generator for architecture tests using pytestarch.
-
-## REQUIRED STRUCTURE
-
-```python
-from pytestarch import get_evaluable_architecture, Rule
-import pytest
-
-@pytest.fixture(scope="module")
-def evaluable():
-    return get_evaluable_architecture("/project", "/project/src")
-```
-
-## CORRECT API PATTERNS
-
-### Pattern 1: Module should NOT import another module
-```python
-def test_domain_not_import_infrastructure(evaluable):
-    \"\"\"Gate: Domain layer must not import infrastructure.\"\"\"
-    rule = (
-        Rule()
-        .modules_that()
-        .are_sub_modules_of("domain")
-        .should_not()
-        .import_modules_that()
-        .are_sub_modules_of("infrastructure")
-    )
-    rule.assert_applies(evaluable)
-```
-
-### Pattern 2: Dependency direction enforcement
-```python
-def test_application_not_import_infrastructure(evaluable):
-    \"\"\"Gate: Application must not directly import infrastructure.\"\"\"
-    rule = (
-        Rule()
-        .modules_that()
-        .are_sub_modules_of("application")
-        .should_not()
-        .import_modules_that()
-        .are_sub_modules_of("infrastructure")
-    )
-    rule.assert_applies(evaluable)
-```
-
-### Pattern 3: Named module constraint
-```python
-def test_specific_module_constraint(evaluable):
-    \"\"\"Gate: Specific module import constraint.\"\"\"
-    rule = (
-        Rule()
-        .modules_that()
-        .are_named("myproject.core")
-        .should_not()
-        .import_modules_that()
-        .are_named("myproject.external")
-    )
-    rule.assert_applies(evaluable)
-```
-
-## RULES
-1. Import: `from pytestarch import get_evaluable_architecture, Rule`
-2. Every test MUST accept `evaluable` fixture parameter
-3. Use `Rule()` constructor with fluent chain
-4. Chain: `.modules_that()` -> `.are_sub_modules_of()` or `.are_named()` -> `.should_not()` or `.should()` -> `.import_modules_that()` -> `.are_sub_modules_of()` or `.are_named()`
-5. ALWAYS end with `rule.assert_applies(evaluable)`
-
-## CRITICAL: test_code FORMAT
-The test_code field MUST be a COMPLETE function definition:
-- MUST start with `def test_....(evaluable):`
-- MUST include proper indentation for the function body
-- MUST NOT be just the rule code without the function wrapper
-
-Example:
-```
-def test_domain_independence(evaluable):
-    rule = Rule().modules_that().are_sub_modules_of("domain").should_not().import_modules_that().are_sub_modules_of("infrastructure")
-    rule.assert_applies(evaluable)
-```
-"""
 
 
 class TestCodeGenerator(GeneratorInterface):
@@ -453,17 +386,26 @@ class TestCodeGenerator(GeneratorInterface):
         self,
         model: str = "ollama:qwen2.5-coder:14b",
         base_url: str | None = None,
+        prompts_file: str | Path | None = None,
         prompt_template: PromptTemplate | None = None,
     ):
         self._model = model
         self._base_url = base_url
+
+        # Load from file if provided
+        if prompts_file and prompt_template is None:
+            prompts = load_prompts(Path(prompts_file))
+            prompt_template = prompts.get("test_generation")
+
         self._prompt_template = prompt_template
 
-        # Build system prompt from template or use default
-        if prompt_template:
-            system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
-        else:
-            system_prompt = TEST_CODEGEN_SYSTEM_PROMPT
+        # Require prompt template - no fallback to hardcoded prompts
+        if prompt_template is None:
+            raise ValueError(
+                "prompt_template is required for TestCodeGenerator - "
+                "provide prompts_file or prompt_template"
+            )
+        system_prompt = f"{prompt_template.role}\n\n{prompt_template.constraints}"
 
         pydantic_model = _create_ollama_model(model, base_url)
         self._agent = Agent(
@@ -477,8 +419,12 @@ class TestCodeGenerator(GeneratorInterface):
         self,
         context: Context,
         template: Any = None,  # noqa: ARG002
+        action_pair_id: str = "add_test_codegen",
+        workflow_id: str = "unknown",
+        *,
         previous_attempt_id: str | None = None,
         attempt_number: int = 1,
+        parent_action_pair_id: str | None = None,
     ) -> Artifact:
         """
         Generate test code from architecture gates.
@@ -490,6 +436,8 @@ class TestCodeGenerator(GeneratorInterface):
         Args:
             context: Generation context with dependencies from prior action pairs
             template: Unused
+            action_pair_id: Action pair identifier (from workflow)
+            workflow_id: UUID of the workflow execution
             previous_attempt_id: ID of previous failed attempt for provenance
             attempt_number: Current attempt number (1-indexed)
 
@@ -568,8 +516,6 @@ Layer boundaries to enforce:
                     prompt += f"\n\nFix these issues from previous attempt: {feedback}"
                 logger.debug("[TestCodeGen] Including feedback from previous attempt")
 
-            logger.debug(f"[TestCodeGen] Prompt length: {len(prompt)} chars")
-
             messages: list = []
             try:
                 logger.info("[TestCodeGen] Calling Ollama...")
@@ -611,15 +557,17 @@ Layer boundaries to enforce:
 
         return Artifact(
             artifact_id=str(uuid4()),
+            workflow_id=workflow_id,
             content=content,
             previous_attempt_id=previous_attempt_id,
-            action_pair_id="add_test_codegen",
+            parent_action_pair_id=parent_action_pair_id,
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=attempt_number,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
-            context=_create_context_snapshot(context),
+            context=_create_context_snapshot(context, workflow_id),
         )
 
 
@@ -635,15 +583,19 @@ class FileWriterGenerator(GeneratorInterface):
     No LLM involved - simply assembles TestSuite into files and writes them.
     """
 
-    def __init__(self, workdir: Path | None = None):
-        self._workdir = workdir or Path.cwd()
+    def __init__(self, workdir: str | Path | None = None):
+        self._workdir = Path(workdir) if workdir else Path.cwd()
 
     def generate(
         self,
         context: Context,
         template: Any = None,  # noqa: ARG002
+        action_pair_id: str = "add_file_writer",
+        workflow_id: str = "unknown",
+        *,
         previous_attempt_id: str | None = None,
         attempt_number: int = 1,
+        parent_action_pair_id: str | None = None,
     ) -> Artifact:
         """
         Write test files to filesystem.
@@ -655,6 +607,8 @@ class FileWriterGenerator(GeneratorInterface):
         Args:
             context: Generation context with dependencies from prior action pairs
             template: Unused
+            action_pair_id: Action pair identifier (from workflow)
+            workflow_id: UUID of the workflow execution
             previous_attempt_id: ID of previous failed attempt for provenance
             attempt_number: Current attempt number (1-indexed)
 
@@ -687,12 +641,16 @@ class FileWriterGenerator(GeneratorInterface):
 
             files = [
                 FileToWrite(
-                    path="tests/architecture/test_gates.py",
-                    content=test_content,
+                    path="tests/__init__.py",
+                    content="",
                 ),
                 FileToWrite(
                     path="tests/architecture/__init__.py",
                     content="",
+                ),
+                FileToWrite(
+                    path="tests/architecture/test_gates.py",
+                    content=test_content,
                 ),
             ]
 
@@ -715,15 +673,17 @@ class FileWriterGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid4()),
+            workflow_id=workflow_id,
             content=content,
             previous_attempt_id=previous_attempt_id,
-            action_pair_id="add_file_writer",
+            parent_action_pair_id=parent_action_pair_id,
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=attempt_number,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
-            context=_create_context_snapshot(context),
+            context=_create_context_snapshot(context, workflow_id),
         )
 
     def _assemble_test_file(self, suite: TestSuite) -> str:
