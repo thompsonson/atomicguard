@@ -7,6 +7,8 @@ documentation and generate pytest-arch tests.
 
 Usage:
     python -m examples.add.run
+    python -m examples.add.run --docs examples/add/ml_agents/specification.md
+    python -m examples.add.run --docs examples/add/atomicguard/specification.md
     python -m examples.add.run --host http://gpu:11434
     python -m examples.add.run --model qwen2.5-coder:14b
     python -m examples.add.run --output results/add_experiment.json
@@ -57,16 +59,24 @@ from .guards import ArtifactStructureGuard
 
 
 def load_docs(docs_path: Path | None) -> str:
-    """Load architecture documentation."""
+    """Load architecture documentation.
+
+    Args:
+        docs_path: Path to documentation file (use --docs CLI arg)
+
+    Returns:
+        Documentation content as string
+    """
     if docs_path and docs_path.exists():
         return docs_path.read_text()
 
-    # Default to sample docs
-    default_path = Path(__file__).parent / "sample_docs" / "architecture.md"
+    # Default to sample_docs/architecture.md
+    script_dir = Path(__file__).parent
+    default_path = script_dir / "sample_docs" / "architecture.md"
     if default_path.exists():
         return default_path.read_text()
 
-    # Fallback to inline sample
+    # Inline fallback
     return """
 # Architecture Documentation
 
@@ -179,7 +189,10 @@ def main(
     # Load documentation
     docs_path = Path(docs) if docs else None
     docs_content = load_docs(docs_path)
-    logger.info(f"Loaded documentation ({len(docs_content)} chars)")
+    spec_source = docs if docs else "sample_docs/architecture.md"
+    logger.info(
+        f"Loaded documentation from '{spec_source}' ({len(docs_content)} chars)"
+    )
 
     # Get config values (CLI args override workflow.json)
     effective_model = model or workflow_config.get("model", "qwen2.5-coder:14b")
@@ -206,7 +219,7 @@ def main(
         extra_info={
             "Min gates": effective_min_gates,
             "Min tests": effective_min_tests,
-            "Docs": str(docs_path) if docs_path else "sample_docs/architecture.md",
+            "Spec": spec_source,
         },
     )
 

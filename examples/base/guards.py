@@ -79,7 +79,8 @@ def build_guard(config: dict[str, Any]) -> GuardInterface:
             prompt_title=config.get("human_prompt_title", "HUMAN REVIEW REQUIRED")
         )
 
-    return guard_class()
+    guard_config = config.get("guard_config", {})
+    return guard_class(**guard_config)
 
 
 def _build_composite_guard(config: dict[str, Any]) -> CompositeGuard:

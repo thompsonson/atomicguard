@@ -335,8 +335,10 @@ class OllamaGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid.uuid4()),
+            workflow_id="benchmark",
             content=code,
             previous_attempt_id=previous_attempt_id,
+            parent_action_pair_id=None,
             action_pair_id=self.action_pair_id,
             created_at=datetime.now(UTC).isoformat(),
             attempt_number=self._attempt_counter,

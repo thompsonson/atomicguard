@@ -8,16 +8,21 @@ and generate pytest-arch tests.
 
 import json
 import logging
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
+
+from examples.base import load_prompts
 
 from atomicguard.domain.exceptions import EscalationRequired
 from atomicguard.domain.interfaces import ArtifactDAGInterface, GeneratorInterface
 from atomicguard.domain.models import (
     AmbientEnvironment,
     Artifact,
+    ArtifactStatus,
     Context,
     ContextSnapshot,
+    FeedbackEntry,
     GuardResult,
 )
 from atomicguard.domain.prompts import PromptTemplate
@@ -73,10 +78,11 @@ class ADDGenerator(GeneratorInterface):
         model: str = "ollama:qwen2.5-coder:14b",
         base_url: str | None = None,
         rmax: int = 3,
-        workdir: Path | None = None,
+        workdir: str | Path | None = None,
         min_gates: int = 1,
         min_tests: int = 1,
         artifact_dag: ArtifactDAGInterface | None = None,
+        prompts_file: str | Path | None = None,
         prompts: dict[str, PromptTemplate] | None = None,
     ):
         """
@@ -90,21 +96,29 @@ class ADDGenerator(GeneratorInterface):
             min_gates: Minimum number of gates required
             min_tests: Minimum number of tests required
             artifact_dag: Optional DAG for persisting internal artifacts
-            prompts: Prompt templates for each action pair (keys: gates_extraction, test_generation)
+            prompts_file: Path to prompts.json file
+            prompts: Prompt templates for each action pair (keys: config_extraction, gates_extraction, test_generation)
         """
         self._model = model
         self._base_url = base_url
         self._rmax = rmax
-        self._workdir = workdir or Path.cwd()
+        self._workdir = Path(workdir) if workdir else Path.cwd()
         self._min_gates = min_gates
         self._min_tests = min_tests
         self._artifact_dag = artifact_dag
-        self._prompts = prompts or {}
+
+        # Load from file if provided
+        if prompts_file and prompts is None:
+            self._prompts = load_prompts(Path(prompts_file))
+        else:
+            self._prompts = prompts or {}
 
     def generate(
         self,
         context: Context,
         template: PromptTemplate | None = None,  # noqa: ARG002
+        action_pair_id: str = "add",  # noqa: ARG002
+        workflow_id: str = "unknown",
     ) -> Artifact:
         """
         Generate architecture tests from documentation.
@@ -127,7 +141,9 @@ class ADDGenerator(GeneratorInterface):
         # Action Pair 0: Extract project config (Ω)
         # Per paper: Ω = Global Constraints, stored in context.ambient.constraints
         logger.info("[ADD] === Action Pair 0: Config Extraction ===")
-        config_artifact, config_result = self._execute_config_extraction(context)
+        config_artifact, config_result = self._execute_config_extraction(
+            context, workflow_id=workflow_id, parent_action_pair_id=action_pair_id
+        )
         logger.info(f"[ADD] Extracted Ω: source_root={config_result.source_root}")
 
         # Create NEW Context with populated Ω
@@ -148,7 +164,9 @@ class ADDGenerator(GeneratorInterface):
         # Action Pair 1: Extract gates
         # Artifact stored in ℛ (ArtifactDAG) by _run_action_pair()
         logger.info("[ADD] === Action Pair 1: Gates Extraction ===")
-        gates_artifact, gates_result = self._execute_gates_extraction(context)
+        gates_artifact, gates_result = self._execute_gates_extraction(
+            context, workflow_id=workflow_id, parent_action_pair_id=action_pair_id
+        )
         logger.info(f"[ADD] Extracted {len(gates_result.gates)} gates")
 
         # Create context with gates artifact ID in dependency_artifacts for AP2
@@ -165,7 +183,9 @@ class ADDGenerator(GeneratorInterface):
 
         # Action Pair 2: Generate tests
         logger.info("[ADD] === Action Pair 2: Test Generation ===")
-        test_artifact, test_suite = self._execute_test_generation(context)
+        test_artifact, test_suite = self._execute_test_generation(
+            context, workflow_id=workflow_id, parent_action_pair_id=action_pair_id
+        )
         logger.info(f"[ADD] Generated {len(test_suite.tests)} tests")
 
         # Create context with test_suite artifact ID in dependency_artifacts for AP3
@@ -181,7 +201,9 @@ class ADDGenerator(GeneratorInterface):
 
         # Action Pair 3: Write files
         logger.info("[ADD] === Action Pair 3: File Writing ===")
-        manifest_artifact = self._execute_file_writing(context)
+        manifest_artifact = self._execute_file_writing(
+            context, workflow_id=workflow_id, parent_action_pair_id=action_pair_id
+        )
         logger.info("[ADD] Files written successfully")
 
         return manifest_artifact
@@ -189,6 +211,8 @@ class ADDGenerator(GeneratorInterface):
     def _execute_config_extraction(
         self,
         context: Context,
+        workflow_id: str = "unknown",
+        parent_action_pair_id: str | None = None,
     ) -> tuple[Artifact, ProjectConfig]:
         """
         Execute config extraction action pair with retry loop.
@@ -211,6 +235,8 @@ class ADDGenerator(GeneratorInterface):
             guard=guard,
             context=context,
             pair_name="config_extraction",
+            workflow_id=workflow_id,
+            parent_action_pair_id=parent_action_pair_id,
         )
 
         # Parse result
@@ -220,6 +246,8 @@ class ADDGenerator(GeneratorInterface):
     def _execute_gates_extraction(
         self,
         context: Context,
+        workflow_id: str = "unknown",
+        parent_action_pair_id: str | None = None,
     ) -> tuple[Artifact, GatesExtractionResult]:
         """
         Execute gate extraction action pair with retry loop.
@@ -239,6 +267,8 @@ class ADDGenerator(GeneratorInterface):
             guard=guard,
             context=context,
             pair_name="gates_extraction",
+            workflow_id=workflow_id,
+            parent_action_pair_id=parent_action_pair_id,
         )
 
         # Parse result
@@ -248,6 +278,8 @@ class ADDGenerator(GeneratorInterface):
     def _execute_test_generation(
         self,
         context: Context,
+        workflow_id: str = "unknown",
+        parent_action_pair_id: str | None = None,
     ) -> tuple[Artifact, TestSuite]:
         """
         Execute test generation action pair with retry loop.
@@ -271,6 +303,8 @@ class ADDGenerator(GeneratorInterface):
             guard=guard,
             context=context,
             pair_name="test_generation",
+            workflow_id=workflow_id,
+            parent_action_pair_id=parent_action_pair_id,
         )
 
         # Parse result
@@ -280,6 +314,8 @@ class ADDGenerator(GeneratorInterface):
     def _execute_file_writing(
         self,
         context: Context,
+        workflow_id: str = "unknown",
+        parent_action_pair_id: str | None = None,
     ) -> Artifact:
         """
         Execute file writing action pair with retry loop.
@@ -297,6 +333,8 @@ class ADDGenerator(GeneratorInterface):
             guard=guard,
             context=context,
             pair_name="file_writing",
+            workflow_id=workflow_id,
+            parent_action_pair_id=parent_action_pair_id,
         )
 
     def _run_action_pair(
@@ -305,6 +343,8 @@ class ADDGenerator(GeneratorInterface):
         guard: Any,  # GuardInterface or CompositeGuard
         context: Context,
         pair_name: str,
+        workflow_id: str = "unknown",
+        parent_action_pair_id: str | None = None,
     ) -> Artifact:
         """
         Run an action pair with retry logic.
@@ -327,19 +367,33 @@ class ADDGenerator(GeneratorInterface):
             artifact = generator.generate(
                 current_context,
                 template=None,
-                previous_attempt_id=previous_attempt_id,  # type: ignore
-                attempt_number=attempt + 1,  # type: ignore
+                action_pair_id=pair_name,
+                workflow_id=workflow_id,
+                previous_attempt_id=previous_attempt_id,
+                attempt_number=attempt + 1,
+                parent_action_pair_id=parent_action_pair_id,
             )
             logger.debug(f"[{pair_name}] Generated {len(artifact.content)} chars")
 
-            # Store artifact in DAG for debugging
-            if self._artifact_dag:
-                self._artifact_dag.store(artifact)
-                logger.debug(f"[{pair_name}] Stored artifact {artifact.artifact_id}")
-
-            # Validate
+            # Validate FIRST
             logger.debug(f"[{pair_name}] Running guard validation...")
             result: GuardResult = guard.validate(artifact)
+
+            # Update artifact with guard result
+            artifact = replace(
+                artifact,
+                status=ArtifactStatus.ACCEPTED
+                if result.passed
+                else ArtifactStatus.REJECTED,
+                guard_result=result.passed,
+                feedback=result.feedback,
+            )
+
+            # Store the UPDATED artifact in DAG
+            # Use workflow's DAG from context if self._artifact_dag is not set
+            dag = self._artifact_dag or context.ambient.repository
+            dag.store(artifact)
+            logger.debug(f"[{pair_name}] Stored artifact {artifact.artifact_id}")
 
             if result.passed:
                 logger.info(f"[{pair_name}] ✓ Passed: {result.feedback}")
@@ -349,7 +403,7 @@ class ADDGenerator(GeneratorInterface):
                 logger.error(f"[{pair_name}] ✗ FATAL: {result.feedback}")
                 raise EscalationRequired(artifact, result.feedback)
 
-            # Accumulate feedback for retry
+            # Accumulate feedback for retry (artifact already has status/feedback)
             logger.warning(
                 f"[{pair_name}] ✗ Failed (attempt {attempt + 1}): {result.feedback}"
             )
@@ -384,11 +438,17 @@ class ADDGenerator(GeneratorInterface):
             dependency_artifacts=original_context.dependency_artifacts,
         )
 
-    def _create_context_snapshot(self, context: Context) -> ContextSnapshot:
+    def _create_context_snapshot(
+        self, context: Context, workflow_id: str
+    ) -> ContextSnapshot:
         """Create a ContextSnapshot from a Context."""
         return ContextSnapshot(
-            specification=context.specification,
+            workflow_id=workflow_id,
+            specification=context.specification[:500],  # Truncate for storage
             constraints=context.ambient.constraints,
-            feedback_history=(),
+            feedback_history=tuple(
+                FeedbackEntry(artifact_id=aid, feedback=fb)
+                for aid, fb in context.feedback_history
+            ),
             dependency_artifacts=context.dependency_artifacts,
         )
