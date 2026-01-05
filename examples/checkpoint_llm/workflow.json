@@ -1,0 +1,17 @@
+{
+  "name": "checkpoint-llm-demo",
+  "description": "Single-step LLM workflow demonstrating checkpoint/resume with real AI generation",
+  "specification": "Write a Python function `render_template(template: str, context: dict) -> str` that implements a simple template engine:\n1. Replace `{{ variable }}` with the value from context dict. If the variable is not in context, leave the placeholder unchanged.\n2. Support basic conditionals: `{% if variable %}text{% endif %}`. If variable exists in context and is truthy, include the text. Otherwise, remove the entire block.\n3. You can use regex for matching patterns.",
+  "constraints": "Use Python. Function must be named exactly `render_template`. Use only standard library (re module is fine). Handle edge cases.",
+  "model": "qwen2.5-coder:7b",
+  "rmax": 1,
+  "action_pairs": {
+    "g_template": {
+      "generator": "OllamaGenerator",
+      "guard": "dynamic_test",
+      "guard_config": {
+        "test_file": "test_template.py"
+      }
+    }
+  }
+}
