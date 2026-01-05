@@ -150,4 +150,4 @@ C_total = ⟨E, C_local, H_feedback⟩
 - [domain_definitions.md](domain_definitions.md) — Foundational and architectural definitions
 - [agent_function.md](agent_function.md) — Agent percepts and actions
 - [agent_program.md](agent_program.md) — Implementation details
-- [guard_definitions.md](guard_definitions.md) — Complete guard catalog
+- [guard_definitions.md](../paper_guards/guard_definitions.md) — Complete guard catalog

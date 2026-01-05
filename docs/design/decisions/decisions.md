@@ -27,20 +27,20 @@
 | Guard signature | `G(artifact, **dependencies)` | `G(artifact)` or `G(artifact, context)` |
 | Prompt management | `PromptTemplate` dataclass | String concatenation |
 | Evaluation order | Sequential O(n) | Tree/HTN O(log n) |
-| ADD placement | Example (`examples/add/`) | Core package |
-| PydanticAI for structured output | Add as dependency | Manual JSON parsing like AiderGenerator |
+| ADD placement | Example (`examples/checkpoint/04_sdlc/generators/add.py`) | Core package |
+| PydanticAI for structured output | Add as dependency | Manual JSON parsing |
 | PydanticAI retries | Disabled (`retries=0`) | Merge with AtomicGuard rmax |
 | pytestarch API validation | Whitelist-only (no blocklist) | Blocklist of known bad patterns |
 
 ## Paper Changes Required
 
-| Section | Change |
-|---------|--------|
-| Definition 3 | Rename Cparent → Cambient |
-| Definition 6 | Extend G : A × C → {⊥, ⊤} × Σ* |
-| Definition 7.2 | Update ⟨v, φ⟩ = G(a', C) |
-| Lemma 1 | Extend determinism to (a, C) |
-| New Remark | Guard Input Scoping (minimal required inputs) |
+| Section | Change | Status (5 Jan 2025) |
+|---------|--------|---------------------|
+| Definition 3 | Rename Cparent → Cambient | ✅ Done (paper uses `𝓔` Ambient Environment) |
+| Definition 6 | Extend G : A × C → {⊥, ⊤} × Σ* | ✅ Done (line 410: tri-state + feedback) |
+| Definition 7.2 | Update ⟨v, φ⟩ = G(a', C) | ✅ Done (line 446) |
+| Lemma 1 | Extend determinism to (a, C) | ✅ Done (line 551: `G(a, C)`) |
+| New Remark | Guard Input Scoping (minimal required inputs) | ✅ Done (lines 414-416) |
 
 ## Future Considerations
 
@@ -51,6 +51,4 @@
 | HTN/Tree | O(log n) precondition eval; needed at scale (100s guards, multi-agent) |
 | Guard library | DDD guards (ACL integrity, architecture fitness, DI container) |
 | Parallel guard | ThreadPoolExecutor for independent checks |
-| ADD as package | Could become `atomicguard-add` if adoption warrants |
-| Structured output library | PydanticAI vs Instructor vs Outlines evaluation |
 | pytestarch error hints | Add common hallucination→fix mappings if needed - Currently whitelist-only; no hints |

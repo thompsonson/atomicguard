@@ -35,7 +35,7 @@ print(atomicguard.__version__)
 
 ### Without an LLM (MockGenerator)
 
-The quickest way to understand AtomicGuard is with the mock generator. See [examples/basic_mock.py](../examples/basic_mock.py) for a complete working example.
+The quickest way to understand AtomicGuard is with the mock generator. See [examples/basics/01_mock.py](../examples/basics/01_mock.py) for a complete working example.
 
 ```python
 from atomicguard import (
@@ -58,7 +58,7 @@ print(artifact.content)
 
 ### With Ollama (Real LLM)
 
-For real LLM-powered generation, see [examples/basic_ollama.py](../examples/basic_ollama.py).
+For real LLM-powered generation, see [examples/basics/02_ollama.py](../examples/basics/02_ollama.py).
 
 ```python
 from atomicguard import (
