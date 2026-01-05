@@ -117,6 +117,9 @@ class OllamaGenerator(GeneratorInterface):
 
     def _extract_code(self, content: str) -> str:
         """Extract Python code from response."""
+        if not content or content.isspace():
+            return ""
+
         # Try python block
         match = re.search(r"```python\n(.*?)\n```", content, re.DOTALL)
         if match:
@@ -132,8 +135,8 @@ class OllamaGenerator(GeneratorInterface):
         if match:
             return content[match.start() :]
 
-        # Fallback: full content
-        return content
+        # No code block found - return empty to trigger guard validation failure
+        return ""
 
     def _build_basic_prompt(self, context: Context) -> str:
         """Build a basic prompt from context."""
