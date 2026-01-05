@@ -264,3 +264,33 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
 
         artifact_ids = self._index["workflows"][workflow_id]
         return [self.get_artifact(aid) for aid in artifact_ids]
+
+    def get_latest_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> Artifact | None:
+        """
+        Get the most recent artifact for an action pair in a workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            The most recent artifact, or None if not found
+        """
+        if action_pair_id not in self._index.get("action_pairs", {}):
+            return None
+
+        # Filter by workflow and find latest by created_at
+        candidates = []
+        for artifact_id in self._index["action_pairs"][action_pair_id]:
+            artifact_info = self._index["artifacts"].get(artifact_id, {})
+            if artifact_info.get("workflow_id") == workflow_id:
+                candidates.append((artifact_id, artifact_info.get("created_at", "")))
+
+        if not candidates:
+            return None
+
+        # Sort by created_at descending and return the latest
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return self.get_artifact(candidates[0][0])

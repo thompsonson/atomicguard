@@ -35,3 +35,27 @@ class InMemoryArtifactDAG(ArtifactDAGInterface):
                 break
             current = self._artifacts.get(current.previous_attempt_id)
         return list(reversed(result))
+
+    def get_latest_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> Artifact | None:
+        """
+        Get the most recent artifact for an action pair in a workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            The most recent artifact, or None if not found
+        """
+        candidates = [
+            a
+            for a in self._artifacts.values()
+            if a.action_pair_id == action_pair_id and a.workflow_id == workflow_id
+        ]
+        if not candidates:
+            return None
+        # Sort by created_at descending and return the latest
+        candidates.sort(key=lambda a: a.created_at, reverse=True)
+        return candidates[0]
