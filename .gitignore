@@ -78,5 +78,8 @@ results/*.json
 # Example output directories (generated files)
 examples/*/output/
 
+# Root output directory (from relative path resolution)
+/output/
+
 # Mock projects for architecture testing (generated stubs)
 examples/add/sample_docs/*/mock_project/
