@@ -242,3 +242,157 @@ def find_checkpoint_by_prefix(
         )
 
     return matching[0]
+
+
+def write_checkpoint_output(
+    checkpoint: WorkflowCheckpoint,
+    failed_artifact_content: str,
+    output_dir: Path,
+    resume_command: str = "python -m examples.sdlc.run",
+) -> Path:
+    """
+    Write human-readable checkpoint files to output folder.
+
+    Creates:
+        - instructions.md: What to do, how to resume
+        - context.md: Specification, constraints, feedback history
+        - artifacts/{failed_step}.py: Copy of failed artifact (editable)
+
+    Args:
+        checkpoint: The workflow checkpoint
+        failed_artifact_content: Content of the failed artifact
+        output_dir: Directory to write output files
+        resume_command: Base command for resume instructions
+
+    Returns:
+        Path to the artifact file (for human to edit)
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifacts_dir = output_dir / "artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+
+    # Determine artifact filename from failed step
+    artifact_filename = f"{checkpoint.failed_step}.py"
+    artifact_path = artifacts_dir / artifact_filename
+
+    # Write instructions.md
+    instructions = _generate_instructions(checkpoint, artifact_filename, resume_command)
+    (output_dir / "instructions.md").write_text(instructions)
+
+    # Write context.md
+    context = _generate_context(checkpoint)
+    (output_dir / "context.md").write_text(context)
+
+    # Write artifact file
+    artifact_path.write_text(failed_artifact_content)
+
+    return artifact_path
+
+
+def _generate_instructions(
+    checkpoint: WorkflowCheckpoint,
+    artifact_filename: str,
+    resume_command: str,
+) -> str:
+    """Generate instructions.md content."""
+    short_id = checkpoint.checkpoint_id[:12]
+
+    return f"""# Workflow Checkpoint
+
+**Checkpoint ID:** {checkpoint.checkpoint_id}
+**Created:** {checkpoint.created_at}
+**Failed Step:** {checkpoint.failed_step}
+
+## What Happened
+
+The workflow failed at step `{checkpoint.failed_step}` after exhausting retry attempts.
+
+**Failure Type:** {checkpoint.failure_type.value}
+
+**Guard Feedback:**
+> {checkpoint.failure_feedback}
+
+## What To Do
+
+1. Review the context in `context.md`
+2. Edit the artifact in `artifacts/{artifact_filename}`
+3. Resume the workflow:
+
+```bash
+{resume_command} resume {short_id}
+```
+
+The resume command will automatically read your edited file from `artifacts/{artifact_filename}`.
+
+## Files
+
+- `context.md` - Full specification, constraints, and feedback history
+- `artifacts/{artifact_filename}` - The failed artifact (**edit this file**)
+
+## Alternative: Provide Feedback Instead
+
+If you prefer to let the LLM retry with guidance instead of providing a fixed artifact:
+
+```bash
+{resume_command} resume {short_id} --feedback "Your guidance here" --rmax 3
+```
+"""
+
+
+def _generate_context(checkpoint: WorkflowCheckpoint) -> str:
+    """Generate context.md content."""
+    import json
+
+    # Build completed artifacts JSON
+    artifacts_json = ""
+    if checkpoint.artifact_ids:
+        artifacts_dict = {
+            step: {"artifact_id": aid, "status": "accepted"}
+            for step, aid in checkpoint.artifact_ids
+        }
+        artifacts_json = f"""## Completed Artifacts
+
+```json
+{json.dumps(artifacts_dict, indent=2)}
+```
+"""
+    else:
+        artifacts_json = (
+            "## Completed Artifacts\n\n_No artifacts completed before failure._"
+        )
+
+    # Build feedback history
+    feedback_section = ""
+    if checkpoint.provenance_ids:
+        feedback_section = f"""## Feedback History
+
+The following attempts were made before checkpoint creation:
+
+**Attempts:** {len(checkpoint.provenance_ids)}
+
+**Final Feedback:**
+> {checkpoint.failure_feedback}
+"""
+    else:
+        feedback_section = "## Feedback History\n\n_No prior attempts recorded._"
+
+    return f"""# Workflow Context
+
+## Specification
+
+{checkpoint.specification}
+
+## Constraints
+
+{checkpoint.constraints}
+
+{artifacts_json}
+
+{feedback_section}
+
+## Failed Step
+
+**Step:** {checkpoint.failed_step}
+**Failure Type:** {checkpoint.failure_type.value}
+"""
