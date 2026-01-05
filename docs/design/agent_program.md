@@ -1,5 +1,7 @@
 # Dual-State Agent: Agent Program
 
+> **Prerequisites**: [domain_notation.md](domain_notation.md) (symbols), [domain_ubiquitous_language.md](domain_ubiquitous_language.md) (terminology), [agent_function.md](agent_function.md) (agent behavior)
+
 ## Background for Implementation Decisions
 
 | Decision | Choice | Rationale |

@@ -1,5 +1,7 @@
 # Dual-State Agent: PEAS and Environment Analysis
 
+> **Prerequisites**: [domain_notation.md](domain_notation.md) (symbols), [domain_ubiquitous_language.md](domain_ubiquitous_language.md) (terminology)
+
 ## Environment Specification: PEAS Analysis
 
 | Element | Description |

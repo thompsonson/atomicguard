@@ -1,5 +1,7 @@
 # Dual-State Agent: Agent Function
 
+> **Prerequisites**: [domain_notation.md](domain_notation.md) (symbols), [domain_ubiquitous_language.md](domain_ubiquitous_language.md) (terminology)
+
 ## Percepts and Actions Summary
 
 **Percepts:**

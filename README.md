@@ -88,15 +88,16 @@ If you use this framework in your research, please cite the paper:
 > Thompson, M. (2025). Managing the Stochastic: Foundations of Learning in Neuro-Symbolic Systems for Software Engineering. arXiv preprint arXiv:2512.20660.
 
 ```bibtex
-@article{thompson2025managing,
+@misc{thompson2025managing,
   title={Managing the Stochastic: Foundations of Learning in Neuro-Symbolic Systems for Software Engineering},
   author={Thompson, Matthew},
-  journal={arXiv preprint arXiv:2512.20660},
   year={2025},
-  url={[https://arxiv.org/abs/2512.20660](https://arxiv.org/abs/2512.20660)}
+  eprint={2512.20660},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2512.20660}
 }
-
-``` 
+```
 
 ## License
 
