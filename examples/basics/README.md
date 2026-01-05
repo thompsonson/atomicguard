@@ -8,7 +8,6 @@ Start here to learn the fundamentals of AtomicGuard.
 |-------|------|-----|-------------|
 | 1 | [01_mock.py](01_mock.py) | Mock | Core concepts without external dependencies |
 | 2 | [02_ollama.py](02_ollama.py) | Ollama | Real LLM with composite guards |
-| 3 | [03_tdd_import_guard/](03_tdd_import_guard/) | Ollama | Multi-step TDD with guard composition |
 
 ## 01_mock.py - Getting Started
 
@@ -46,25 +45,6 @@ ollama pull qwen2.5-coder:7b
 python -m examples.basics.02_ollama
 ```
 
-## 03_tdd_import_guard/ - Multi-Step Workflows
-
-**Requires Ollama** - demonstrates production-ready patterns.
-
-Demonstrates:
-
-- Multi-step workflow (tests → implementation)
-- Guard composition (SyntaxGuard → ImportGuard → HumanReviewGuard)
-- Config-driven workflows (`workflow.json` + `prompts.json`)
-- Defense-in-depth validation
-- Human review integration
-
-```bash
-cd 03_tdd_import_guard
-python run.py --host http://localhost:11434
-```
-
-The ImportGuard catches missing imports (like `import pytest`) automatically before human review, preventing cascade failures.
-
 ## Key Concepts
 
 ### DualStateAgent
@@ -97,5 +77,5 @@ Immutable records of generated content with full provenance:
 
 After understanding these basics:
 
-1. **checkpoint/** - Add human-in-the-loop intervention with checkpoint/resume
-2. **add/** - Advanced hierarchical composition with nested agents
+1. **tdd/** - Multi-step TDD workflows with guard composition
+2. **checkpoint/** - Add human-in-the-loop intervention with checkpoint/resume
