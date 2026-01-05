@@ -329,18 +329,14 @@ class TestDualStateAgentContextComposition:
 class TestArtifactMetadataTracking:
     """Tests for artifact provenance and metadata during retry loop.
 
-    These tests document the expected behavior for artifact metadata.
-    Currently failing tests demonstrate bugs that need fixing.
+    These tests verify the expected behavior for artifact metadata,
+    including provenance tracking, feedback history, and status updates.
     """
 
     def test_attempt_numbers_are_sequential_starting_at_one(
         self, memory_dag: InMemoryArtifactDAG
     ) -> None:
-        """Attempt numbers should be 1, 2, 3 per action pair, not global.
-
-        ISSUE: Currently attempt_number comes from generator's global counter,
-        not a per-action-pair counter managed by the agent.
-        """
+        """Verifies attempt numbers are sequential (1, 2, 3) per action pair."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
         pair = ActionPair(generator=generator, guard=guard)
@@ -357,11 +353,7 @@ class TestArtifactMetadataTracking:
     def test_previous_attempt_id_forms_chain(
         self, memory_dag: InMemoryArtifactDAG
     ) -> None:
-        """Each retry should link to predecessor via previous_attempt_id.
-
-        ISSUE: Currently previous_attempt_id is always None because
-        generators don't link artifacts and agent.py doesn't update it.
-        """
+        """Verifies retry chain links via previous_attempt_id."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
         pair = ActionPair(generator=generator, guard=guard)
@@ -380,11 +372,7 @@ class TestArtifactMetadataTracking:
     def test_context_snapshot_captures_feedback_history(
         self, memory_dag: InMemoryArtifactDAG
     ) -> None:
-        """ContextSnapshot should contain FeedbackEntry for each prior rejection.
-
-        ISSUE: Currently feedback_history in ContextSnapshot is always empty
-        because the agent doesn't populate it during the retry loop.
-        """
+        """Verifies FeedbackEntry captured for each rejection."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
         pair = ActionPair(generator=generator, guard=guard)
@@ -425,11 +413,7 @@ class TestArtifactMetadataTracking:
     def test_feedback_history_count_matches_rejections(
         self, memory_dag: InMemoryArtifactDAG
     ) -> None:
-        """feedback_history should have one entry per rejection.
-
-        ISSUE: Currently feedback_history is always empty regardless of
-        how many rejections occurred.
-        """
+        """Verifies feedback_history count matches rejection count."""
         generator = MockGenerator(responses=["bad1", "bad2", "bad3", "good"])
         guard = FailThenPassGuard(fail_count=3)
         pair = ActionPair(generator=generator, guard=guard)
@@ -443,11 +427,7 @@ class TestArtifactMetadataTracking:
     def test_provenance_chain_retrievable_from_dag(
         self, memory_dag: InMemoryArtifactDAG
     ) -> None:
-        """DAG.get_provenance() should return full retry chain.
-
-        ISSUE: Currently provenance only returns 1 artifact because
-        previous_attempt_id is never set, breaking the chain.
-        """
+        """Verifies DAG.get_provenance() returns full retry chain."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
         pair = ActionPair(generator=generator, guard=guard)
