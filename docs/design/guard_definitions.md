@@ -2,6 +2,8 @@
 
 This appendix enumerates the deterministic guard functions (𝒢) that enforce correctness constraints across the multi-agent SDLC workflow. Each guard validates a specific state transition and is defined by a conjunction of verifiable predicates.
 
+> **Note**: This document covers guards G₁–G₂₂ (implementation scope). The paper defines additional guards (G₂₃–G₂₉) for version control and legacy system bootstrapping. See [paper_scope_differences.md](paper_scope_differences.md) for details on deferred features.
+
 ## Notation
 
 - **Gᵢ**: Boolean-valued sensing action
