@@ -67,7 +67,6 @@ results/*.txt
 # Artifacts directory (benchmark outputs)
 artifacts/*
 !artifacts/.gitkeep
-examples/add/output/artifacts/
 
 # documentation not for git
 docs/paper
@@ -75,11 +74,8 @@ docs/paper
 # Experiment results
 results/*.json
 
-# Example output directories (generated files)
-examples/*/output/
+# Example output directories (generated files, any depth)
+examples/**/output/
 
 # Root output directory (from relative path resolution)
 /output/
-
-# Mock projects for architecture testing (generated stubs)
-examples/add/sample_docs/*/mock_project/
