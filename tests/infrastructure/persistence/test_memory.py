@@ -35,8 +35,10 @@ class TestInMemoryArtifactDAG:
         # Create a chain of artifacts: first -> second -> third
         first = Artifact(
             artifact_id="first-001",
+            workflow_id="test-workflow-001",
             content="def add(a, b): pass",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -47,8 +49,10 @@ class TestInMemoryArtifactDAG:
         )
         second = Artifact(
             artifact_id="second-001",
+            workflow_id="test-workflow-001",
             content="def add(a, b): return a",
             previous_attempt_id="first-001",
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:01Z",
             attempt_number=2,
@@ -59,8 +63,10 @@ class TestInMemoryArtifactDAG:
         )
         third = Artifact(
             artifact_id="third-001",
+            workflow_id="test-workflow-001",
             content="def add(a, b): return a + b",
             previous_attempt_id="second-001",
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:02Z",
             attempt_number=3,
@@ -85,8 +91,10 @@ class TestInMemoryArtifactDAG:
         artifacts = [
             Artifact(
                 artifact_id=f"art-{i:03d}",
+                workflow_id="test-workflow-001",
                 content=f"# Code version {i}",
                 previous_attempt_id=None,
+                parent_action_pair_id=None,
                 action_pair_id=f"ap-{i:03d}",
                 created_at="2025-01-01T00:00:00Z",
                 attempt_number=1,
@@ -109,8 +117,10 @@ class TestInMemoryArtifactDAG:
         """Storing with same ID overwrites previous artifact."""
         original = Artifact(
             artifact_id="overwrite-001",
+            workflow_id="test-workflow-001",
             content="original content",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -121,8 +131,10 @@ class TestInMemoryArtifactDAG:
         )
         updated = Artifact(
             artifact_id="overwrite-001",
+            workflow_id="test-workflow-001",
             content="updated content",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:01Z",
             attempt_number=1,
@@ -150,8 +162,10 @@ class TestInMemoryArtifactDAG:
         # Create artifact with reference to non-existent parent
         orphan = Artifact(
             artifact_id="orphan-001",
+            workflow_id="test-workflow-001",
             content="orphaned artifact",
             previous_attempt_id="missing-parent",
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=2,

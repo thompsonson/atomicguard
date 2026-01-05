@@ -109,8 +109,8 @@ __all__ = [
     "InMemoryArtifactDAG",
     "FilesystemArtifactDAG",
     # Infrastructure - LLM
-    "OllamaGenerator",
     "MockGenerator",
+    "OllamaGenerator",
     # Guards
     "CompositeGuard",
     "SyntaxGuard",

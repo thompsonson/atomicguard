@@ -30,8 +30,10 @@ class TestSyntaxGuard:
         """Empty code should be valid Python."""
         empty_artifact = Artifact(
             artifact_id="empty-001",
+            workflow_id="test-workflow-001",
             content="",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -47,8 +49,10 @@ class TestSyntaxGuard:
         """Whitespace-only code should be valid Python."""
         whitespace_artifact = Artifact(
             artifact_id="whitespace-001",
+            workflow_id="test-workflow-001",
             content="   \n\t\n   ",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -77,8 +81,10 @@ class Calculator:
 '''
         artifact = Artifact(
             artifact_id="complex-001",
+            workflow_id="test-workflow-001",
             content=complex_code,
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -94,8 +100,10 @@ class Calculator:
         """Unterminated string literal should fail."""
         artifact = Artifact(
             artifact_id="bad-string-001",
+            workflow_id="test-workflow-001",
             content='x = "hello',
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -111,8 +119,10 @@ class Calculator:
         """Indentation error should fail."""
         artifact = Artifact(
             artifact_id="indent-001",
+            workflow_id="test-workflow-001",
             content="def foo():\nreturn 1",  # Missing indentation
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -133,8 +143,10 @@ def identity[T](x: T) -> T:
 """
         artifact = Artifact(
             artifact_id="modern-001",
+            workflow_id="test-workflow-001",
             content=modern_code,
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,

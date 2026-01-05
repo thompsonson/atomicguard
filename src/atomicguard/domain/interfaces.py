@@ -13,10 +13,9 @@ if TYPE_CHECKING:
         Artifact,
         Context,
         GuardResult,
+        HumanAmendment,
+        WorkflowCheckpoint,
     )
-
-if TYPE_CHECKING:
-    from atomicguard.domain.models import Artifact, Context, GuardResult
     from atomicguard.domain.prompts import PromptTemplate
 
 
@@ -43,7 +42,11 @@ class GeneratorInterface(ABC):
 
     @abstractmethod
     def generate(
-        self, context: "Context", template: Optional["PromptTemplate"] = None
+        self,
+        context: "Context",
+        template: Optional["PromptTemplate"] = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ) -> "Artifact":
         """
         Generate an artifact based on context.
@@ -51,6 +54,8 @@ class GeneratorInterface(ABC):
         Args:
             context: The generation context including specification and feedback
             template: Optional prompt template for structured generation
+            action_pair_id: Identifier for the action pair requesting generation
+            workflow_id: UUID of the workflow execution instance
 
         Returns:
             A new Artifact containing the generated content
@@ -128,5 +133,118 @@ class ArtifactDAGInterface(ABC):
 
         Returns:
             List of artifacts from oldest to newest in the chain
+        """
+        pass
+
+    @abstractmethod
+    def get_latest_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> Optional["Artifact"]:
+        """
+        Get the most recent artifact for an action pair in a workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            The most recent artifact, or None if not found
+        """
+        pass
+
+
+class CheckpointDAGInterface(ABC):
+    """
+    Port for checkpoint persistence.
+
+    Provides storage for workflow checkpoints and human amendments,
+    enabling resumable workflows after failure/escalation.
+    """
+
+    @abstractmethod
+    def store_checkpoint(self, checkpoint: "WorkflowCheckpoint") -> str:
+        """
+        Store a checkpoint and return its ID.
+
+        Args:
+            checkpoint: The checkpoint to store
+
+        Returns:
+            The checkpoint_id
+        """
+        pass
+
+    @abstractmethod
+    def get_checkpoint(self, checkpoint_id: str) -> "WorkflowCheckpoint":
+        """
+        Retrieve checkpoint by ID.
+
+        Args:
+            checkpoint_id: The unique identifier
+
+        Returns:
+            The checkpoint
+
+        Raises:
+            KeyError: If checkpoint not found
+        """
+        pass
+
+    @abstractmethod
+    def store_amendment(self, amendment: "HumanAmendment") -> str:
+        """
+        Store a human amendment and return its ID.
+
+        Args:
+            amendment: The amendment to store
+
+        Returns:
+            The amendment_id
+        """
+        pass
+
+    @abstractmethod
+    def get_amendment(self, amendment_id: str) -> "HumanAmendment":
+        """
+        Retrieve amendment by ID.
+
+        Args:
+            amendment_id: The unique identifier
+
+        Returns:
+            The amendment
+
+        Raises:
+            KeyError: If amendment not found
+        """
+        pass
+
+    @abstractmethod
+    def get_amendments_for_checkpoint(
+        self, checkpoint_id: str
+    ) -> list["HumanAmendment"]:
+        """
+        Get all amendments for a checkpoint.
+
+        Args:
+            checkpoint_id: The checkpoint identifier
+
+        Returns:
+            List of amendments linked to this checkpoint
+        """
+        pass
+
+    @abstractmethod
+    def list_checkpoints(
+        self, workflow_id: str | None = None
+    ) -> list["WorkflowCheckpoint"]:
+        """
+        List checkpoints, optionally filtered by workflow_id.
+
+        Args:
+            workflow_id: Optional filter by workflow
+
+        Returns:
+            List of matching checkpoints, newest first
         """
         pass

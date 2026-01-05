@@ -275,9 +275,11 @@ class OllamaGenerator(GeneratorInterface):
         prompt = context.specification
 
         # Include dependencies (e.g., test code for impl generator)
-        if context.dependencies:
+        if context.dependency_artifacts:
             prompt += "\n\n=== DEPENDENCIES ===\n"
-            for key, artifact in context.dependencies:
+            for key, artifact_id in context.dependency_artifacts:
+                # Retrieve full artifact from ℛ
+                artifact = context.ambient.repository.get_artifact(artifact_id)
                 prompt += f"\n{key.upper()} CODE:\n```python\n{artifact.content}\n```\n"
 
         # Include feedback history
@@ -322,11 +324,7 @@ class OllamaGenerator(GeneratorInterface):
                 FeedbackEntry(artifact_id="", feedback=fb)
                 for _, fb in context.feedback_history
             ),
-            dependency_ids=tuple(
-                artifact.artifact_id for _, artifact in context.dependencies
-            )
-            if context.dependencies
-            else (),
+            dependency_artifacts=context.dependency_artifacts,
         )
 
         # Determine previous attempt ID
@@ -337,8 +335,10 @@ class OllamaGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid.uuid4()),
+            workflow_id="benchmark",
             content=code,
             previous_attempt_id=previous_attempt_id,
+            parent_action_pair_id=None,
             action_pair_id=self.action_pair_id,
             created_at=datetime.now(UTC).isoformat(),
             attempt_number=self._attempt_counter,

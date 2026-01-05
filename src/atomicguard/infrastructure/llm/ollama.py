@@ -6,6 +6,7 @@ Connects to Ollama instances via the OpenAI-compatible API.
 
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
 
@@ -21,36 +22,52 @@ from atomicguard.domain.prompts import PromptTemplate
 DEFAULT_OLLAMA_URL = "http://localhost:11434/v1"
 
 
+@dataclass
+class OllamaGeneratorConfig:
+    """Configuration for OllamaGenerator.
+
+    This typed config ensures unknown fields are rejected at construction time.
+    """
+
+    model: str = "qwen2.5-coder:7b"
+    base_url: str = DEFAULT_OLLAMA_URL
+    timeout: float = 120.0
+
+
 class OllamaGenerator(GeneratorInterface):
     """Connects to Ollama instance using OpenAI-compatible API."""
 
-    def __init__(
-        self,
-        model: str = "qwen2.5-coder:7b",
-        base_url: str = DEFAULT_OLLAMA_URL,
-        timeout: float = 120.0,
-    ):
+    config_class = OllamaGeneratorConfig
+
+    def __init__(self, config: OllamaGeneratorConfig | None = None, **kwargs: Any):
         """
         Args:
-            model: Ollama model name
-            base_url: Ollama API URL
-            timeout: Request timeout in seconds
+            config: Typed configuration object (preferred)
+            **kwargs: Legacy kwargs for backward compatibility (deprecated)
         """
+        # Support both config object and legacy kwargs
+        if config is None:
+            config = OllamaGeneratorConfig(**kwargs)
+
         try:
             from openai import OpenAI
         except ImportError as err:
             raise ImportError("openai library required: pip install openai") from err
 
-        self._model = model
+        self._model = config.model
         self._client = OpenAI(
-            base_url=base_url,
+            base_url=config.base_url,
             api_key="ollama",  # required but unused
-            timeout=timeout,
+            timeout=config.timeout,
         )
         self._version_counter = 0
 
     def generate(
-        self, context: Context, template: PromptTemplate | None = None
+        self,
+        context: Context,
+        template: PromptTemplate | None = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
     ) -> Artifact:
         """Generate an artifact based on context."""
         # Build prompt
@@ -79,15 +96,18 @@ class OllamaGenerator(GeneratorInterface):
 
         return Artifact(
             artifact_id=str(uuid.uuid4()),
+            workflow_id=workflow_id,
             content=code,
             previous_attempt_id=None,
-            action_pair_id="ollama",
+            parent_action_pair_id=None,
+            action_pair_id=action_pair_id,
             created_at=datetime.now().isoformat(),
             attempt_number=self._version_counter,
             status=ArtifactStatus.PENDING,
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id=workflow_id,
                 specification=context.specification,
                 constraints=context.ambient.constraints,
                 feedback_history=(),
@@ -97,6 +117,9 @@ class OllamaGenerator(GeneratorInterface):
 
     def _extract_code(self, content: str) -> str:
         """Extract Python code from response."""
+        if not content or content.isspace():
+            return ""
+
         # Try python block
         match = re.search(r"```python\n(.*?)\n```", content, re.DOTALL)
         if match:
@@ -112,8 +135,8 @@ class OllamaGenerator(GeneratorInterface):
         if match:
             return content[match.start() :]
 
-        # Fallback: full content
-        return content
+        # No code block found - return empty to trigger guard validation failure
+        return ""
 
     def _build_basic_prompt(self, context: Context) -> str:
         """Build a basic prompt from context."""

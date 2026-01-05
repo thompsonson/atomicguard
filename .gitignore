@@ -70,3 +70,12 @@ artifacts/*
 
 # documentation not for git
 docs/paper
+
+# Experiment results
+results/*.json
+
+# Example output directories (generated files, any depth)
+examples/**/output/
+
+# Root output directory (from relative path resolution)
+/output/

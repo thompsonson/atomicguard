@@ -188,8 +188,10 @@ class TestDualStateAgentExecute:
 
         dep = Artifact(
             artifact_id="dep-001",
+            workflow_id="test-workflow-001",
             content="# dep",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-dep",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -197,6 +199,7 @@ class TestDualStateAgentExecute:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id="test-workflow-001",
                 specification="",
                 constraints="",
                 feedback_history=(),
@@ -297,8 +300,10 @@ class TestDualStateAgentContextComposition:
 
         artifact = Artifact(
             artifact_id="test-001",
+            workflow_id="test-workflow-001",
             content="bad code",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -306,6 +311,7 @@ class TestDualStateAgentContextComposition:
             guard_result=None,
             feedback="",
             context=ContextSnapshot(
+                workflow_id="test-workflow-001",
                 specification="",
                 constraints="",
                 feedback_history=(),
@@ -318,3 +324,137 @@ class TestDualStateAgentContextComposition:
 
         assert len(context.feedback_history) == 1
         assert context.feedback_history[0][1] == "Syntax error"
+
+
+class TestArtifactMetadataTracking:
+    """Tests for artifact provenance and metadata during retry loop.
+
+    These tests document the expected behavior for artifact metadata.
+    Currently failing tests demonstrate bugs that need fixing.
+    """
+
+    def test_attempt_numbers_are_sequential_starting_at_one(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Attempt numbers should be 1, 2, 3 per action pair, not global.
+
+        ISSUE: Currently attempt_number comes from generator's global counter,
+        not a per-action-pair counter managed by the agent.
+        """
+        generator = MockGenerator(responses=["bad1", "bad2", "good"])
+        guard = FailThenPassGuard(fail_count=2)
+        pair = ActionPair(generator=generator, guard=guard)
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        artifact = agent.execute("Write something")
+
+        # Check all stored artifacts have sequential attempt numbers
+        artifacts = list(memory_dag._artifacts.values())
+        attempt_numbers = sorted([a.attempt_number for a in artifacts])
+        assert attempt_numbers == [1, 2, 3]
+        assert artifact.attempt_number == 3
+
+    def test_previous_attempt_id_forms_chain(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Each retry should link to predecessor via previous_attempt_id.
+
+        ISSUE: Currently previous_attempt_id is always None because
+        generators don't link artifacts and agent.py doesn't update it.
+        """
+        generator = MockGenerator(responses=["bad1", "bad2", "good"])
+        guard = FailThenPassGuard(fail_count=2)
+        pair = ActionPair(generator=generator, guard=guard)
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        final = agent.execute("Write something")
+
+        # Get provenance chain
+        provenance = memory_dag.get_provenance(final.artifact_id)
+
+        assert len(provenance) == 3
+        assert provenance[0].previous_attempt_id is None  # First has no predecessor
+        assert provenance[1].previous_attempt_id == provenance[0].artifact_id
+        assert provenance[2].previous_attempt_id == provenance[1].artifact_id
+
+    def test_context_snapshot_captures_feedback_history(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """ContextSnapshot should contain FeedbackEntry for each prior rejection.
+
+        ISSUE: Currently feedback_history in ContextSnapshot is always empty
+        because the agent doesn't populate it during the retry loop.
+        """
+        generator = MockGenerator(responses=["bad1", "bad2", "good"])
+        guard = FailThenPassGuard(fail_count=2)
+        pair = ActionPair(generator=generator, guard=guard)
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        final = agent.execute("Write something")
+
+        # Final artifact's context should have 2 feedback entries
+        assert len(final.context.feedback_history) == 2
+        # Verify FeedbackEntry structure
+        for entry in final.context.feedback_history:
+            assert hasattr(entry, "artifact_id")
+            assert hasattr(entry, "feedback")
+            assert entry.feedback.startswith("Fail #")
+
+    def test_rejected_artifacts_have_rejected_status(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Failed artifacts should have REJECTED status.
+
+        This test verifies the existing status update logic works correctly.
+        """
+        generator = MockGenerator(responses=["bad1", "bad2", "good"])
+        guard = FailThenPassGuard(fail_count=2)
+        pair = ActionPair(generator=generator, guard=guard)
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        final = agent.execute("Write something")
+
+        artifacts = list(memory_dag._artifacts.values())
+        rejected = [a for a in artifacts if a.status == ArtifactStatus.REJECTED]
+        accepted = [a for a in artifacts if a.status == ArtifactStatus.ACCEPTED]
+
+        assert len(rejected) == 2
+        assert len(accepted) == 1
+        assert final.status == ArtifactStatus.ACCEPTED
+
+    def test_feedback_history_count_matches_rejections(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """feedback_history should have one entry per rejection.
+
+        ISSUE: Currently feedback_history is always empty regardless of
+        how many rejections occurred.
+        """
+        generator = MockGenerator(responses=["bad1", "bad2", "bad3", "good"])
+        guard = FailThenPassGuard(fail_count=3)
+        pair = ActionPair(generator=generator, guard=guard)
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        final = agent.execute("Write something")
+
+        # 3 rejections = 3 feedback entries in final context
+        assert len(final.context.feedback_history) == 3
+
+    def test_provenance_chain_retrievable_from_dag(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """DAG.get_provenance() should return full retry chain.
+
+        ISSUE: Currently provenance only returns 1 artifact because
+        previous_attempt_id is never set, breaking the chain.
+        """
+        generator = MockGenerator(responses=["bad1", "bad2", "good"])
+        guard = FailThenPassGuard(fail_count=2)
+        pair = ActionPair(generator=generator, guard=guard)
+        agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
+
+        final = agent.execute("Write something")
+
+        # Should return 3 artifacts in chain
+        provenance = memory_dag.get_provenance(final.artifact_id)
+        assert len(provenance) == 3

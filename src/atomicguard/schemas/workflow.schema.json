@@ -72,9 +72,19 @@
     },
     "ActionPair": {
       "type": "object",
-      "description": "A = ⟨ρ, a_gen, G⟩ - Atomic generation-verification unit (Definition 6)",
+      "description": "A = ⟨ρ, a_gen, G⟩ - Atomic generation-verification unit (Definition 6). The generator (a_gen) and guard (G) form a coupled transaction: generator produces artifacts, guard validates them.",
       "required": ["guard"],
       "properties": {
+        "generator": {
+          "type": "string",
+          "description": "Generator type identifier (a_gen). Maps to GeneratorInterface implementation via entry points. If omitted, uses workflow-level default generator. Per Remark 5, generators may be autonomous Semantic Agents (e.g., ADDGenerator) that internally orchestrate multiple sub-steps.",
+          "pattern": "^[A-Z][a-zA-Z0-9]*Generator$|^[a-z][a-z0-9_]*$"
+        },
+        "generator_config": {
+          "type": "object",
+          "description": "Generator-specific configuration parameters (passed to constructor)",
+          "additionalProperties": true
+        },
         "guard": {
           "type": "string",
           "description": "Guard type identifier (G). Built-in types: syntax, import, type, dynamic_test, human, composite. Custom guards use snake_case identifiers.",

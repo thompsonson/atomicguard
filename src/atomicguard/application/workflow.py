@@ -4,14 +4,24 @@ Workflow: Orchestrates ActionPair execution across multiple steps.
 Owns WorkflowState and infers preconditions from step dependencies.
 """
 
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.agent import DualStateAgent
 from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
-from atomicguard.domain.interfaces import ArtifactDAGInterface
+from atomicguard.domain.interfaces import ArtifactDAGInterface, CheckpointDAGInterface
 from atomicguard.domain.models import (
+    AmendmentType,
     Artifact,
+    ArtifactSource,
+    ArtifactStatus,
+    ContextSnapshot,
+    FailureType,
+    FeedbackEntry,
+    HumanAmendment,
+    WorkflowCheckpoint,
     WorkflowResult,
     WorkflowState,
     WorkflowStatus,
@@ -94,6 +104,9 @@ class Workflow:
         Returns:
             WorkflowResult with success status and artifacts
         """
+        # Generate a unique workflow_id for this execution
+        workflow_id = str(uuid.uuid4())
+
         while not self._is_goal_state():
             step = self._find_applicable()
 
@@ -104,11 +117,9 @@ class Workflow:
                     failed_step="No applicable step",
                 )
 
-            # Extract dependencies
+            # Extract dependencies (keys match action_pair_ids from workflow.json)
             dependencies = {
-                gid.replace("g_", ""): self._artifacts[gid]
-                for gid in step.deps
-                if gid in self._artifacts
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
             # Execute via stateless agent
@@ -117,6 +128,8 @@ class Workflow:
                 artifact_dag=self._dag,
                 rmax=self._rmax,
                 constraints=self._constraints,
+                action_pair_id=step.guard_id,
+                workflow_id=workflow_id,
             )
 
             try:
@@ -161,3 +174,459 @@ class Workflow:
         return all(
             self._workflow_state.is_satisfied(step.guard_id) for step in self._steps
         )
+
+
+class ResumableWorkflow(Workflow):
+    """
+    Workflow with checkpoint and resume support.
+
+    Extends Workflow with:
+    - Automatic checkpoint creation on failure
+    - Resume from checkpoint with human amendment
+    - Provenance tracking through amendments
+    """
+
+    def __init__(
+        self,
+        artifact_dag: ArtifactDAGInterface | None = None,
+        checkpoint_dag: CheckpointDAGInterface | None = None,
+        rmax: int = 3,
+        constraints: str = "",
+        auto_checkpoint: bool = True,
+    ):
+        """
+        Args:
+            artifact_dag: Repository for storing artifacts
+            checkpoint_dag: Repository for storing checkpoints (creates InMemory if None)
+            rmax: Maximum retries per step
+            constraints: Global constraints for the ambient environment
+            auto_checkpoint: Create checkpoint on failure (default True)
+        """
+        super().__init__(artifact_dag, rmax, constraints)
+
+        if checkpoint_dag is None:
+            from atomicguard.infrastructure.persistence import InMemoryCheckpointDAG
+
+            checkpoint_dag = InMemoryCheckpointDAG()
+
+        self._checkpoint_dag = checkpoint_dag
+        self._auto_checkpoint = auto_checkpoint
+        self._current_specification: str = ""
+        self._current_workflow_id: str = ""
+
+    def execute(self, specification: str) -> WorkflowResult:
+        """
+        Execute workflow with automatic checkpointing on failure.
+
+        Args:
+            specification: The task specification
+
+        Returns:
+            WorkflowResult (may include checkpoint if failed)
+        """
+        self._current_specification = specification
+        self._current_workflow_id = str(uuid.uuid4())
+
+        while not self._is_goal_state():
+            step = self._find_applicable()
+
+            if step is None:
+                return WorkflowResult(
+                    status=WorkflowStatus.FAILED,
+                    artifacts=self._artifacts,
+                    failed_step="No applicable step",
+                )
+
+            # Extract dependencies (keys match action_pair_ids from workflow.json)
+            dependencies = {
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
+            }
+
+            # Execute via stateless agent
+            agent = DualStateAgent(
+                action_pair=step.action_pair,
+                artifact_dag=self._dag,
+                rmax=self._rmax,
+                constraints=self._constraints,
+                action_pair_id=step.guard_id,
+                workflow_id=self._current_workflow_id,
+            )
+
+            try:
+                artifact = agent.execute(specification, dependencies)
+                self._artifacts[step.guard_id] = artifact
+                self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
+
+            except EscalationRequired as e:
+                checkpoint = (
+                    self._create_checkpoint(
+                        failed_step=step.guard_id,
+                        failure_type=FailureType.ESCALATION,
+                        feedback=e.feedback,
+                        failed_artifact=e.artifact,
+                        provenance=[],
+                    )
+                    if self._auto_checkpoint
+                    else None
+                )
+
+                return WorkflowResult(
+                    status=WorkflowStatus.CHECKPOINT
+                    if checkpoint
+                    else WorkflowStatus.ESCALATION,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    escalation_artifact=e.artifact,
+                    escalation_feedback=e.feedback,
+                    checkpoint=checkpoint,
+                )
+
+            except RmaxExhausted as e:
+                checkpoint = (
+                    self._create_checkpoint(
+                        failed_step=step.guard_id,
+                        failure_type=FailureType.RMAX_EXHAUSTED,
+                        feedback=e.provenance[-1][1] if e.provenance else str(e),
+                        failed_artifact=e.provenance[-1][0] if e.provenance else None,
+                        provenance=e.provenance,
+                    )
+                    if self._auto_checkpoint
+                    else None
+                )
+
+                return WorkflowResult(
+                    status=WorkflowStatus.CHECKPOINT
+                    if checkpoint
+                    else WorkflowStatus.FAILED,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    provenance=tuple(e.provenance),
+                    checkpoint=checkpoint,
+                )
+
+        return WorkflowResult(status=WorkflowStatus.SUCCESS, artifacts=self._artifacts)
+
+    def resume(
+        self,
+        checkpoint_id: str,
+        amendment: HumanAmendment,
+    ) -> WorkflowResult:
+        """
+        Resume workflow from checkpoint with human amendment.
+
+        Args:
+            checkpoint_id: ID of checkpoint to resume from
+            amendment: Human-provided amendment
+
+        Returns:
+            WorkflowResult (may include new checkpoint if fails again)
+        """
+        # 1. Load and validate checkpoint
+        checkpoint = self._checkpoint_dag.get_checkpoint(checkpoint_id)
+
+        # 2. Store amendment
+        self._checkpoint_dag.store_amendment(amendment)
+
+        # 3. Restore state from checkpoint
+        self._restore_state_from_checkpoint(checkpoint)
+        self._current_specification = checkpoint.specification
+        self._current_workflow_id = checkpoint.workflow_id
+
+        # 4. Find the failed step
+        step = self._find_step_by_id(checkpoint.failed_step)
+        if step is None:
+            raise ValueError(f"Step not found: {checkpoint.failed_step}")
+
+        # 5. Handle amendment based on type
+        if amendment.amendment_type == AmendmentType.ARTIFACT:
+            # Human provided artifact - validate it directly
+            human_artifact = self._create_amendment_artifact(
+                amendment, checkpoint, step
+            )
+            self._dag.store(human_artifact)
+
+            # Run guard on human artifact
+            dependencies = {
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
+            }
+
+            result = step.action_pair.guard.validate(human_artifact, **dependencies)
+
+            if result.passed:
+                # Update artifact status and proceed
+                updated_artifact = replace(
+                    human_artifact,
+                    status=ArtifactStatus.ACCEPTED,
+                    guard_result=True,
+                )
+                self._dag.store(updated_artifact)
+                self._artifacts[step.guard_id] = updated_artifact
+                self._workflow_state.satisfy(
+                    step.guard_id, updated_artifact.artifact_id
+                )
+            else:
+                # Guard failed human artifact - create new checkpoint
+                new_checkpoint = (
+                    self._create_checkpoint(
+                        failed_step=step.guard_id,
+                        failure_type=FailureType.ESCALATION,
+                        feedback=result.feedback,
+                        failed_artifact=human_artifact,
+                        provenance=[],
+                    )
+                    if self._auto_checkpoint
+                    else None
+                )
+
+                return WorkflowResult(
+                    status=WorkflowStatus.CHECKPOINT
+                    if new_checkpoint
+                    else WorkflowStatus.FAILED,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    escalation_feedback=result.feedback,
+                    checkpoint=new_checkpoint,
+                )
+
+        elif amendment.amendment_type == AmendmentType.FEEDBACK:
+            # Human provided feedback - inject into context and retry with agent
+            # Use additional_rmax from amendment
+            effective_rmax = self._rmax + amendment.additional_rmax
+
+            dependencies = {
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
+            }
+
+            agent = DualStateAgent(
+                action_pair=step.action_pair,
+                artifact_dag=self._dag,
+                rmax=effective_rmax,
+                constraints=self._constraints + "\n\n" + amendment.content,
+                action_pair_id=step.guard_id,
+                workflow_id=self._current_workflow_id,
+            )
+
+            try:
+                artifact = agent.execute(
+                    self._current_specification
+                    + "\n\n[Human Feedback]: "
+                    + amendment.content,
+                    dependencies,
+                )
+                self._artifacts[step.guard_id] = artifact
+                self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
+
+            except (EscalationRequired, RmaxExhausted) as e:
+                # Create new checkpoint for the new failure
+                if isinstance(e, EscalationRequired):
+                    new_checkpoint = (
+                        self._create_checkpoint(
+                            failed_step=step.guard_id,
+                            failure_type=FailureType.ESCALATION,
+                            feedback=e.feedback,
+                            failed_artifact=e.artifact,
+                            provenance=[],
+                        )
+                        if self._auto_checkpoint
+                        else None
+                    )
+                else:
+                    new_checkpoint = (
+                        self._create_checkpoint(
+                            failed_step=step.guard_id,
+                            failure_type=FailureType.RMAX_EXHAUSTED,
+                            feedback=e.provenance[-1][1] if e.provenance else str(e),
+                            failed_artifact=e.provenance[-1][0]
+                            if e.provenance
+                            else None,
+                            provenance=e.provenance,
+                        )
+                        if self._auto_checkpoint
+                        else None
+                    )
+
+                return WorkflowResult(
+                    status=WorkflowStatus.CHECKPOINT
+                    if new_checkpoint
+                    else WorkflowStatus.FAILED,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    checkpoint=new_checkpoint,
+                )
+
+        # 6. Continue executing remaining steps
+        return self._continue_execution()
+
+    def _create_checkpoint(
+        self,
+        failed_step: str,
+        failure_type: FailureType,
+        feedback: str,
+        failed_artifact: Artifact | None,
+        provenance: list[tuple[Artifact, str]],
+    ) -> WorkflowCheckpoint:
+        """Create and persist a checkpoint."""
+        checkpoint = WorkflowCheckpoint(
+            checkpoint_id=str(uuid.uuid4()),
+            workflow_id=self._current_workflow_id,
+            created_at=datetime.now(UTC).isoformat(),
+            specification=self._current_specification,
+            constraints=self._constraints,
+            rmax=self._rmax,
+            completed_steps=tuple(
+                step.guard_id
+                for step in self._steps
+                if self._workflow_state.is_satisfied(step.guard_id)
+            ),
+            artifact_ids=tuple(
+                (gid, art.artifact_id) for gid, art in self._artifacts.items()
+            ),
+            failure_type=failure_type,
+            failed_step=failed_step,
+            failed_artifact_id=failed_artifact.artifact_id if failed_artifact else None,
+            failure_feedback=feedback,
+            provenance_ids=tuple(a.artifact_id for a, _ in provenance),
+        )
+        self._checkpoint_dag.store_checkpoint(checkpoint)
+        return checkpoint
+
+    def _restore_state_from_checkpoint(self, checkpoint: WorkflowCheckpoint) -> None:
+        """Restore workflow state from checkpoint."""
+        # Restore satisfied guards
+        for guard_id in checkpoint.completed_steps:
+            self._workflow_state.guards[guard_id] = True
+
+        # Restore artifact references
+        for guard_id, artifact_id in checkpoint.artifact_ids:
+            artifact = self._dag.get_artifact(artifact_id)
+            self._artifacts[guard_id] = artifact
+            self._workflow_state.artifact_ids[guard_id] = artifact_id
+
+    def _find_step_by_id(self, guard_id: str) -> WorkflowStep | None:
+        """Find a step by its guard_id."""
+        for step in self._steps:
+            if step.guard_id == guard_id:
+                return step
+        return None
+
+    def _create_amendment_artifact(
+        self,
+        amendment: HumanAmendment,
+        checkpoint: WorkflowCheckpoint,
+        step: WorkflowStep,
+    ) -> Artifact:
+        """Create an artifact from human amendment."""
+        # Determine attempt number
+        latest = self._dag.get_latest_for_action_pair(
+            step.guard_id, checkpoint.workflow_id
+        )
+        attempt_number = (latest.attempt_number + 1) if latest else 1
+
+        # Build context snapshot
+        context = ContextSnapshot(
+            workflow_id=checkpoint.workflow_id,
+            specification=checkpoint.specification,
+            constraints=checkpoint.constraints,
+            feedback_history=tuple(
+                FeedbackEntry(artifact_id=aid, feedback=checkpoint.failure_feedback)
+                for aid in checkpoint.provenance_ids
+            ),
+            dependency_artifacts=tuple(
+                (gid, art.artifact_id) for gid, art in self._artifacts.items()
+            ),
+        )
+
+        return Artifact(
+            artifact_id=str(uuid.uuid4()),
+            workflow_id=checkpoint.workflow_id,
+            content=amendment.content,
+            previous_attempt_id=checkpoint.failed_artifact_id,
+            parent_action_pair_id=None,
+            action_pair_id=step.guard_id,
+            created_at=datetime.now(UTC).isoformat(),
+            attempt_number=attempt_number,
+            status=ArtifactStatus.PENDING,
+            guard_result=None,
+            feedback="",
+            context=context,
+            source=ArtifactSource.HUMAN,
+        )
+
+    def _continue_execution(self) -> WorkflowResult:
+        """Continue executing remaining steps after resume."""
+        while not self._is_goal_state():
+            step = self._find_applicable()
+
+            if step is None:
+                return WorkflowResult(
+                    status=WorkflowStatus.FAILED,
+                    artifacts=self._artifacts,
+                    failed_step="No applicable step",
+                )
+
+            dependencies = {
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
+            }
+
+            agent = DualStateAgent(
+                action_pair=step.action_pair,
+                artifact_dag=self._dag,
+                rmax=self._rmax,
+                constraints=self._constraints,
+                action_pair_id=step.guard_id,
+                workflow_id=self._current_workflow_id,
+            )
+
+            try:
+                artifact = agent.execute(self._current_specification, dependencies)
+                self._artifacts[step.guard_id] = artifact
+                self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
+
+            except EscalationRequired as e:
+                checkpoint = (
+                    self._create_checkpoint(
+                        failed_step=step.guard_id,
+                        failure_type=FailureType.ESCALATION,
+                        feedback=e.feedback,
+                        failed_artifact=e.artifact,
+                        provenance=[],
+                    )
+                    if self._auto_checkpoint
+                    else None
+                )
+
+                return WorkflowResult(
+                    status=WorkflowStatus.CHECKPOINT
+                    if checkpoint
+                    else WorkflowStatus.ESCALATION,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    escalation_artifact=e.artifact,
+                    escalation_feedback=e.feedback,
+                    checkpoint=checkpoint,
+                )
+
+            except RmaxExhausted as e:
+                checkpoint = (
+                    self._create_checkpoint(
+                        failed_step=step.guard_id,
+                        failure_type=FailureType.RMAX_EXHAUSTED,
+                        feedback=e.provenance[-1][1] if e.provenance else str(e),
+                        failed_artifact=e.provenance[-1][0] if e.provenance else None,
+                        provenance=e.provenance,
+                    )
+                    if self._auto_checkpoint
+                    else None
+                )
+
+                return WorkflowResult(
+                    status=WorkflowStatus.CHECKPOINT
+                    if checkpoint
+                    else WorkflowStatus.FAILED,
+                    artifacts=self._artifacts,
+                    failed_step=step.guard_id,
+                    provenance=tuple(e.provenance),
+                    checkpoint=checkpoint,
+                )
+
+        return WorkflowResult(status=WorkflowStatus.SUCCESS, artifacts=self._artifacts)

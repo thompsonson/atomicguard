@@ -43,7 +43,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 result: dict[str, Any] = json.load(f)
                 return result
 
-        return {"version": "1.0", "artifacts": {}, "action_pairs": {}}
+        return {"version": "1.0", "artifacts": {}, "action_pairs": {}, "workflows": {}}
 
     def _update_index_atomic(self) -> None:
         """Atomically update index.json using write-to-temp + rename."""
@@ -56,8 +56,10 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         """Serialize artifact to JSON-compatible dict."""
         return {
             "artifact_id": artifact.artifact_id,
+            "workflow_id": artifact.workflow_id,
             "content": artifact.content,
             "previous_attempt_id": artifact.previous_attempt_id,
+            "parent_action_pair_id": artifact.parent_action_pair_id,
             "action_pair_id": artifact.action_pair_id,
             "created_at": artifact.created_at,
             "attempt_number": artifact.attempt_number,
@@ -65,6 +67,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             "guard_result": artifact.guard_result,
             "feedback": artifact.feedback,
             "context": {
+                "workflow_id": artifact.context.workflow_id,
                 "specification": artifact.context.specification,
                 "constraints": artifact.context.constraints,
                 "feedback_history": [
@@ -78,7 +81,14 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
 
     def _dict_to_artifact(self, data: dict) -> Artifact:
         """Deserialize artifact from JSON dict."""
+        # Handle both old format (dependency_ids) and new format (dependency_artifacts)
+        dep_data = data["context"].get("dependency_artifacts", {})
+        if not dep_data:
+            # Backwards compatibility: convert old flat array to empty dict
+            dep_data = {}
+
         context = ContextSnapshot(
+            workflow_id=data["context"].get("workflow_id", "unknown"),
             specification=data["context"]["specification"],
             constraints=data["context"]["constraints"],
             feedback_history=tuple(
@@ -86,14 +96,14 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 for fe in data["context"]["feedback_history"]
             ),
             # Deserialize dict → tuple for immutability
-            dependency_artifacts=tuple(
-                data["context"].get("dependency_artifacts", {}).items()
-            ),
+            dependency_artifacts=tuple(dep_data.items()),
         )
         return Artifact(
             artifact_id=data["artifact_id"],
+            workflow_id=data.get("workflow_id", "unknown"),
             content=data["content"],
             previous_attempt_id=data["previous_attempt_id"],
+            parent_action_pair_id=data.get("parent_action_pair_id"),
             action_pair_id=data["action_pair_id"],
             created_at=data["created_at"],
             attempt_number=data["attempt_number"],
@@ -130,7 +140,9 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # 3. Update index
         self._index["artifacts"][artifact.artifact_id] = {
             "path": str(object_path.relative_to(self._base_dir)),
+            "workflow_id": artifact.workflow_id,
             "action_pair_id": artifact.action_pair_id,
+            "parent_action_pair_id": artifact.parent_action_pair_id,
             "status": artifact.status.value,
             "created_at": artifact.created_at,
         }
@@ -141,6 +153,13 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         self._index["action_pairs"][artifact.action_pair_id].append(
             artifact.artifact_id
         )
+
+        # Track by workflow
+        if "workflows" not in self._index:
+            self._index["workflows"] = {}
+        if artifact.workflow_id not in self._index["workflows"]:
+            self._index["workflows"][artifact.workflow_id] = []
+        self._index["workflows"][artifact.workflow_id].append(artifact.artifact_id)
 
         # 4. Atomically update index
         self._update_index_atomic()
@@ -210,8 +229,10 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # Create updated artifact (immutable, so we create new instance)
         updated = Artifact(
             artifact_id=artifact.artifact_id,
+            workflow_id=artifact.workflow_id,
             content=artifact.content,
             previous_attempt_id=artifact.previous_attempt_id,
+            parent_action_pair_id=artifact.parent_action_pair_id,
             action_pair_id=artifact.action_pair_id,
             created_at=artifact.created_at,
             attempt_number=artifact.attempt_number,
@@ -233,3 +254,43 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
 
         # Update cache
         self._cache[artifact_id] = updated
+
+    def get_by_workflow(self, workflow_id: str) -> list[Artifact]:
+        """Get all artifacts for a workflow execution."""
+        if "workflows" not in self._index:
+            return []
+        if workflow_id not in self._index["workflows"]:
+            return []
+
+        artifact_ids = self._index["workflows"][workflow_id]
+        return [self.get_artifact(aid) for aid in artifact_ids]
+
+    def get_latest_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> Artifact | None:
+        """
+        Get the most recent artifact for an action pair in a workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            The most recent artifact, or None if not found
+        """
+        if action_pair_id not in self._index.get("action_pairs", {}):
+            return None
+
+        # Filter by workflow and find latest by created_at
+        candidates = []
+        for artifact_id in self._index["action_pairs"][action_pair_id]:
+            artifact_info = self._index["artifacts"].get(artifact_id, {})
+            if artifact_info.get("workflow_id") == workflow_id:
+                candidates.append((artifact_id, artifact_info.get("created_at", "")))
+
+        if not candidates:
+            return None
+
+        # Sort by created_at descending and return the latest
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return self.get_artifact(candidates[0][0])

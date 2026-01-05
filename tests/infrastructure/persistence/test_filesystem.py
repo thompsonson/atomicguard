@@ -24,8 +24,10 @@ def sample_fs_artifact() -> Artifact:
     """Create a sample artifact for filesystem tests."""
     return Artifact(
         artifact_id="abc123def456",
+        workflow_id="test-workflow-001",
         content="def add(a, b):\n    return a + b",
         previous_attempt_id=None,
+        parent_action_pair_id=None,
         action_pair_id="ap-001",
         created_at="2025-01-01T00:00:00Z",
         attempt_number=1,
@@ -33,6 +35,7 @@ def sample_fs_artifact() -> Artifact:
         guard_result=None,
         feedback="",
         context=ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="Write an add function",
             constraints="Pure Python",
             feedback_history=(),
@@ -219,6 +222,7 @@ class TestFilesystemArtifactDAGGetProvenance:
     def test_get_provenance_chain(self, fs_dag: FilesystemArtifactDAG) -> None:
         """get_provenance() traces full retry chain."""
         context = ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="test",
             constraints="",
             feedback_history=(),
@@ -228,8 +232,10 @@ class TestFilesystemArtifactDAGGetProvenance:
         # Create chain: artifact1 -> artifact2 -> artifact3
         artifact1 = Artifact(
             artifact_id="chain-001",
+            workflow_id="test-workflow-001",
             content="v1",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -240,8 +246,10 @@ class TestFilesystemArtifactDAGGetProvenance:
         )
         artifact2 = Artifact(
             artifact_id="chain-002",
+            workflow_id="test-workflow-001",
             content="v2",
             previous_attempt_id="chain-001",
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:01Z",
             attempt_number=2,
@@ -252,8 +260,10 @@ class TestFilesystemArtifactDAGGetProvenance:
         )
         artifact3 = Artifact(
             artifact_id="chain-003",
+            workflow_id="test-workflow-001",
             content="v3",
             previous_attempt_id="chain-002",
+            parent_action_pair_id=None,
             action_pair_id="ap-001",
             created_at="2025-01-01T00:00:02Z",
             attempt_number=3,
@@ -283,6 +293,7 @@ class TestFilesystemArtifactDAGGetByActionPair:
     ) -> None:
         """get_by_action_pair() returns all artifacts for action pair."""
         context = ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="test",
             constraints="",
             feedback_history=(),
@@ -291,8 +302,10 @@ class TestFilesystemArtifactDAGGetByActionPair:
 
         artifact1 = Artifact(
             artifact_id="ap-art-001",
+            workflow_id="test-workflow-001",
             content="v1",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-same",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -303,8 +316,10 @@ class TestFilesystemArtifactDAGGetByActionPair:
         )
         artifact2 = Artifact(
             artifact_id="ap-art-002",
+            workflow_id="test-workflow-001",
             content="v2",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-same",
             created_at="2025-01-01T00:00:01Z",
             attempt_number=2,
@@ -336,6 +351,7 @@ class TestFilesystemArtifactDAGGetAccepted:
     ) -> None:
         """get_accepted() returns artifact with ACCEPTED status."""
         context = ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="test",
             constraints="",
             feedback_history=(),
@@ -344,8 +360,10 @@ class TestFilesystemArtifactDAGGetAccepted:
 
         rejected = Artifact(
             artifact_id="acc-001",
+            workflow_id="test-workflow-001",
             content="bad",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-acc",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -356,8 +374,10 @@ class TestFilesystemArtifactDAGGetAccepted:
         )
         accepted = Artifact(
             artifact_id="acc-002",
+            workflow_id="test-workflow-001",
             content="good",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-acc",
             created_at="2025-01-01T00:00:01Z",
             attempt_number=2,
@@ -381,6 +401,7 @@ class TestFilesystemArtifactDAGGetAccepted:
     ) -> None:
         """get_accepted() returns None when no accepted artifact."""
         context = ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="test",
             constraints="",
             feedback_history=(),
@@ -389,8 +410,10 @@ class TestFilesystemArtifactDAGGetAccepted:
 
         pending = Artifact(
             artifact_id="pend-001",
+            workflow_id="test-workflow-001",
             content="pending",
             previous_attempt_id=None,
+            parent_action_pair_id=None,
             action_pair_id="ap-pend",
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
@@ -457,6 +480,7 @@ class TestFilesystemArtifactDAGSerialization:
     ) -> None:
         """Stored artifact can be retrieved with all fields intact."""
         context = ContextSnapshot(
+            workflow_id="test-workflow-001",
             specification="Test spec",
             constraints="Test constraints",
             feedback_history=(
@@ -467,8 +491,10 @@ class TestFilesystemArtifactDAGSerialization:
 
         artifact = Artifact(
             artifact_id="round-trip-001",
+            workflow_id="test-workflow-001",
             content="def foo(): pass",
             previous_attempt_id="prev-attempt",
+            parent_action_pair_id=None,
             action_pair_id="ap-round",
             created_at="2025-06-15T10:30:00Z",
             attempt_number=3,
