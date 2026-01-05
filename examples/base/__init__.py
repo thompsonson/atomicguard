@@ -13,6 +13,12 @@ Provides reusable utilities for building example runners:
   - AgentRunner - single-step execution via DualStateAgent
 """
 
+from .checkpoint import (
+    create_amendment,
+    create_checkpoint_commands,
+    display_checkpoint_result,
+    find_checkpoint_by_prefix,
+)
 from .cli import add_options, common_options
 from .config import (
     load_prompts,
@@ -81,4 +87,9 @@ __all__ = [
     # Result utilities
     "save_workflow_results",
     "display_workflow_result",
+    # Checkpoint utilities
+    "create_amendment",
+    "create_checkpoint_commands",
+    "display_checkpoint_result",
+    "find_checkpoint_by_prefix",
 ]
