@@ -18,6 +18,7 @@ from .checkpoint import (
     create_checkpoint_commands,
     display_checkpoint_result,
     find_checkpoint_by_prefix,
+    write_checkpoint_output,
 )
 from .cli import add_options, common_options
 from .config import (
@@ -92,4 +93,5 @@ __all__ = [
     "create_checkpoint_commands",
     "display_checkpoint_result",
     "find_checkpoint_by_prefix",
+    "write_checkpoint_output",
 ]
