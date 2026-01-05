@@ -117,11 +117,9 @@ class Workflow:
                     failed_step="No applicable step",
                 )
 
-            # Extract dependencies
+            # Extract dependencies (keys match action_pair_ids from workflow.json)
             dependencies = {
-                gid.replace("g_", ""): self._artifacts[gid]
-                for gid in step.deps
-                if gid in self._artifacts
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
             # Execute via stateless agent
@@ -239,11 +237,9 @@ class ResumableWorkflow(Workflow):
                     failed_step="No applicable step",
                 )
 
-            # Extract dependencies
+            # Extract dependencies (keys match action_pair_ids from workflow.json)
             dependencies = {
-                gid.replace("g_", ""): self._artifacts[gid]
-                for gid in step.deps
-                if gid in self._artifacts
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
             # Execute via stateless agent
@@ -351,9 +347,7 @@ class ResumableWorkflow(Workflow):
 
             # Run guard on human artifact
             dependencies = {
-                gid.replace("g_", ""): self._artifacts[gid]
-                for gid in step.deps
-                if gid in self._artifacts
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
             result = step.action_pair.guard.validate(human_artifact, **dependencies)
@@ -400,9 +394,7 @@ class ResumableWorkflow(Workflow):
             effective_rmax = self._rmax + amendment.additional_rmax
 
             dependencies = {
-                gid.replace("g_", ""): self._artifacts[gid]
-                for gid in step.deps
-                if gid in self._artifacts
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
             agent = DualStateAgent(
@@ -573,9 +565,7 @@ class ResumableWorkflow(Workflow):
                 )
 
             dependencies = {
-                gid.replace("g_", ""): self._artifacts[gid]
-                for gid in step.deps
-                if gid in self._artifacts
+                gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
             agent = DualStateAgent(
