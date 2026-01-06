@@ -169,3 +169,4 @@ Where:
 - [domain_ubiquitous_language.md](domain_ubiquitous_language.md) — DDD terms and architectural concepts
 - [agent_function.md](agent_function.md) — Agent percepts and actions
 - [agent_program.md](agent_program.md) — Implementation details
+- [../extensions/](../extensions/) — Formal framework extensions (extraction, multi-agent)
