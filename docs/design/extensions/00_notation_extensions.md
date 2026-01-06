@@ -99,6 +99,39 @@ Symbols for multi-agent workflows sharing ℛ as common state. Builds on reposit
 
 ---
 
+## Learning Loop Extension (Definitions 21-24)
+
+Symbols for training data extraction and policy updates. Builds on repository items (Definition 10) and extraction (Definitions 17-18).
+
+### Training Predicates and Traces
+
+| Scope | Symbol | Name | Formal Definition / Notes |
+|-------|--------|------|---------------------------|
+| Predicate | Φ_refinement | Refinement Predicate | Φ_refinement(r) = ⊤ iff r.status = ACCEPTED ∧ ∃r' ∈ provenance(r) : r'.status = REJECTED (Def. 21) |
+| Set | τ | Training Trace | τ = E(ℛ, Φ_training) — Extracted training data (Def. 22) |
+| Predicate | Φ_training | Training Filter | Policy choice: Φ_refinement, Φ_status(ACCEPTED), etc. (Def. 22) |
+
+### Reward and Policy
+
+| Scope | Symbol | Name | Formal Definition / Notes |
+|-------|--------|------|---------------------------|
+| Function | R_sparse | Sparse Reward Signal | R_sparse: r → {-1, +1} — From guard verdict (Def. 23) |
+| Function | L(θ) | Policy Update Loss | L(θ) = -E_τ[log π_θ(r.a \| r.Ψ, r.H)] (Def. 24) |
+| Policy | π_θ | Generator Policy | Parameterized by weights θ |
+
+### Common Filter Predicates
+
+| Symbol | Definition | Use Case |
+|--------|------------|----------|
+| Φ_refinement | retry→success chains | Learn from corrections |
+| Φ_source(s) | r.source = s | Filter by GENERATOR or HUMAN |
+| Φ_status(s) | r.status = s | Filter by ACCEPTED or REJECTED |
+| Φ_timestamp(>t) | r.created_at > t | Recent traces only |
+
+**Reference**: [04_learning_loop.md](04_learning_loop.md), [05_learning_implementation.md](05_learning_implementation.md)
+
+---
+
 ## Definition Summary
 
 | Definition | Name | Extension |
@@ -114,6 +147,10 @@ Symbols for multi-agent workflows sharing ℛ as common state. Builds on reposit
 | Def. 18 | Filter Predicate | Artifact Extraction |
 | Def. 19 | Multi-Agent System | Multi-Agent Workflows |
 | Def. 20 | Agent-Local Workflow State | Multi-Agent Workflows |
+| Def. 21 | Refinement Predicate | Learning Loop |
+| Def. 22 | Training Trace | Learning Loop |
+| Def. 23 | Sparse Reward Signal | Learning Loop |
+| Def. 24 | Policy Update | Learning Loop |
 
 ---
 
@@ -127,6 +164,8 @@ Symbols for multi-agent workflows sharing ℛ as common state. Builds on reposit
 | Thm. 6 | Belief Convergence | Multi-Agent Workflows |
 | Thm. 7 | System Dynamics Preservation | Multi-Agent Workflows |
 | Thm. 8 | Cross-Workflow Dependency Resolution | Multi-Agent Workflows |
+| Thm. 9 | Training Trace Completeness | Learning Loop |
+| Thm. 10 | Learning Loop Preserves System Dynamics | Learning Loop |
 
 Note: Theorems 1-2 are in the base paper. Extension theorems start at 3.
 
@@ -150,6 +189,22 @@ Note: Theorems 1-2 are in the base paper. Extension theorems start at 3.
 │  Queries repository      │    │  Shares repository         │
 │  items r                 │    │  items r                   │
 └──────────────────────────┘    └────────────────────────────┘
+              │
+              ▼
+┌──────────────────────────┐
+│  Learning Loop           │
+│  (Def 21-24)             │
+│  - Training traces τ     │
+│  - Reward R_sparse       │
+│  - Policy update L(θ)    │
+└──────────────────────────┘
+              │
+              ▼
+┌──────────────────────────┐
+│  Coach (FUTURE)          │
+│  - Dense reward R_dense  │
+│  - Semantic feedback     │
+└──────────────────────────┘
 ```
 
 ---
@@ -181,3 +236,5 @@ No separate `Ψ_history`, `Ω_history`, or `W_history` concepts are needed.
 - [01_versioned_environment.md](01_versioned_environment.md) — Versioned environment formal extension
 - [02_artifact_extraction.md](02_artifact_extraction.md) — Extraction formal extension
 - [03_multi_agent_workflows.md](03_multi_agent_workflows.md) — Multi-agent formal extension
+- [04_learning_loop.md](04_learning_loop.md) — Learning loop formal extension
+- [05_learning_implementation.md](05_learning_implementation.md) — Learning loop implementation guide

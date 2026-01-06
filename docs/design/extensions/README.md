@@ -2,7 +2,7 @@
 
 This directory contains formal extensions to the Dual-State Domain framework presented in [arXiv:2512.20660](https://arxiv.org/abs/2512.20660).
 
-These extensions preserve the base system dynamics (Definitions 1-9) while introducing additional concepts for practical agent implementations: repository items with configuration snapshots, read-only extraction queries, and multi-agent coordination through shared state.
+These extensions preserve the base system dynamics (Definitions 1-9) while introducing additional concepts for practical agent implementations: repository items with configuration snapshots, read-only extraction queries, multi-agent coordination, and continuous learning from workflow traces.
 
 ---
 
@@ -24,6 +24,14 @@ Symbol reference for all extension definitions. Start here to understand the not
 
 **Definitions 19-20.** Extends the framework to multiple agents sharing the same repository. Coordination emerges from the shared DAG — no explicit message passing or consensus protocols required.
 
+### [04 — Learning Loop](04_learning_loop.md)
+
+**Definitions 21-24, Theorems 9-10.** Formalizes continuous learning from workflow execution traces. Defines training trace extraction, sparse reward signals from guard verdicts, and policy updates for fine-tuning the generator. Includes analysis of what the model learns and potential issues with mitigations.
+
+### [05 — Learning Implementation](05_learning_implementation.md)
+
+**Practical guide.** Implementation guidance for the Learning Loop extension using Unsloth and LoRA adapters. Covers dataset extraction, prompt formatting, training configuration, filtering strategies, incremental training, and evaluation.
+
 ---
 
 ## Reading Order
@@ -32,6 +40,8 @@ Symbol reference for all extension definitions. Start here to understand the not
 2. **Versioned Environment** — Foundation (repository items, W_ref)
 3. **Extraction** — Queries over repository items
 4. **Multi-Agent** — Agents sharing repository items
+5. **Learning Loop** — Training from workflow traces
+6. **Learning Implementation** — Practical fine-tuning guide
 
 ---
 
@@ -44,3 +54,39 @@ The base paper defines artifacts `a ∈ A` as simple content. These extensions i
 | Artifact | `a ∈ A` | `r = ⟨a, Ψ, Ω, W_ref, H, source, metadata⟩` |
 | History | Implicit | Emergent from ℛ DAG |
 | Workflow | Implicit in P | Explicit via W_ref |
+| Learning | Section 6.1 (conceptual) | Definitions 21-24 (formal) |
+
+---
+
+## Dependency Graph
+
+```
+┌─────────────────────────────────────────┐
+│  Versioned Environment (Def 10-16)      │  ← Foundation
+└─────────────────────────────────────────┘
+              │
+              ├──────────────────────────────┐
+              ▼                              ▼
+┌──────────────────────────┐    ┌────────────────────────────┐
+│  Artifact Extraction     │    │  Multi-Agent Workflows     │
+│  (Def 17-18)             │    │  (Def 19-20)               │
+└──────────────────────────┘    └────────────────────────────┘
+              │
+              ▼
+┌──────────────────────────┐
+│  Learning Loop           │
+│  (Def 21-24)             │
+└──────────────────────────┘
+              │
+              ▼
+┌──────────────────────────┐
+│  Implementation Guide    │
+│  (Unsloth/LoRA)          │
+└──────────────────────────┘
+              │
+              ▼
+┌──────────────────────────┐
+│  Coach (FUTURE)          │
+│  Dense reward shaping    │
+└──────────────────────────┘
+```
