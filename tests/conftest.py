@@ -233,6 +233,7 @@ def fs_checkpoint_dag(tmp_path) -> FilesystemCheckpointDAG:
     return FilesystemCheckpointDAG(str(tmp_path / "checkpoints"))
 
 
+
 # =============================================================================
 # EXTENSION 01: VERSIONED ENVIRONMENT FIXTURES
 # =============================================================================
