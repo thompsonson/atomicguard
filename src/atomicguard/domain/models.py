@@ -7,7 +7,8 @@ All models are immutable (frozen dataclasses) to ensure referential transparency
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from atomicguard.domain.interfaces import ArtifactDAGInterface
@@ -86,6 +87,18 @@ class Artifact:
     context: ContextSnapshot  # Full context snapshot at generation time
     source: ArtifactSource = ArtifactSource.GENERATED  # Origin of content
 
+    # Extension 01: Versioned Environment (Definition 10)
+    workflow_ref: str | None = None  # W_ref: Content-addressed workflow hash (Def 11)
+    metadata: MappingProxyType[str, Any] = field(
+        default_factory=lambda: MappingProxyType({})
+    )  # Immutable metadata dict
+
+    def __post_init__(self) -> None:
+        """Convert metadata dict to immutable MappingProxyType if needed."""
+        # Handle case where metadata is passed as a regular dict
+        if isinstance(object.__getattribute__(self, "metadata"), dict):
+            object.__setattr__(self, "metadata", MappingProxyType(self.metadata))
+
 
 # =============================================================================
 # GUARD RESULT
@@ -125,6 +138,7 @@ class Context:
     dependency_artifacts: tuple[
         tuple[str, str], ...
     ] = ()  # (action_pair_id, artifact_id) - matches schema
+    workflow_id: str | None = None  # Extension 03: Agent workflow identifier (Def 19)
 
     def get_dependency(self, action_pair_id: str) -> str | None:
         """Look up artifact_id by action_pair_id."""
@@ -132,6 +146,41 @@ class Context:
             if key == action_pair_id:
                 return artifact_id
         return None
+
+    def amend(self, delta_spec: str = "", delta_constraints: str = "") -> "Context":
+        """Monotonic configuration amendment (⊕ operator, Definition 12).
+
+        Creates a new Context with appended specification and/or constraints.
+        Original Context remains unchanged (immutability preserved).
+
+        Args:
+            delta_spec: Additional specification to append to current specification.
+            delta_constraints: Additional constraints to append to ambient constraints.
+
+        Returns:
+            New Context with amended specification and constraints.
+        """
+        new_spec = self.specification
+        if delta_spec:
+            new_spec = f"{self.specification}\n{delta_spec}"
+
+        new_constraints = self.ambient.constraints
+        if delta_constraints:
+            new_constraints = f"{self.ambient.constraints}\n{delta_constraints}"
+
+        new_ambient = AmbientEnvironment(
+            repository=self.ambient.repository,
+            constraints=new_constraints,
+        )
+
+        return Context(
+            ambient=new_ambient,
+            specification=new_spec,
+            current_artifact=self.current_artifact,
+            feedback_history=self.feedback_history,
+            dependency_artifacts=self.dependency_artifacts,
+            workflow_id=self.workflow_id,
+        )
 
 
 # =============================================================================
@@ -222,6 +271,9 @@ class WorkflowCheckpoint:
     failed_artifact_id: str | None  # Last artifact before failure
     failure_feedback: str  # Error/feedback message
     provenance_ids: tuple[str, ...]  # Artifact IDs of all failed attempts
+
+    # Extension 01: Versioned Environment (Definition 11)
+    workflow_ref: str | None = None  # W_ref: Content-addressed workflow hash
 
 
 class AmendmentType(Enum):

@@ -68,6 +68,7 @@ class OllamaGenerator(GeneratorInterface):
         template: PromptTemplate | None = None,
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
+        workflow_ref: str | None = None,
     ) -> Artifact:
         """Generate an artifact based on context."""
         # Build prompt
@@ -113,6 +114,7 @@ class OllamaGenerator(GeneratorInterface):
                 feedback_history=(),
                 dependency_artifacts=context.dependency_artifacts,
             ),
+            workflow_ref=workflow_ref,
         )
 
     def _extract_code(self, content: str) -> str:
