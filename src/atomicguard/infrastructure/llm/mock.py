@@ -44,8 +44,8 @@ class MockGenerator(GeneratorInterface):
 
     def generate(
         self,
-        _context: Context,
-        _template: PromptTemplate | None = None,
+        context: Context,  # noqa: ARG002 - unused but required by interface
+        template: PromptTemplate | None = None,  # noqa: ARG002
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
         workflow_ref: str | None = None,
