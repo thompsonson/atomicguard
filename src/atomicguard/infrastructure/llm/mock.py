@@ -48,6 +48,7 @@ class MockGenerator(GeneratorInterface):
         _template: PromptTemplate | None = None,
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
+        workflow_ref: str | None = None,
     ) -> Artifact:
         """Return the next predefined response."""
         if self._call_count >= len(self._responses):
@@ -75,6 +76,7 @@ class MockGenerator(GeneratorInterface):
                 feedback_history=(),
                 dependency_artifacts=(),
             ),
+            workflow_ref=workflow_ref,
         )
 
     @property
