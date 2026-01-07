@@ -6,6 +6,7 @@ Implements the Versioned Repository R from Definition 4.
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         self._objects_dir = self._base_dir / "objects"
         self._index_path = self._base_dir / "index.json"
         self._cache: dict[str, Artifact] = {}
+        self._lock = threading.Lock()  # Thread safety for concurrent writes
         self._index: dict[str, Any] = self._load_or_create_index()
 
     def _load_or_create_index(self) -> dict[str, Any]:
@@ -122,52 +124,55 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         """
         Append artifact to DAG (immutable, append-only).
 
+        Thread-safe: uses lock to ensure atomic index updates.
+
         Args:
             artifact: The artifact to store
 
         Returns:
             The artifact_id
         """
-        # 1. Serialize to JSON
-        artifact_dict = self._artifact_to_dict(artifact)
+        with self._lock:
+            # 1. Serialize to JSON
+            artifact_dict = self._artifact_to_dict(artifact)
 
-        # 2. Write to objects/{prefix}/{artifact_id}.json
-        object_path = self._get_object_path(artifact.artifact_id)
-        object_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(object_path, "w") as f:
-            json.dump(artifact_dict, f, indent=2)
+            # 2. Write to objects/{prefix}/{artifact_id}.json
+            object_path = self._get_object_path(artifact.artifact_id)
+            object_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(object_path, "w") as f:
+                json.dump(artifact_dict, f, indent=2)
 
-        # 3. Update index
-        self._index["artifacts"][artifact.artifact_id] = {
-            "path": str(object_path.relative_to(self._base_dir)),
-            "workflow_id": artifact.workflow_id,
-            "action_pair_id": artifact.action_pair_id,
-            "parent_action_pair_id": artifact.parent_action_pair_id,
-            "status": artifact.status.value,
-            "created_at": artifact.created_at,
-        }
+            # 3. Update index
+            self._index["artifacts"][artifact.artifact_id] = {
+                "path": str(object_path.relative_to(self._base_dir)),
+                "workflow_id": artifact.workflow_id,
+                "action_pair_id": artifact.action_pair_id,
+                "parent_action_pair_id": artifact.parent_action_pair_id,
+                "status": artifact.status.value,
+                "created_at": artifact.created_at,
+            }
 
-        # Track by action pair
-        if artifact.action_pair_id not in self._index["action_pairs"]:
-            self._index["action_pairs"][artifact.action_pair_id] = []
-        self._index["action_pairs"][artifact.action_pair_id].append(
-            artifact.artifact_id
-        )
+            # Track by action pair
+            if artifact.action_pair_id not in self._index["action_pairs"]:
+                self._index["action_pairs"][artifact.action_pair_id] = []
+            self._index["action_pairs"][artifact.action_pair_id].append(
+                artifact.artifact_id
+            )
 
-        # Track by workflow
-        if "workflows" not in self._index:
-            self._index["workflows"] = {}
-        if artifact.workflow_id not in self._index["workflows"]:
-            self._index["workflows"][artifact.workflow_id] = []
-        self._index["workflows"][artifact.workflow_id].append(artifact.artifact_id)
+            # Track by workflow
+            if "workflows" not in self._index:
+                self._index["workflows"] = {}
+            if artifact.workflow_id not in self._index["workflows"]:
+                self._index["workflows"][artifact.workflow_id] = []
+            self._index["workflows"][artifact.workflow_id].append(artifact.artifact_id)
 
-        # 4. Atomically update index
-        self._update_index_atomic()
+            # 4. Atomically update index
+            self._update_index_atomic()
 
-        # 5. Add to cache
-        self._cache[artifact.artifact_id] = artifact
+            # 5. Add to cache
+            self._cache[artifact.artifact_id] = artifact
 
-        return artifact.artifact_id
+            return artifact.artifact_id
 
     def get_artifact(self, artifact_id: str) -> Artifact:
         """Retrieve artifact by ID (cache-first)."""
@@ -294,3 +299,18 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # Sort by created_at descending and return the latest
         candidates.sort(key=lambda x: x[1], reverse=True)
         return self.get_artifact(candidates[0][0])
+
+    def get_all(self) -> list[Artifact]:
+        """Return all artifacts in the DAG.
+
+        Returns:
+            List of all artifacts, sorted by created_at.
+        """
+        # Get all artifact IDs from index and sort by created_at
+        artifact_ids_with_times = [
+            (aid, info.get("created_at", ""))
+            for aid, info in self._index.get("artifacts", {}).items()
+        ]
+        artifact_ids_with_times.sort(key=lambda x: x[1])
+
+        return [self.get_artifact(aid) for aid, _ in artifact_ids_with_times]
