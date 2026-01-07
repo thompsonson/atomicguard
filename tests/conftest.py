@@ -131,6 +131,7 @@ def sample_checkpoint() -> WorkflowCheckpoint:
         failed_artifact_id="art-002",
         failure_feedback="Syntax error on line 5",
         provenance_ids=("art-002", "art-003"),
+        workflow_ref="test-workflow-ref-abc123",  # Extension 01: W_ref
     )
 
 
