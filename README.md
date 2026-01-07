@@ -8,6 +8,21 @@
 
 A Dual-State Agent Framework for reliable LLM code generation.
 
+## Why AtomicGuard?
+
+AI agents hallucinate. Worse, those hallucinations **compound** — each generation builds on the last, and errors propagate through the workflow.
+
+AtomicGuard solves this by combining to aspects - **decompose goals** into small measurable tasks and through **Bounded Indeterminacy**: the LLM generates content, but a deterministic state machine controls the logic. Every generation is validated before the workflow advances.
+
+| Challenge | Solution |
+|-----------|----------|
+| 🛡️ **Safety** | Dual-State Architecture & Atomic Action Pairs |
+| 💾 **State** | Versioned Repository Items & Configuration Snapshots |
+| 🌐 **Scale** | Multi-Agent Coordination via Shared DAG |
+| 📈 **Improvement** | Continuous Learning from Guard Verdicts |
+
+→ [Learn more about the architecture](docs/design/architecture.md)
+
 > **New to AtomicGuard?** Start with the [Getting Started Guide](docs/getting-started.md).
 
 **Paper:** *Managing the Stochastic: Foundations of Learning in Neuro-Symbolic Systems for Software Engineering* (Thompson, 2025)
