@@ -132,6 +132,40 @@ Symbols for training data extraction and policy updates. Builds on repository it
 
 ---
 
+## Composite Guards Extension (Definitions 38-43)
+
+Symbols for guard composition patterns. Builds on the base paper (Definition 4: Guard Function).
+
+### Composite Guard Structure
+
+| Scope | Symbol | Name | Formal Definition / Notes |
+|-------|--------|------|---------------------------|
+| Tuple | G_composite | Composite Guard | G_composite = ⟨{G₁, ..., Gₙ}, compose, policy⟩ (Def. 38) |
+| Set | {G₁, ..., Gₙ} | Sub-Guards | Set of guard functions (Definition 4) |
+| Enum | compose | Composition Strategy | compose ∈ {SEQUENTIAL, PARALLEL} |
+| Enum | policy | Aggregation Policy | policy ∈ {ALL_PASS, ANY_PASS, MAJORITY_PASS} (Def. 41) |
+
+### Sequential and Parallel Guards
+
+| Scope | Symbol | Name | Formal Definition / Notes |
+|-------|--------|------|---------------------------|
+| Guard | G_seq | Sequential Guard | Fail-fast ordered execution (Def. 39) |
+| Guard | G_par | Parallel Guard | Concurrent execution with aggregation (Def. 40) |
+| Tuple | SubGuardResult | Sub-Guard Result | ⟨guard_name, passed, feedback, execution_time⟩ (Def. 43) |
+
+### Aggregation Functions
+
+| Scope | Symbol | Name | Formal Definition / Notes |
+|-------|--------|------|---------------------------|
+| Function | aggregate | Aggregation | aggregate: [{(v, φ)}] × Policy → (v, φ) (Def. 41) |
+| Policy | ALL_PASS | All Must Pass | ⊤ iff ∀(vᵢ, φᵢ) ∈ results: vᵢ = ⊤ |
+| Policy | ANY_PASS | Any Must Pass | ⊤ iff ∃(vᵢ, φᵢ) ∈ results: vᵢ = ⊤ |
+| Policy | MAJORITY_PASS | Majority Must Pass | ⊤ iff {passed} > n/2 |
+
+**Reference**: [08_composite_guards.md](08_composite_guards.md)
+
+---
+
 ## Definition Summary
 
 | Definition | Name | Extension |
@@ -151,6 +185,25 @@ Symbols for training data extraction and policy updates. Builds on repository it
 | Def. 22 | Training Trace | Learning Loop |
 | Def. 23 | Sparse Reward Signal | Learning Loop |
 | Def. 24 | Policy Update | Learning Loop |
+| Def. 25 | Workflow Artifact | Generated Workflows |
+| Def. 26 | Component Registry | Generated Workflows |
+| Def. 27 | Planner ActionPair | Generated Workflows |
+| Def. 28 | Workflow Guard | Generated Workflows |
+| Def. 29 | Meta-Workflow | Generated Workflows |
+| Def. 30 | Two-Level Execution | Generated Workflows |
+| Def. 31 | Failure Mode Hierarchy | Generated Workflows |
+| Def. 32 | Escalation Policy | Generated Workflows |
+| Def. 33 | Configuration Fingerprint | Incremental Execution |
+| Def. 34 | Execution Cache | Incremental Execution |
+| Def. 35 | Cache Hit Predicate | Incremental Execution |
+| Def. 36 | Incremental Executor | Incremental Execution |
+| Def. 37 | Cache Invalidation | Incremental Execution |
+| Def. 38 | Composite Guard | Composite Guards |
+| Def. 39 | Sequential Guard | Composite Guards |
+| Def. 40 | Parallel Guard | Composite Guards |
+| Def. 41 | Aggregation Policy | Composite Guards |
+| Def. 42 | Nested Composition | Composite Guards |
+| Def. 43 | Sub-Guard Result | Composite Guards |
 
 ---
 
@@ -166,6 +219,10 @@ Symbols for training data extraction and policy updates. Builds on repository it
 | Thm. 8 | Cross-Workflow Dependency Resolution | Multi-Agent Workflows |
 | Thm. 9 | Training Trace Completeness | Learning Loop |
 | Thm. 10 | Learning Loop Preserves System Dynamics | Learning Loop |
+| Thm. 11 | Dynamics Preservation (Two-Level) | Generated Workflows |
+| Thm. 12 | Workflow Artifact Integrity | Generated Workflows |
+| Thm. 13 | Component Resolution Completeness | Generated Workflows |
+| Thm. 14 | Composite Guard Preserves System Dynamics | Composite Guards |
 
 Note: Theorems 1-2 are in the base paper. Extension theorems start at 3.
 
@@ -238,3 +295,6 @@ No separate `Ψ_history`, `Ω_history`, or `W_history` concepts are needed.
 - [03_multi_agent_workflows.md](03_multi_agent_workflows.md) — Multi-agent formal extension
 - [04_learning_loop.md](04_learning_loop.md) — Learning loop formal extension
 - [05_learning_implementation.md](05_learning_implementation.md) — Learning loop implementation guide
+- [06_generated_workflows.md](06_generated_workflows.md) — Generated workflows formal extension
+- [07_incremental_execution.md](07_incremental_execution.md) — Incremental execution formal extension
+- [08_composite_guards.md](08_composite_guards.md) — Composite guards formal extension
