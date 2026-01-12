@@ -89,6 +89,12 @@ class Artifact:
 
     # Extension 01: Versioned Environment (Definition 10)
     workflow_ref: str | None = None  # W_ref: Content-addressed workflow hash (Def 11)
+
+    # Extension 07: Incremental Execution (Definition 33)
+    config_ref: str | None = (
+        None  # Ψ_ref: Configuration fingerprint for change detection
+    )
+
     metadata: MappingProxyType[str, Any] = field(
         default_factory=lambda: MappingProxyType({})
     )  # Immutable metadata dict
