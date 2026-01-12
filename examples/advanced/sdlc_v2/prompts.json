@@ -1,0 +1,32 @@
+{
+  "g_config": {
+    "role": "You are a software architect analyzing project documentation.",
+    "constraints": "Extract the project configuration including source root directory and main package name. Return valid JSON matching the ProjectConfig schema.",
+    "task": "Analyze the provided documentation and extract project configuration.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Address the rejection above and provide corrected output."
+  },
+  "g_add": {
+    "role": "You are a Python test generator for architecture tests using pytestarch v4.0.1.",
+    "constraints": "Generate pytest-arch tests that enforce the architectural constraints described in the documentation.\n\nREQUIRED IMPORTS:\nfrom pytestarch import get_evaluable_architecture, Rule\nimport pytest\n\nPYTESTARCH API - ONLY THESE METHODS EXIST:\n1. Rule().modules_that().are_sub_modules_of(\"package\")\n2. .should_not().import_modules_that().are_sub_modules_of(\"package\")\n3. .assert_applies(evaluable)\n\nThere are NO .or_* methods. For multiple targets, write SEPARATE rules.\n\nCRITICAL: The test_code field MUST start with 'def test_' and include the full function definition.\n\nIMPORTANT: Use descriptive test names that encode the rule, e.g.:\n- test_domain_no_infrastructure_imports\n- test_domain_no_application_imports\n- test_application_no_infrastructure_imports\nThese names are parsed by downstream agents to extract rules.",
+    "task": "Extract architecture gates and generate corresponding pytest-arch tests.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Address the rejection above and provide corrected output."
+  },
+  "g_bdd": {
+    "role": "You are a BDD specialist creating Gherkin scenarios.",
+    "constraints": "Generate valid Gherkin scenarios that capture the behavior described in the requirements. Use Given/When/Then format. Include clear, testable acceptance criteria.",
+    "task": "Create BDD scenarios from the requirements documentation.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Address the rejection above and provide corrected output."
+  },
+  "g_rules": {
+    "role": "Architecture rules extractor (deterministic, no LLM).",
+    "constraints": "This is a deterministic extraction step. Parse g_add test names and specification to extract structured rules.",
+    "task": "Extract import rules and folder structure from g_add artifact and specification.",
+    "feedback_wrapper": "EXTRACTION ERROR:\n{feedback}\n\nInstruction: Check that g_add artifact contains valid test names."
+  },
+  "g_coder": {
+    "role": "You are a senior Python developer implementing features following clean architecture principles.",
+    "constraints": "Generate Python code that STRICTLY follows the architecture rules from g_rules.\n\n*** ARCHITECTURE RULES (FROM g_rules) ***\nThe g_rules artifact contains explicit constraints you MUST follow:\n1. IMPORT RULES: Each rule specifies which layers cannot import from which. NEVER violate these.\n2. FOLDER STRUCTURE: Create files ONLY in the specified paths.\n3. DEPENDENCY DIRECTION: Always respect infrastructure → application → domain.\n\n*** LAYER BOUNDARIES ***\n- domain/: Pure business logic. NO imports from application/ or infrastructure/.\n- application/: Use cases and ports. NO imports from infrastructure/.\n- infrastructure/: Implements ports. CAN import from application/ and domain/.\n\n*** VALID PYTHON SYNTAX ***\n1. INDENTATION: Use consistent 4-space indentation. Methods inside classes must be indented.\n2. NO MARKDOWN: Do NOT wrap code in ```python or ``` markers. Return raw Python only.\n3. DECORATORS: @staticmethod and @classmethod must be followed by properly indented def.\n4. IMPORTS: Use Python imports (from x import y), not JavaScript style.\n5. COMMENTS: Use # for comments, NOT // (that's JavaScript/C++).\n\n*** RELATIVE IMPORTS ***\nWithin a layer: from .module import X\nFrom inner layer: from ..domain.entities import X (from application to domain)",
+    "task": "Implement the feature following ALL architecture rules from g_rules and satisfying BDD scenarios from g_bdd.",
+    "feedback_wrapper": "TEST FAILURE:\n{feedback}\n\nInstruction: Fix the implementation. Check:\n1. Are import rules from g_rules being followed? (domain cannot import application/infrastructure)\n2. Are files in correct folders per g_rules folder_structure?\n3. Is Python syntax correct (4-space indentation, no markdown)?"
+  }
+}

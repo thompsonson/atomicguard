@@ -1,0 +1,78 @@
+{
+  "name": "Enhanced SDLC with Extensions",
+  "description": "Multi-agent SDLC workflow with checkpoint/resume support and extension features: Versioned Environment (01), Artifact Extraction (02), Multi-Agent System (03), Incremental Execution (07), and Composite Guards (08).",
+  "model": "qwen2.5-coder:14b",
+  "rmax": 6,
+  "extensions": {
+    "versioned_environment": true,
+    "artifact_extraction": true,
+    "multi_agent": true,
+    "incremental_execution": true,
+    "composite_guards": true
+  },
+  "incremental": {
+    "enabled": true,
+    "cache_artifacts": true,
+    "propagate_changes": true
+  },
+  "action_pairs": {
+    "g_config": {
+      "generator": "ConfigExtractorGenerator",
+      "guard": "config_extracted",
+      "description": "Extract project configuration (source_root, package_name) from documentation"
+    },
+    "g_add": {
+      "generator": "ADDGenerator",
+      "guard": "architecture_tests_valid",
+      "guard_config": {
+        "min_tests": 1
+      },
+      "requires": ["g_config"],
+      "description": "Generate pytest-arch tests from architecture documentation"
+    },
+    "g_bdd": {
+      "generator": "BDDGenerator",
+      "guard": "scenarios_valid",
+      "guard_config": {
+        "min_scenarios": 1
+      },
+      "requires": ["g_config"],
+      "description": "Generate BDD scenarios (Gherkin) from requirements"
+    },
+    "g_rules": {
+      "generator": "RulesExtractorGenerator",
+      "guard": "rules_valid",
+      "guard_config": {
+        "min_rules": 1,
+        "min_folders": 1
+      },
+      "requires": ["g_add", "g_config"],
+      "description": "Extract structured architecture rules from tests and specification (deterministic, no LLM)"
+    },
+    "g_coder": {
+      "generator": "CoderGenerator",
+      "guard": "composite_validation",
+      "guard_config": {
+        "workdir": "output",
+        "run_mypy": true,
+        "run_ruff": true,
+        "timeout": 60.0
+      },
+      "rmax": 6,
+      "requires": ["g_rules", "g_bdd", "g_add"],
+      "description": "Generate implementation with composite validation (Extension 08): syntax/structure, quality gates, architecture tests. All feedback routes to CoderGenerator."
+    },
+    "g_merge_ready": {
+      "generator": "IdentityGenerator",
+      "generator_config": {
+        "source_artifact": "g_coder"
+      },
+      "guard": "merge_ready",
+      "guard_config": {
+        "required_gates": ["g_config", "g_add", "g_bdd", "g_rules", "g_coder"]
+      },
+      "requires": ["g_coder"],
+      "description": "Final composite check verifying all gates passed"
+    }
+  }
+}
