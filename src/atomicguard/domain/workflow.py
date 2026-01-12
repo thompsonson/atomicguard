@@ -144,6 +144,68 @@ def resolve_workflow_ref(w_ref: str) -> dict[str, Any]:
 
 
 # =============================================================================
+# CONFIGURATION REFERENCE (Definition 33 - Extension 07)
+# =============================================================================
+
+
+def compute_config_ref(
+    action_pair_id: str,
+    workflow_config: dict[str, Any],
+    prompt_config: dict[str, Any],
+    upstream_artifacts: dict[str, Artifact] | None = None,
+) -> str:
+    """Compute configuration reference Ψ_ref for an action pair (Definition 33).
+
+    The Ψ_ref is a content-addressable fingerprint that changes when:
+    - Prompt configuration changes
+    - Model/guard configuration changes
+    - Upstream action pair Ψ_ref changes
+    - Upstream artifact content changes
+
+    This enables incremental execution - skip unchanged action pairs.
+
+    Args:
+        action_pair_id: ID of the action pair to compute ref for.
+        workflow_config: Full workflow configuration dict.
+        prompt_config: Full prompt configuration dict.
+        upstream_artifacts: Map of dependency action_pair_id → Artifact.
+            If None, computes ref for root action pair with no dependencies.
+
+    Returns:
+        Hex-encoded SHA-256 hash string.
+    """
+    ap_config = workflow_config.get("action_pairs", {}).get(action_pair_id, {})
+    prompt = prompt_config.get(action_pair_id, {})
+
+    # Collect upstream refs and artifact content hashes
+    upstream_refs: dict[str, str | None] = {}
+    artifact_hashes: dict[str, str] = {}
+
+    if upstream_artifacts:
+        for dep_id in ap_config.get("requires", []):
+            dep_artifact = upstream_artifacts.get(dep_id)
+            if dep_artifact:
+                upstream_refs[dep_id] = dep_artifact.config_ref
+                artifact_hashes[dep_id] = hashlib.sha256(
+                    dep_artifact.content.encode("utf-8")
+                ).hexdigest()
+
+    # Build canonical input for hashing
+    hash_input = {
+        "prompt": prompt,
+        "model": ap_config.get("model", workflow_config.get("model")),
+        "guard": ap_config.get("guard"),
+        "guard_config": ap_config.get("guard_config", {}),
+        "upstream_refs": upstream_refs,
+        "artifact_hashes": artifact_hashes,
+    }
+
+    # Canonical JSON: sorted keys, no extra whitespace
+    canonical = json.dumps(hash_input, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# =============================================================================
 # WORKFLOW RESUME SUPPORT (Definition 15)
 # =============================================================================
 
