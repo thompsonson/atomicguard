@@ -479,6 +479,25 @@ def create_artifact_browser() -> tuple[
 
             content = artifact.content
 
+            # Build guard_result metadata
+            guard_result_data = None
+            if artifact.guard_result is not None:
+                guard_result_data = {
+                    "passed": artifact.guard_result.passed,
+                    "feedback": artifact.guard_result.feedback,
+                    "fatal": artifact.guard_result.fatal,
+                    "guard_name": artifact.guard_result.guard_name,
+                    "sub_results": [
+                        {
+                            "guard_name": sr.guard_name,
+                            "passed": sr.passed,
+                            "feedback": sr.feedback,
+                            "execution_time_ms": sr.execution_time_ms,
+                        }
+                        for sr in artifact.guard_result.sub_results
+                    ],
+                }
+
             metadata = {
                 "artifact_id": artifact.artifact_id,
                 "workflow_id": artifact.workflow_id,
@@ -488,22 +507,50 @@ def create_artifact_browser() -> tuple[
                 "status": artifact.status.value if artifact.status else None,
                 "created_at": artifact.created_at,
                 "previous_attempt_id": artifact.previous_attempt_id,
+                "guard_result": guard_result_data,
             }
 
             provenance_rows = []
             try:
                 provenance = artifact_dag.get_provenance(artifact_id)
                 for art in provenance:
-                    feedback = (
-                        art.feedback[:100] + "..."
-                        if len(art.feedback) > 100
-                        else art.feedback
+                    # Build feedback showing all sub-guard results for composite guards
+                    feedback_parts = []
+                    if art.guard_result is not None:
+                        if art.guard_result.sub_results:
+                            # Show each sub-guard result
+                            for sr in art.guard_result.sub_results:
+                                status_icon = "✓" if sr.passed else "✗"
+                                if sr.passed:
+                                    feedback_parts.append(
+                                        f"{sr.guard_name}: {status_icon} Success"
+                                    )
+                                else:
+                                    # Truncate failure feedback
+                                    short_feedback = sr.feedback.split("\n")[0][:60]
+                                    if len(sr.feedback) > 60:
+                                        short_feedback += "..."
+                                    feedback_parts.append(
+                                        f"{sr.guard_name}: {status_icon} {short_feedback}"
+                                    )
+                        else:
+                            # Non-composite guard - show main feedback
+                            feedback = art.guard_result.feedback
+                            feedback = (
+                                feedback[:100] + "..."
+                                if len(feedback) > 100
+                                else feedback
+                            )
+                            feedback_parts.append(feedback)
+
+                    feedback_display = (
+                        "\n".join(feedback_parts) if feedback_parts else ""
                     )
                     provenance_rows.append(
                         [
                             art.attempt_number,
                             art.status.value if art.status else "unknown",
-                            feedback,
+                            feedback_display,
                         ]
                     )
             except Exception:
