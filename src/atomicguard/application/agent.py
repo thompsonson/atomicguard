@@ -92,15 +92,14 @@ class DualStateAgent:
                 for a, f in feedback_history
             )
 
-            # Update artifact with guard result AND provenance metadata
+            # Update artifact with full GuardResult (Extension 08: Composite Guards)
             artifact = replace(
                 artifact,
                 previous_attempt_id=previous_id,
                 status=ArtifactStatus.ACCEPTED
                 if result.passed
                 else ArtifactStatus.REJECTED,
-                guard_result=result.passed,
-                feedback=result.feedback,
+                guard_result=result,  # Store full GuardResult, not just bool
                 context=replace(
                     artifact.context,
                     feedback_history=fb_entries,

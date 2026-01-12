@@ -47,7 +47,6 @@ def sample_artifact(sample_context_snapshot: ContextSnapshot) -> Artifact:
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=sample_context_snapshot,
     )
 
@@ -66,7 +65,6 @@ def invalid_syntax_artifact(sample_context_snapshot: ContextSnapshot) -> Artifac
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=sample_context_snapshot,
     )
 
@@ -280,7 +278,6 @@ def populated_dag(
                 ArtifactStatus.REJECTED,
             ][i % 3],
             guard_result=None,
-            feedback="" if i % 3 != 2 else f"Error in artifact {i}",
             context=sample_context_snapshot,
         )
         for i in range(15)
@@ -299,6 +296,8 @@ def retry_chain_artifacts(
 
     chain = []
 
+    from atomicguard.domain.models import GuardResult
+
     # First attempt - REJECTED
     art1 = Artifact(
         artifact_id="retry-001",
@@ -310,8 +309,9 @@ def retry_chain_artifacts(
         created_at="2025-01-01T10:00:00Z",
         attempt_number=1,
         status=ArtifactStatus.REJECTED,
-        guard_result=None,
-        feedback="Test failed: expected 5, got -1",
+        guard_result=GuardResult(
+            passed=False, feedback="Test failed: expected 5, got -1"
+        ),
         context=sample_context_snapshot,
     )
     memory_dag.store(art1)
@@ -328,8 +328,9 @@ def retry_chain_artifacts(
         created_at="2025-01-01T10:05:00Z",
         attempt_number=2,
         status=ArtifactStatus.REJECTED,
-        guard_result=None,
-        feedback="Test failed: expected 5, got 6",
+        guard_result=GuardResult(
+            passed=False, feedback="Test failed: expected 5, got 6"
+        ),
         context=sample_context_snapshot,
     )
     memory_dag.store(art2)
@@ -346,8 +347,7 @@ def retry_chain_artifacts(
         created_at="2025-01-01T10:10:00Z",
         attempt_number=3,
         status=ArtifactStatus.ACCEPTED,
-        guard_result=None,
-        feedback="",
+        guard_result=GuardResult(passed=True, feedback=""),
         context=sample_context_snapshot,
     )
     memory_dag.store(art3)

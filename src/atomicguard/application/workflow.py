@@ -408,7 +408,7 @@ class ResumableWorkflow(Workflow):
                 updated_artifact = replace(
                     human_artifact,
                     status=ArtifactStatus.ACCEPTED,
-                    guard_result=True,
+                    guard_result=result,  # Store full GuardResult
                 )
                 self._dag.store(updated_artifact)
                 self._artifacts[step.guard_id] = updated_artifact
@@ -597,8 +597,7 @@ class ResumableWorkflow(Workflow):
             created_at=datetime.now(UTC).isoformat(),
             attempt_number=attempt_number,
             status=ArtifactStatus.PENDING,
-            guard_result=None,
-            feedback="",
+            guard_result=None,  # Guard result set after validation
             context=context,
             source=ArtifactSource.HUMAN,
         )

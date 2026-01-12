@@ -105,8 +105,7 @@ class OllamaGenerator(GeneratorInterface):
             created_at=datetime.now().isoformat(),
             attempt_number=self._version_counter,
             status=ArtifactStatus.PENDING,
-            guard_result=None,
-            feedback="",
+            guard_result=None,  # Guard result set after validation
             context=ContextSnapshot(
                 workflow_id=workflow_id,
                 specification=context.specification,

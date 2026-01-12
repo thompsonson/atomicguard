@@ -180,7 +180,7 @@ class WorkflowResumeService:
             accepted_artifact = replace(
                 human_artifact,
                 status=ArtifactStatus.ACCEPTED,
-                guard_result=True,
+                guard_result=guard_result,  # Store full GuardResult
             )
             self._artifact_dag.store(accepted_artifact)
 
