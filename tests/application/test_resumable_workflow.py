@@ -1,4 +1,9 @@
-"""Tests for ResumableWorkflow - checkpoint and resume support."""
+"""Tests for ResumableWorkflow - checkpoint and resume support.
+
+Note: ResumableWorkflow is deprecated. Use Workflow + CheckpointService +
+WorkflowResumeService instead. These tests are kept for backwards compatibility
+during the transition period.
+"""
 
 import pytest
 
@@ -18,6 +23,9 @@ from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.checkpoint import InMemoryCheckpointDAG
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
+
+# Filter deprecation warnings from ResumableWorkflow for these tests
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 class AlwaysPassGuard(GuardInterface):
