@@ -32,6 +32,18 @@ Symbol reference for all extension definitions. Start here to understand the not
 
 **Practical guide.** Implementation guidance for the Learning Loop extension using Unsloth and LoRA adapters. Covers dataset extraction, prompt formatting, training configuration, filtering strategies, incremental training, and evaluation.
 
+### [06 — Generated Workflows](06_generated_workflows.md)
+
+**Definitions 25-32, Theorems 11-13.** Treats workflows as generated artifacts, enabling agents to determine their own execution path. Introduces the Planner ActionPair, two-level execution, and configurable escalation policies.
+
+### [07 — Incremental Execution](07_incremental_execution.md)
+
+**Definitions 33-37.** Enables skipping unchanged action pairs based on configuration fingerprints. Supports efficient re-execution when only parts of the specification change.
+
+### [08 — Composite Guards](08_composite_guards.md)
+
+**Definitions 38-43, Theorem 14.** Formalizes guard composition patterns for combining multiple validation checks into a single guard function. Enables fail-fast sequential execution, parallel concurrent validation, and nested composition while preserving system dynamics.
+
 ---
 
 ## Reading Order
@@ -42,6 +54,9 @@ Symbol reference for all extension definitions. Start here to understand the not
 4. **Multi-Agent** — Agents sharing repository items
 5. **Learning Loop** — Training from workflow traces
 6. **Learning Implementation** — Practical fine-tuning guide
+7. **Generated Workflows** — Dynamic workflow generation
+8. **Incremental Execution** — Skip unchanged action pairs
+9. **Composite Guards** — Guard composition patterns
 
 ---
 
@@ -65,28 +80,34 @@ The base paper defines artifacts `a ∈ A` as simple content. These extensions i
 │  Versioned Environment (Def 10-16)      │  ← Foundation
 └─────────────────────────────────────────┘
               │
-              ├──────────────────────────────┐
-              ▼                              ▼
-┌──────────────────────────┐    ┌────────────────────────────┐
-│  Artifact Extraction     │    │  Multi-Agent Workflows     │
-│  (Def 17-18)             │    │  (Def 19-20)               │
+              ├──────────────────────────────┬────────────────────────┐
+              ▼                              ▼                        │
+┌──────────────────────────┐    ┌────────────────────────────┐       │
+│  Artifact Extraction     │    │  Multi-Agent Workflows     │       │
+│  (Def 17-18)             │    │  (Def 19-20)               │       │
+└──────────────────────────┘    └────────────────────────────┘       │
+              │                                                       │
+              ├───────────────────────────────────────────────────────┤
+              ▼                                                       │
+┌──────────────────────────┐                                         │
+│  Learning Loop           │                                         │
+│  (Def 21-24)             │                                         │
+└──────────────────────────┘                                         │
+              │                                                       │
+              ▼                                                       │
+┌──────────────────────────┐    ┌────────────────────────────┐       │
+│  Implementation Guide    │    │  Generated Workflows       │◄──────┘
+│  (Unsloth/LoRA)          │    │  (Def 25-32)               │
 └──────────────────────────┘    └────────────────────────────┘
-              │
-              ▼
-┌──────────────────────────┐
-│  Learning Loop           │
-│  (Def 21-24)             │
-└──────────────────────────┘
-              │
-              ▼
-┌──────────────────────────┐
-│  Implementation Guide    │
-│  (Unsloth/LoRA)          │
-└──────────────────────────┘
-              │
-              ▼
-┌──────────────────────────┐
-│  Coach (FUTURE)          │
-│  Dense reward shaping    │
-└──────────────────────────┘
+                                              │
+                                              ▼
+                                ┌────────────────────────────┐
+                                │  Incremental Execution     │
+                                │  (Def 33-37)               │
+                                └────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│  Composite Guards (Def 38-43)           │  ← Independent (Base Paper only)
+│  Guard composition patterns             │
+└─────────────────────────────────────────┘
 ```

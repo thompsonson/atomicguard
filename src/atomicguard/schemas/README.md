@@ -55,6 +55,42 @@ G_θ: 𝒜 × 𝒞 → {⊤, ⊥_retry, ⊥_fatal} × Σ*
 where θ = guard-specific parameters (e.g., min_gates=3)
 ```
 
+### Composite Guards (Extension 08)
+
+Guards can be composed using `CompositeGuardSpec`:
+
+```json
+{
+  "guard": "composite",
+  "guards": {
+    "compose": "sequential",
+    "policy": "all_pass",
+    "guards": [
+      "syntax",
+      {"type": "quality_gates", "config": {"run_mypy": true}},
+      {"compose": "parallel", "guards": ["ruff_check", "pylint_check"]}
+    ]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `compose` | `sequential` \| `parallel` | `sequential` | Composition strategy (Definitions 39-40) |
+| `policy` | `all_pass` \| `any_pass` \| `majority_pass` | `all_pass` | Aggregation policy (Definition 41) |
+| `guards` | `GuardSpec[]` | - | Sub-guards to compose (supports nesting) |
+
+Simple array syntax remains supported for backwards compatibility:
+
+```json
+{
+  "guard": "composite",
+  "guards": ["syntax", "import", "tests"]
+}
+```
+
+This is equivalent to `Sequential([...], ALL_PASS)`.
+
 ### Specification Sources (Ψ)
 
 Specification is decoupled from workflow and can be:
