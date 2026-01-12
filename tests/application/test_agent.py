@@ -197,7 +197,6 @@ class TestDualStateAgentExecute:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=ContextSnapshot(
                 workflow_id="test-workflow-001",
                 specification="",
@@ -309,7 +308,6 @@ class TestDualStateAgentContextComposition:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=ContextSnapshot(
                 workflow_id="test-workflow-001",
                 specification="",

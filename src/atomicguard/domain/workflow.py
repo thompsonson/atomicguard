@@ -409,8 +409,12 @@ class WorkflowResumer:
             if self._artifact_dag is not None:
                 try:
                     artifact = self._artifact_dag.get_artifact(artifact_id)
-                    if artifact and artifact.feedback:
-                        history.append((artifact_id, artifact.feedback))
+                    if (
+                        artifact
+                        and artifact.guard_result
+                        and artifact.guard_result.feedback
+                    ):
+                        history.append((artifact_id, artifact.guard_result.feedback))
                 except Exception:
                     pass
 
@@ -535,8 +539,7 @@ class HumanAmendmentProcessor:
             created_at=amendment.created_at,
             attempt_number=len(checkpoint.provenance_ids) + 1,
             status=ArtifactStatus.PENDING,
-            guard_result=None,
-            feedback="",
+            guard_result=None,  # Guard result set after validation
             context=context_snapshot,
             source=ArtifactSource.HUMAN,
         )

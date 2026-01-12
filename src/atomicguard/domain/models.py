@@ -15,6 +15,41 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# GUARD RESULT (moved before Artifact for forward reference)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class SubGuardOutcome:
+    """Outcome from a single sub-guard within a composite (Definition 43).
+
+    Captures individual guard result for attribution in composite validations.
+    """
+
+    guard_name: str  # Class name of the sub-guard
+    passed: bool  # Whether this sub-guard passed
+    feedback: str  # Feedback from this sub-guard
+    execution_time_ms: float = 0.0  # Time spent in this sub-guard
+
+
+@dataclass(frozen=True)
+class GuardResult:
+    """Immutable guard validation outcome (Definition 6).
+
+    G(α, C) → {v, φ} where:
+    - v = passed (⊤ or ⊥)
+    - φ = feedback signal
+    - fatal = ⊥_fatal (non-recoverable, requires escalation)
+    """
+
+    passed: bool
+    feedback: str = ""
+    fatal: bool = False  # ⊥_fatal - skip retry, escalate to human
+    guard_name: str | None = None  # Name of the guard that produced this result
+    sub_results: tuple[SubGuardOutcome, ...] = ()  # For composite guards (Extension 08)
+
+
+# =============================================================================
 # ARTIFACT MODEL (Definition 4-6)
 # =============================================================================
 
@@ -82,8 +117,7 @@ class Artifact:
     created_at: str  # ISO timestamp
     attempt_number: int  # Attempt within this action pair context
     status: ArtifactStatus  # pending/rejected/accepted/superseded
-    guard_result: bool | None  # ⊤ or ⊥ (None if pending)
-    feedback: str  # φ - guard feedback (empty if passed)
+    guard_result: GuardResult | None  # Full guard result (None if pending)
     context: ContextSnapshot  # Full context snapshot at generation time
     source: ArtifactSource = ArtifactSource.GENERATED  # Origin of content
 
@@ -104,20 +138,6 @@ class Artifact:
         # Handle case where metadata is passed as a regular dict
         if isinstance(object.__getattribute__(self, "metadata"), dict):
             object.__setattr__(self, "metadata", MappingProxyType(self.metadata))
-
-
-# =============================================================================
-# GUARD RESULT
-# =============================================================================
-
-
-@dataclass(frozen=True)
-class GuardResult:
-    """Immutable guard validation outcome."""
-
-    passed: bool
-    feedback: str = ""
-    fatal: bool = False  # ⊥_fatal - skip retry, escalate to human
 
 
 # =============================================================================
