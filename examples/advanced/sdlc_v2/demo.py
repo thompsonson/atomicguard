@@ -620,9 +620,9 @@ def resume(
     # Get dependencies for guard validation
     dependencies: dict[str, Artifact] = {}
     for dep_id in failed_step.requires:
-        artifact_id = artifact_dag.lookup(dep_id)
-        if artifact_id:
-            dependencies[dep_id] = artifact_dag.get_artifact(artifact_id)
+        dep_artifact = artifact_dag.get_accepted(dep_id)
+        if dep_artifact:
+            dependencies[dep_id] = dep_artifact
 
     # Initialize resume service and resume with W_ref verification
     resume_service = WorkflowResumeService(checkpoint_dag, artifact_dag)

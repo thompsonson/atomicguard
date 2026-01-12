@@ -103,15 +103,25 @@ class ADDGenerator(GeneratorInterface):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "g_add",
         workflow_id: str = "unknown",
     ) -> Artifact:
-        """Generate architecture tests from documentation."""
+        """Generate architecture tests from documentation.
+
+        Args:
+            context: Generation context with specification and dependencies
+            template: Required prompt template (no fallback)
+            action_pair_id: Identifier for this action pair
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            Generated artifact with architecture tests
+        """
         logger.debug("[ADDGenerator] Building prompt...")
 
-        # Get project config from dependencies if available
-        config_info = ""
+        # Get project config from dependencies for context enrichment
+        dep_context_parts = []
         if context.dependency_artifacts:
             for dep_name, dep_id in context.dependency_artifacts:
                 if dep_name == "g_config":
@@ -121,28 +131,18 @@ class ADDGenerator(GeneratorInterface):
                         source_root = config_data.get("source_root", "")
                         package_name = config_data.get("package_name", "")
                         if source_root:
-                            config_info = f"\n\nProject Configuration:\n- Source Root: {source_root}\n- Package Name: {package_name}"
+                            dep_context_parts.append(
+                                f"\n\nProject Configuration:\n- Source Root: {source_root}\n- Package Name: {package_name}"
+                            )
                     except Exception as e:
                         logger.warning(f"[ADDGenerator] Could not load config: {e}")
 
-        # Build prompt
-        if template:
-            prompt = template.render(context)
-        else:
-            prompt = f"""Generate pytest-arch tests from this architecture documentation:
+        # Use template to render prompt (includes all feedback history)
+        prompt = template.render(context)
 
-{context.specification}
-{config_info}
-
-Return a valid JSON object matching the TestSuite schema.
-"""
-
-        # Add feedback if present
-        if context.feedback_history:
-            feedback = context.feedback_history[-1][1]
-            prompt += (
-                f"\n\nPrevious attempt feedback: {feedback}\nFix the issues above."
-            )
+        # Append dependency context after template content
+        if dep_context_parts:
+            prompt += "\n" + "\n".join(dep_context_parts)
 
         logger.debug(f"[ADDGenerator] Prompt length: {len(prompt)} chars")
 
