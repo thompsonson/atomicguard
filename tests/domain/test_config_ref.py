@@ -26,7 +26,6 @@ def make_artifact(
         attempt_number=1,
         status=ArtifactStatus.ACCEPTED,
         guard_result=True,
-        feedback="",
         context=ContextSnapshot(
             workflow_id="wf-test",
             specification="test",

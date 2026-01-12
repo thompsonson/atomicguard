@@ -51,7 +51,6 @@ class TestStatusPredicate:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -61,6 +60,7 @@ class TestStatusPredicate:
     def test_matches_rejected_status(self, sample_context_snapshot):
         """StatusPredicate(REJECTED) matches rejected artifacts."""
         from atomicguard.domain.extraction import StatusPredicate
+        from atomicguard.domain.models import GuardResult
 
         artifact = Artifact(
             artifact_id="test-001",
@@ -72,8 +72,7 @@ class TestStatusPredicate:
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
-            guard_result=None,
-            feedback="Error",
+            guard_result=GuardResult(passed=False, feedback="Error"),
             context=sample_context_snapshot,
         )
 
@@ -103,7 +102,6 @@ class TestStatusPredicate:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -168,7 +166,6 @@ class TestSourcePredicate:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
             source=ArtifactSource.GENERATED,
         )
@@ -192,7 +189,6 @@ class TestSourcePredicate:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
             source=ArtifactSource.HUMAN,
         )
@@ -223,7 +219,6 @@ class TestCompoundPredicates:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -252,7 +247,6 @@ class TestCompoundPredicates:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,  # Different status
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -281,7 +275,6 @@ class TestCompoundPredicates:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -312,7 +305,6 @@ class TestCompoundPredicates:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
