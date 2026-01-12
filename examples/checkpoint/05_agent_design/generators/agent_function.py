@@ -198,7 +198,6 @@ class AgentFunctionGenerator(GeneratorInterface):
             attempt_number=self._version_counter,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=ContextSnapshot(
                 workflow_id=workflow_id,
                 specification=context.specification,
