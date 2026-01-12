@@ -52,3 +52,4 @@
 | Guard library | DDD guards (ACL integrity, architecture fitness, DI container) |
 | Parallel guard | ThreadPoolExecutor for independent checks |
 | pytestarch error hints | Add common hallucination→fix mappings if needed - Currently whitelist-only; no hints |
+| Generated Workflows | Extension 06: Planner ActionPair generates workflow artifacts; two-level execution (meta→object); configurable failure handling (ESCALATE/REGENERATE/HYBRID); requires Extensions 01-02 |
