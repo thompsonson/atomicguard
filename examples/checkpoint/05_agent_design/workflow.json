@@ -1,0 +1,78 @@
+{
+  "name": "Agent Design Process",
+  "description": "7-step agent design workflow producing design documentation and Dual-State Action Pair agent code. Based on Russell & Norvig PEAS framework and ATDD methodology.",
+  "model": "qwen2.5-coder:14b",
+  "rmax": 3,
+  "action_pairs": {
+    "g_peas": {
+      "generator": "PEASGenerator",
+      "guard": "peas_complete",
+      "guard_config": {
+        "min_performance_measures": 1,
+        "min_environment_elements": 1,
+        "min_actuators": 1,
+        "min_sensors": 1
+      },
+      "description": "Extract PEAS analysis (Performance, Environment, Actuators, Sensors) from problem statement"
+    },
+    "g_environment": {
+      "generator": "EnvironmentPropertiesGenerator",
+      "guard": "environment_classified",
+      "guard_config": {
+        "required_dimensions": 6
+      },
+      "requires": ["g_peas"],
+      "description": "Classify environment properties across 6 dimensions"
+    },
+    "g_agent_function": {
+      "generator": "AgentFunctionGenerator",
+      "guard": "agent_function_valid",
+      "guard_config": {
+        "min_percepts": 1,
+        "min_actions": 1,
+        "min_sequences": 1
+      },
+      "requires": ["g_peas", "g_environment"],
+      "description": "Define agent function mapping percepts to actions"
+    },
+    "g_agent_type": {
+      "generator": "AgentTypeGenerator",
+      "guard": "agent_type_justified",
+      "guard_config": {
+        "min_alternatives": 1
+      },
+      "requires": ["g_environment", "g_agent_function"],
+      "description": "Select and justify appropriate agent type"
+    },
+    "g_atdd": {
+      "generator": "ATDDGenerator",
+      "guard": "atdd_valid",
+      "guard_config": {
+        "min_scenarios": 3,
+        "validate_10_principles": true
+      },
+      "requires": ["g_agent_function", "g_agent_type"],
+      "description": "Generate Given-When-Then acceptance criteria for agent behavior"
+    },
+    "g_action_pairs": {
+      "generator": "ActionPairGenerator",
+      "guard": "action_pairs_valid",
+      "guard_config": {
+        "min_action_pairs": 1,
+        "require_traceability": true
+      },
+      "requires": ["g_atdd", "g_peas"],
+      "description": "Design Action Pair specifications (precondition, generator, guard)"
+    },
+    "g_implementation": {
+      "generator": "ImplementationGenerator",
+      "guard": "implementation_valid",
+      "guard_config": {
+        "validate_syntax": true,
+        "workdir": "output/generated"
+      },
+      "requires": ["g_action_pairs", "g_peas"],
+      "description": "Generate Dual-State Action Pair agent implementation skeleton"
+    }
+  }
+}

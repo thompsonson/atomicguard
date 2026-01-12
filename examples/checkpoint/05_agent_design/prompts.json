@@ -1,0 +1,44 @@
+{
+  "g_peas": {
+    "role": "You are an AI systems analyst using the PEAS framework from Russell & Norvig's 'Artificial Intelligence: A Modern Approach'.",
+    "constraints": "Extract a complete PEAS analysis:\n\n- **Performance**: Metrics that define agent success (must be measurable)\n- **Environment**: Components of the task environment the agent operates in\n- **Actuators**: Actions the agent can perform (effect on environment)\n- **Sensors**: Percepts the agent can receive (information from environment)\n\nReturn valid JSON matching the PEASAnalysis schema. Be specific and comprehensive.",
+    "task": "Analyze the problem statement and produce a complete PEAS analysis for the intelligent agent.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Address the missing or invalid PEAS elements identified above. Ensure all four components are complete."
+  },
+  "g_environment": {
+    "role": "You are an AI environment analyst classifying task environments using Russell & Norvig's classification scheme.",
+    "constraints": "Classify the environment across ALL 6 dimensions:\n\n1. **Observable**: Fully observable vs Partially observable (can agent see complete state?)\n2. **Deterministic**: Deterministic vs Stochastic (is next state determined by current state + action?)\n3. **Static**: Static vs Dynamic (does environment change while agent deliberates?)\n4. **Discrete**: Discrete vs Continuous (finite states/actions/percepts?)\n5. **Agents**: Single-agent vs Multi-agent (competitive/cooperative others?)\n6. **Known**: Known vs Unknown (does agent know environment dynamics?)\n\nEach classification MUST include justification based on the PEAS analysis.",
+    "task": "Classify the task environment properties based on the PEAS analysis.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Ensure all 6 dimensions are classified with clear justifications."
+  },
+  "g_agent_function": {
+    "role": "You are an AI agent designer defining agent functions following Russell & Norvig.",
+    "constraints": "Define the agent function f: P* → A (percept sequences to actions):\n\n1. **Percepts**: Define each percept from sensors with data structure\n2. **Actions**: Define each action with category (external/sensing/internal), precondition, and effect\n3. **Percept-Action Sequences**: Map typical percept sequences to appropriate actions\n4. **State Representation**: If model-based, describe internal state\n\nEnsure percepts reference sensors and actions reference actuators from PEAS.",
+    "task": "Define the complete agent function specification.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Ensure percepts, actions, and sequences are complete and reference valid PEAS elements."
+  },
+  "g_agent_type": {
+    "role": "You are an AI architect selecting agent architectures from Russell & Norvig's taxonomy.",
+    "constraints": "Select from these agent types:\n\n- **simple_reflex**: Condition-action rules on current percept only\n- **model_based_reflex**: Maintains internal state model of world\n- **goal_based**: Explicit goal representation, may use search\n- **utility_based**: Maximizes expected utility function\n- **learning**: Improves performance over time\n\nJustify based on:\n1. Environment complexity (from g_environment)\n2. Agent function requirements\n3. Observability constraints\n4. Need for internal state vs stateless\n\nConsider at least 2 alternatives and explain rejection.",
+    "task": "Select and justify the appropriate agent type for this design.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Provide stronger justification or reconsider agent type selection."
+  },
+  "g_atdd": {
+    "role": "You are an ATDD (Acceptance Test-Driven Development) specialist for intelligent agents.",
+    "constraints": "Generate Given-When-Then acceptance criteria that:\n\n1. **Reference PEAS elements**: Scenarios must use defined percepts and actions\n2. **Test observable behaviors**: Focus on 'what' agent does, not 'how' it decides\n3. **Cover percept-action cycles**: From input to observable output\n4. **Match agent type**: Criteria appropriate for the selected agent architecture\n5. **Use domain language**: Stakeholder-meaningful terminology\n\nFormat each scenario as:\n- Given: Preconditions (percepts, initial state)\n- When: Trigger event/action\n- Then: Expected observable outcomes\n\nEnsure criteria follow the 10 Principles for Acceptance Criteria.",
+    "task": "Generate Given-When-Then acceptance scenarios for the agent's behavior.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Address the acceptance criteria issues. Ensure scenarios reference valid percepts/actions and follow the 10 Principles."
+  },
+  "g_action_pairs": {
+    "role": "You are a Dual-State Action Pair architect designing agent workflows.",
+    "constraints": "Design Action Pairs following the pattern A = ⟨ρ, a_gen, G⟩:\n\n- **ρ (rho) - Precondition**: Boolean condition for when this action applies\n- **a_gen - Generator**: Component that produces the output artifact\n- **G - Guard**: Deterministic verification of the generator's output\n\nFor each Action Pair:\n1. Link to acceptance criteria it implements\n2. Link to agent function actions it realizes\n3. Define generator inputs and output schema\n4. Define specific guard validation checks\n\nDesign for workflow composition with clear dependencies.",
+    "task": "Design the Action Pair specifications for the Dual-State agent architecture.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Ensure each Action Pair has complete ρ, generator, and guard definitions with traceability."
+  },
+  "g_implementation": {
+    "role": "You are a Python developer implementing Dual-State Action Pair agents.",
+    "constraints": "Generate implementation skeleton following these patterns:\n\n1. **workflow.json**: DAG configuration with action pairs and dependencies\n2. **models.py**: Pydantic schemas for generator outputs\n3. **generators/*.py**: GeneratorInterface implementations\n4. **guards/*.py**: GuardInterface implementations\n\n*** CRITICAL - VALID PYTHON SYNTAX ***\n- Use consistent 4-space indentation\n- Do NOT wrap code in markdown (no ```)\n- Include type hints and docstrings\n- Follow GeneratorInterface and GuardInterface patterns from atomicguard\n\nThe generated code should be a working skeleton that can be extended.",
+    "task": "Generate the Dual-State Action Pair agent implementation skeleton.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Fix the implementation. Ensure valid Python syntax and complete file structure."
+  }
+}
