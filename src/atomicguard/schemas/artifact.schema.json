@@ -53,6 +53,25 @@
     },
     "context": {
       "$ref": "#/$defs/Context"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["generated", "human", "imported"],
+      "default": "generated",
+      "description": "Origin of artifact content (ArtifactSource enum)"
+    },
+    "workflow_ref": {
+      "type": ["string", "null"],
+      "description": "W_ref - Content-addressed workflow hash for integrity verification (Extension 01, Definition 11)"
+    },
+    "config_ref": {
+      "type": ["string", "null"],
+      "description": "Ψ_ref - Configuration fingerprint for incremental execution change detection (Extension 07, Definition 33)"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Extensible metadata dictionary",
+      "additionalProperties": true
     }
   },
   "$defs": {
