@@ -121,17 +121,25 @@ class CoderGenerator(GeneratorInterface):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "g_coder",
         workflow_id: str = "unknown",
     ) -> Artifact:
-        """Generate implementation code."""
+        """Generate implementation code.
+
+        Args:
+            context: Generation context with specification and dependencies
+            template: Required prompt template (no fallback)
+            action_pair_id: Identifier for this action pair
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            Generated artifact with implementation files
+        """
         logger.debug("[CoderGenerator] Building prompt...")
 
-        # Collect dependency artifacts
-        arch_rules = ""
-        bdd_scenarios = ""
-        config_info = ""
+        # Collect dependency artifacts for context enrichment
+        dep_context_parts = []
 
         if context.dependency_artifacts:
             for dep_name, dep_id in context.dependency_artifacts:
@@ -139,39 +147,29 @@ class CoderGenerator(GeneratorInterface):
                     dep_artifact = context.ambient.repository.get_artifact(dep_id)
                     if dep_name == "g_rules":
                         # Parse structured rules for explicit constraints
-                        arch_rules = self._format_rules(dep_artifact.content)
-                    elif dep_name == "g_add":
-                        # Fallback: if g_rules not present, use raw g_add
-                        if not arch_rules:
-                            arch_rules = f"\n\n## Architecture Tests (from ADD)\n{dep_artifact.content}"
+                        dep_context_parts.append(
+                            self._format_rules(dep_artifact.content)
+                        )
                     elif dep_name == "g_bdd":
-                        bdd_scenarios = f"\n\n## BDD Scenarios\n{dep_artifact.content}"
+                        dep_context_parts.append(
+                            f"\n\n## BDD Scenarios\n{dep_artifact.content}"
+                        )
                     elif dep_name == "g_config":
                         config_data = json.loads(dep_artifact.content)
-                        config_info = f"\n\nProject Config: source_root={config_data.get('source_root', '')}"
+                        dep_context_parts.append(
+                            f"\n\nProject Config: source_root={config_data.get('source_root', '')}"
+                        )
                 except Exception as e:
                     logger.warning(
                         f"[CoderGenerator] Could not load dep {dep_name}: {e}"
                     )
 
-        # Build prompt
-        if template:
-            prompt = template.render(context)
-        else:
-            prompt = f"""Generate implementation for this system:
+        # Use template to render prompt (includes all feedback history)
+        prompt = template.render(context)
 
-{context.specification}
-{config_info}
-{arch_rules}
-{bdd_scenarios}
-
-Return a valid JSON object with implementation files.
-"""
-
-        # Add feedback if present
-        if context.feedback_history:
-            feedback = context.feedback_history[-1][1]
-            prompt += f"\n\nTEST FAILURE:\n{feedback}\n\nFix the implementation to pass all tests."
+        # Append dependency context after template content
+        if dep_context_parts:
+            prompt += "\n" + "\n".join(dep_context_parts)
 
         logger.debug(f"[CoderGenerator] Prompt length: {len(prompt)} chars")
 

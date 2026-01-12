@@ -96,31 +96,25 @@ class BDDGenerator(GeneratorInterface):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "g_bdd",
         workflow_id: str = "unknown",
     ) -> Artifact:
-        """Generate BDD scenarios from requirements."""
+        """Generate BDD scenarios from requirements.
+
+        Args:
+            context: Generation context with specification
+            template: Required prompt template (no fallback)
+            action_pair_id: Identifier for this action pair
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            Generated artifact with BDD scenarios
+        """
         logger.debug("[BDDGenerator] Building prompt...")
 
-        # Build prompt
-        if template:
-            prompt = template.render(context)
-        else:
-            prompt = f"""Generate BDD scenarios from these requirements:
-
-{context.specification}
-
-Return a valid JSON object matching the BDDScenariosResult schema.
-Generate at least {self._min_scenarios} scenarios.
-"""
-
-        # Add feedback if present
-        if context.feedback_history:
-            feedback = context.feedback_history[-1][1]
-            prompt += (
-                f"\n\nPrevious attempt feedback: {feedback}\nFix the issues above."
-            )
+        # Use template to render prompt (includes all feedback history)
+        prompt = template.render(context)
 
         logger.debug(f"[BDDGenerator] Prompt length: {len(prompt)} chars")
 

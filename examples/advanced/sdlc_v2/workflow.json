@@ -71,7 +71,7 @@
       "guard_config": {
         "required_gates": ["g_config", "g_add", "g_bdd", "g_rules", "g_coder"]
       },
-      "requires": ["g_coder"],
+      "requires": ["g_config", "g_add", "g_bdd", "g_rules", "g_coder"],
       "description": "Final composite check verifying all gates passed"
     }
   }

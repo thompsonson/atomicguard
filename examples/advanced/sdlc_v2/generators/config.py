@@ -18,20 +18,23 @@ from atomicguard.domain.prompts import PromptTemplate
 logger = logging.getLogger("sdlc_checkpoint")
 
 CONFIG_EXTRACTOR_SYSTEM_PROMPT = """You are a project configuration extractor.
-Extract project metadata from architecture documentation.
+Extract ACTUAL project metadata from the architecture documentation provided.
 
-Look for:
-- Source root path (e.g., "src/myapp", "src/taskmanager")
-- Package name (e.g., "myapp", "taskmanager")
+CRITICAL: Extract the REAL values from the documentation. Do NOT use placeholders like "your-project-name".
 
-These are typically in a "Package Configuration" or "Project Setup" section.
-If not explicitly stated, infer from layer paths mentioned (e.g., "src/taskmanager/domain/").
+Look for paths like:
+- "src/taskmanager/domain/" → source_root is "src/taskmanager", package_name is "taskmanager"
+- "src/myapp/application/" → source_root is "src/myapp", package_name is "myapp"
 
-Return a JSON object with:
+The package name is the directory name directly under src/ that contains domain/, application/, infrastructure/.
+
+Return a JSON object with the ACTUAL values found:
 {
-  "source_root": "src/taskmanager",
-  "package_name": "taskmanager"
+  "source_root": "<actual path from docs>",
+  "package_name": "<actual package name from docs>"
 }
+
+NEVER return placeholder values. Extract exactly what is in the documentation.
 """
 
 
@@ -78,23 +81,25 @@ class ConfigExtractorGenerator(GeneratorInterface):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "g_config",
         workflow_id: str = "unknown",
     ) -> Artifact:
-        """Extract project configuration from documentation."""
+        """Extract project configuration from documentation.
+
+        Args:
+            context: Generation context with specification
+            template: Required prompt template (no fallback)
+            action_pair_id: Identifier for this action pair
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            Generated artifact with project configuration
+        """
         logger.debug("[ConfigExtractor] Building prompt...")
 
-        # Build prompt
-        if template:
-            prompt = template.render(context)
-        else:
-            prompt = f"Extract project configuration from:\n\n{context.specification}"
-
-        # Add feedback if present
-        if context.feedback_history:
-            feedback = context.feedback_history[-1][1]
-            prompt += f"\n\nPrevious attempt feedback: {feedback}"
+        # Use template to render prompt (includes all feedback history)
+        prompt = template.render(context)
 
         logger.debug(f"[ConfigExtractor] Prompt length: {len(prompt)} chars")
 

@@ -1,8 +1,8 @@
 {
   "g_config": {
     "role": "You are a software architect analyzing project documentation.",
-    "constraints": "Extract the project configuration including source root directory and main package name. Return valid JSON matching the ProjectConfig schema.",
-    "task": "Analyze the provided documentation and extract project configuration.",
+    "constraints": "Extract the ACTUAL project configuration from the documentation. Look for paths like 'src/taskmanager/domain/' and extract 'taskmanager' as the package name and 'src/taskmanager' as the source root. NEVER use placeholder values like 'your-project-name'. Return valid JSON.",
+    "task": "Find the package structure paths in the documentation (e.g., 'src/taskmanager/domain/') and extract the real source_root and package_name values.",
     "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Address the rejection above and provide corrected output."
   },
   "g_add": {
