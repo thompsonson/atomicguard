@@ -58,7 +58,6 @@ def create_artifact(
         attempt_number=1,
         status=status,
         guard_result=None,
-        feedback="",
         context=create_context_snapshot(workflow_id),
         source=ArtifactSource.GENERATED,
     )

@@ -69,7 +69,6 @@ class TestAgentLocalState:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -99,7 +98,6 @@ class TestAgentLocalState:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -128,7 +126,6 @@ class TestAgentLocalState:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact1)
@@ -166,7 +163,6 @@ class TestCrossWorkflowDependencies:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -209,7 +205,6 @@ class TestCrossWorkflowDependencies:
                 attempt_number=1,
                 status=status,
                 guard_result=None,
-                feedback="",
                 context=sample_context_snapshot,
             )
             memory_dag.store(artifact)
@@ -264,7 +259,6 @@ class TestConcurrencyGuarantees:
                     attempt_number=1,
                     status=ArtifactStatus.PENDING,
                     guard_result=None,
-                    feedback="",
                     context=context,
                 )
                 dag.store(artifact)
@@ -302,7 +296,6 @@ class TestConcurrencyGuarantees:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -326,7 +319,6 @@ class TestConcurrencyGuarantees:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -355,7 +347,6 @@ class TestTheorem6BeliefConvergence:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -387,7 +378,6 @@ class TestTheorem6BeliefConvergence:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -418,7 +408,6 @@ class TestTheorem6BeliefConvergence:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -448,7 +437,6 @@ class TestTheorem6BeliefConvergence:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -551,7 +539,6 @@ class TestTheorem8CrossWorkflowDependencies:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -583,7 +570,6 @@ class TestTheorem8CrossWorkflowDependencies:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(artifact)
@@ -611,7 +597,6 @@ class TestTheorem8CrossWorkflowDependencies:
                 attempt_number=1,
                 status=ArtifactStatus.ACCEPTED,
                 guard_result=None,
-                feedback="",
                 context=sample_context_snapshot,
             )
             memory_dag.store(artifact)

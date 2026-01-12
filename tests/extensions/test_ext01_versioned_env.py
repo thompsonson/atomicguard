@@ -115,7 +115,6 @@ class TestArtifactWorkflowRef:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
             workflow_ref="abc123",
         )
@@ -151,7 +150,6 @@ class TestArtifactMetadata:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
             metadata=metadata,
         )
@@ -174,7 +172,6 @@ class TestArtifactMetadata:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
             metadata={"key": "value"},
         )

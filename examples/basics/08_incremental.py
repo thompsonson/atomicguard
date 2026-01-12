@@ -46,7 +46,6 @@ def make_mock_artifact(
         attempt_number=1,
         status=status,
         guard_result=status == ArtifactStatus.ACCEPTED,
-        feedback="",
         context=ContextSnapshot(
             workflow_id="wf-demo",
             specification="Demo specification",
