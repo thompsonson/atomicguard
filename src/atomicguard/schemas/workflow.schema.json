@@ -76,6 +76,75 @@
         }
       ]
     },
+    "GuardSpec": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Simple guard reference by name"
+        },
+        {
+          "type": "object",
+          "description": "Guard with configuration (Extension 08)",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Guard type identifier"
+            },
+            "config": {
+              "type": "object",
+              "description": "Guard-specific configuration",
+              "additionalProperties": true
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/CompositeGuardSpec",
+          "description": "Nested composite guard (Definition 42)"
+        }
+      ]
+    },
+    "CompositeGuardSpec": {
+      "type": "object",
+      "description": "Composite guard specification (Definition 38). Combines multiple guards with composition strategy and aggregation policy.",
+      "required": ["guards"],
+      "properties": {
+        "compose": {
+          "type": "string",
+          "enum": ["sequential", "parallel"],
+          "default": "sequential",
+          "description": "Composition strategy: sequential (fail-fast, Definition 39) or parallel (concurrent, Definition 40)"
+        },
+        "policy": {
+          "type": "string",
+          "enum": ["all_pass", "any_pass", "majority_pass"],
+          "default": "all_pass",
+          "description": "Aggregation policy (Definition 41): all_pass, any_pass, or majority_pass"
+        },
+        "guards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GuardSpec"
+          },
+          "description": "Sub-guards to compose"
+        }
+      }
+    },
+    "GuardsSpec": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Simple list of guard names (legacy, sequential fail-fast)"
+        },
+        {
+          "$ref": "#/$defs/CompositeGuardSpec",
+          "description": "Full composite guard specification (Extension 08)"
+        }
+      ]
+    },
     "ActionPair": {
       "type": "object",
       "description": "A = ⟨ρ, a_gen, G⟩ - Atomic generation-verification unit (Definition 6). The generator (a_gen) and guard (G) form a coupled transaction: generator produces artifacts, guard validates them.",
@@ -97,11 +166,8 @@
           "pattern": "^[a-z][a-z0-9_]*$"
         },
         "guards": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "For composite guards: ordered list of sub-guards (fail-fast)"
+          "$ref": "#/$defs/GuardsSpec",
+          "description": "For composite guards: sub-guards specification (Extension 08). Supports simple list or full CompositeGuardSpec."
         },
         "guard_config": {
           "type": "object",
