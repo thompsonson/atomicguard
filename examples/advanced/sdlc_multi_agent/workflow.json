@@ -1,0 +1,39 @@
+{
+  "name": "multi_agent_sdlc_poc",
+  "description": "Proof-of-Concept: 3-Agent SDLC Workflow (DDD → Coder → Tester)",
+  "version": "1.0.0",
+  "model": "qwen2.5-coder:14b",
+  "phases": {
+    "g_ddd": {
+      "name": "DDD Documentation Generation",
+      "generator": "DDDGenerator",
+      "guard": "DocumentationGuard",
+      "dependencies": [],
+      "retry_budget": 5,
+      "description": "Generate Domain-Driven Design documentation from user intent"
+    },
+    "g_coder": {
+      "name": "Implementation Generation",
+      "generator": "CoderGenerator",
+      "guard": "AllTestsPassGuard",
+      "dependencies": ["g_ddd"],
+      "retry_budget": 11,
+      "description": "Generate Python implementation based on DDD documentation"
+    },
+    "g_tester": {
+      "name": "Test Validation",
+      "generator": "IdentityGenerator",
+      "guard": "AllTestsPassGuard",
+      "dependencies": ["g_coder"],
+      "retry_budget": 7,
+      "description": "Validate that all tests pass"
+    }
+  },
+  "total_retry_budget": 23,
+  "workspace_config": {
+    "persist": true,
+    "base_dir": "output/workspaces"
+  },
+  "artifact_dag_dir": "output/artifact_dag",
+  "constraints": "Follow DDD principles. Keep domain layer pure. Use type hints."
+}

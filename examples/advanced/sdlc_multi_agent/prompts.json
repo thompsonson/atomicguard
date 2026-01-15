@@ -1,0 +1,7 @@
+{
+  "g_ddd": "Generate comprehensive Domain-Driven Design documentation for the following requirements:\n\n{user_intent}\n\nYour output must include four markdown files with proper structure:\n\n1. domain_model.md - Entities, value objects, aggregates, repository interfaces\n2. infrastructure_requirements.md - Architectural gates, layer rules, DI constraints\n3. project_structure.md - Complete directory tree with layer assignments\n4. ubiquitous_language.md - Domain terminology and definitions\n\nOutput as JSON: {\"files\": [{\"path\": \"docs/...\", \"content\": \"...\"}]}",
+
+  "g_coder": "Generate Python implementation based on the DDD documentation in the workspace.\n\nYou have access to:\n- docs/domain_model.md\n- docs/infrastructure_requirements.md\n- docs/project_structure.md\n- docs/ubiquitous_language.md\n\nRequirements:\n1. Follow the directory structure from project_structure.md\n2. Implement all entities and value objects from domain_model.md\n3. Respect architectural gates from infrastructure_requirements.md\n4. Keep domain layer pure (no external dependencies)\n5. Include basic unit tests in tests/ directory\n6. Use Python 3.10+ type hints\n7. Add docstrings with business rules\n\nOutput as JSON: {\"files\": [{\"path\": \"src/...\", \"content\": \"...\"}, {\"path\": \"tests/...\", \"content\": \"...\"}]}",
+
+  "g_tester": "Run tests and validate implementation."
+}
