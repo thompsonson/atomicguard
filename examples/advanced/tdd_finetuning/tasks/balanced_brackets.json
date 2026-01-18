@@ -1,0 +1,7 @@
+{
+  "task_id": "balanced_brackets",
+  "name": "Balanced Brackets",
+  "description": "Implement a function that checks if brackets in a string are balanced",
+  "specification": "Write a function `is_balanced(s: str) -> bool` that returns True if all brackets (parentheses, square brackets, and curly braces) in the input string are balanced and properly nested, False otherwise.\n\nExamples:\n- is_balanced('()') -> True\n- is_balanced('()[]{}') -> True\n- is_balanced('(]') -> False\n- is_balanced('([)]') -> False\n- is_balanced('{[]}') -> True\n- is_balanced('') -> True",
+  "complexity": "medium"
+}

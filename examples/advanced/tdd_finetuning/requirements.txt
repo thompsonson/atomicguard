@@ -1,0 +1,21 @@
+# Core dependencies for running benchmarks
+openai>=1.0.0
+pytest>=7.0.0
+scipy>=1.10.0
+numpy>=1.24.0
+
+# Optional: For fine-tuning (Phase 2)
+# Uncomment if you plan to run fine-tuning
+# torch>=2.0.0
+# transformers>=4.30.0
+# datasets>=2.14.0
+# peft>=0.4.0
+# trl>=0.5.0
+# unsloth
+
+# Optional: For coverage analysis
+# pytest-cov>=4.0.0
+
+# Optional: For data analysis and visualization
+# pandas>=2.0.0
+# matplotlib>=3.7.0

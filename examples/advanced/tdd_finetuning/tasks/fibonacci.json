@@ -1,0 +1,7 @@
+{
+  "task_id": "fibonacci",
+  "name": "Fibonacci Number",
+  "description": "Implement a function that calculates the nth Fibonacci number",
+  "specification": "Write a function `fibonacci(n: int) -> int` that returns the nth Fibonacci number. The Fibonacci sequence is defined as:\n- F(0) = 0\n- F(1) = 1\n- F(n) = F(n-1) + F(n-2) for n > 1\n\nExamples:\n- fibonacci(0) -> 0\n- fibonacci(1) -> 1\n- fibonacci(2) -> 1\n- fibonacci(3) -> 2\n- fibonacci(4) -> 3\n- fibonacci(5) -> 5\n- fibonacci(10) -> 55\n\nConstraints: 0 <= n <= 30",
+  "complexity": "easy"
+}

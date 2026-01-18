@@ -1,0 +1,7 @@
+{
+  "task_id": "prime_checker",
+  "name": "Prime Number Checker",
+  "description": "Implement a function that checks if a number is prime",
+  "specification": "Write a function `is_prime(n: int) -> bool` that returns True if n is a prime number, False otherwise. A prime number is a natural number greater than 1 that has no positive divisors other than 1 and itself.\n\nExamples:\n- is_prime(2) -> True\n- is_prime(3) -> True\n- is_prime(4) -> False\n- is_prime(17) -> True\n- is_prime(1) -> False\n- is_prime(0) -> False\n- is_prime(-5) -> False\n- is_prime(100) -> False\n\nConstraints: -1000 <= n <= 1000",
+  "complexity": "easy"
+}

@@ -1,0 +1,7 @@
+{
+  "task_id": "reverse_linked_list",
+  "name": "Reverse Linked List",
+  "description": "Implement a function that reverses a singly linked list",
+  "specification": "Write a function `reverse_list(head: ListNode | None) -> ListNode | None` that reverses a singly linked list and returns the new head.\n\nThe ListNode class is defined as:\n```python\nclass ListNode:\n    def __init__(self, val=0, next=None):\n        self.val = val\n        self.next = next\n```\n\nExamples:\n- reverse_list(1->2->3->4->5) -> 5->4->3->2->1\n- reverse_list(1->2) -> 2->1\n- reverse_list(1) -> 1\n- reverse_list(None) -> None",
+  "complexity": "medium"
+}
