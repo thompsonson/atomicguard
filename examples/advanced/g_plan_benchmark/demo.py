@@ -1181,9 +1181,26 @@ def _display_epsilon_results(
 @cli.command()
 @click.option(
     "--problems",
-    required=True,
+    default=None,
     type=click.Path(exists=True),
     help="Path to problems JSON file or directory of JSON files",
+)
+@click.option(
+    "--dataset",
+    default=None,
+    type=click.Choice(["swe-polybench", "swe-bench"]),
+    help="Load problems from a benchmark dataset (requires 'datasets' package)",
+)
+@click.option(
+    "--dataset-split",
+    default="test",
+    help="Dataset split to load (default: test)",
+)
+@click.option(
+    "--limit",
+    default=None,
+    type=int,
+    help="Maximum number of problems to load from dataset",
 )
 @click.option(
     "--pipeline",
@@ -1209,7 +1226,10 @@ def _display_epsilon_results(
 @click.option("--output", default=None, help="Output JSON file for full results")
 @click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
 def evaluate(
-    problems: str,
+    problems: str | None,
+    dataset: str | None,
+    dataset_split: str,
+    limit: int | None,
     pipelines: tuple[str, ...],
     trials: int,
     backend: str,
@@ -1220,17 +1240,36 @@ def evaluate(
 ) -> None:
     """Run evaluation harness across problems, pipelines, and trials.
 
-    Loads a problem set from a JSON file or directory, runs each problem
-    through each pipeline mode, and produces a scorecard with epsilon,
-    strategy alignment, and per-category breakdowns.
+    Loads a problem set from a local JSON file/directory or from a benchmark
+    dataset (SWE-PolyBench, SWE-bench Verified), runs each problem through
+    each pipeline mode, and produces a scorecard with epsilon, strategy
+    alignment, and per-category breakdowns.
 
-    Example:
+    Examples:
+        # From a local problems file
         uv run python -m examples.advanced.g_plan_benchmark.demo evaluate \\
             --problems problems/catalog.json \\
             --pipeline single --pipeline full \\
             --trials 3 --output eval_results.json
+
+        # From SWE-PolyBench (requires 'datasets' package)
+        uv run python -m examples.advanced.g_plan_benchmark.demo evaluate \\
+            --dataset swe-polybench --limit 50 \\
+            --pipeline full --trials 1 --backend huggingface
     """
-    from .evaluation import ExperimentConfig, ExperimentRunner, ProblemSet, score_experiment
+    from .evaluation import (
+        ExperimentConfig,
+        ExperimentRunner,
+        ProblemSet,
+        load_swe_bench,
+        load_swe_polybench,
+        score_experiment,
+    )
+
+    if problems is None and dataset is None:
+        raise click.UsageError("Provide either --problems or --dataset")
+    if problems is not None and dataset is not None:
+        raise click.UsageError("Provide either --problems or --dataset, not both")
 
     log_level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
@@ -1251,9 +1290,21 @@ def evaluate(
         )
 
     # Load problems
-    problem_set = ProblemSet.load(problems)
+    source_label: str
+    if problems is not None:
+        problem_set = ProblemSet.load(problems)
+        source_label = problems
+    elif dataset == "swe-polybench":
+        problem_set = load_swe_polybench(split=dataset_split, limit=limit)
+        source_label = f"SWE-PolyBench ({dataset_split}, n={len(problem_set)})"
+    elif dataset == "swe-bench":
+        problem_set = load_swe_bench(split=dataset_split, limit=limit)
+        source_label = f"SWE-bench Verified ({dataset_split}, n={len(problem_set)})"
+    else:
+        raise click.UsageError(f"Unknown dataset: {dataset}")
+
     console.print(f"\n[bold]Evaluation Harness[/bold]")
-    console.print(f"Problems: {len(problem_set)} from {problems}")
+    console.print(f"Problems: {len(problem_set)} from {source_label}")
     console.print(f"Pipelines: {', '.join(pipelines)}")
     console.print(f"Trials per problem: {trials}")
     console.print(f"Model: {model} ({backend})")
