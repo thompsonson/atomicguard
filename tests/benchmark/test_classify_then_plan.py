@@ -1,7 +1,7 @@
 """Integration tests for the decomposed planning pipelines.
 
 Tests:
-- Two-step pipeline: g_analysis → g_plan_conditioned (Option A)
+- Two-step pipeline: g_analysis → g_plan_conditioned (classify-then-plan)
 - Full pipeline: g_analysis → g_recon → g_strategy → g_plan_full
 
 Verifies that pre-step outputs enrich the plan generation context.

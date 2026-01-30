@@ -1,10 +1,12 @@
 # Benchmark Evaluation Framework
 
-> **Status**: Planned
+> **Status**: Partially Implemented
 >
 > **Depends on**: [huggingface_finetuning_pipeline.md](huggingface_finetuning_pipeline.md), G_plan benchmark (`examples/advanced/g_plan_benchmark/`)
 >
 > **Paper**: [arXiv:2512.20660](https://arxiv.org/abs/2512.20660) — "Managing the Stochastic: Foundations of Learning in Neuro-Symbolic Systems for Software Engineering"
+>
+> **Implemented**: Evaluation harness (Layer 1 + Layer 2), dataset adapters for SWE-PolyBench and SWE-bench Verified, CLI `evaluate` command. **Remaining**: Layer 3 (end-to-end resolution via plan execution + benchmark Docker harnesses).
 
 ---
 
@@ -381,22 +383,20 @@ Each paper experiment scales naturally to the external benchmarks:
 
 ## 8. Implementation Phases
 
-### Phase 1: Problem Adapter Layer
+### Phase 1: Problem Adapter Layer — **Implemented**
 
-Build adapters that load benchmark datasets and produce AtomicGuard `Context` objects:
+Dataset adapters in `evaluation/adapters.py` load benchmark datasets and produce `ProblemSet` objects:
 
-```
-adapters/
-├── swe_polybench.py    # Load PB500 → Context
-├── swe_bench.py        # Load SWE-bench Verified → Context
-└── devbench.py         # Load DevBench PRDs → Context
-```
+- `load_swe_polybench()` — SWE-PolyBench PB500 (multi-language, explicit `task_category`)
+- `load_swe_bench()` — SWE-bench Verified (Python-only, `difficulty` labels)
 
 Each adapter:
-- Loads the dataset (HuggingFace or GitHub)
-- Extracts `problem_statement` → `Context.specification`
-- Preserves metadata (`task_category`, `difficulty`, `language`, `instance_id`)
-- Returns an iterator of `(instance_id, context, metadata)` tuples
+- Loads from HuggingFace Hub (requires `datasets` package) or local JSON/JSONL files
+- Maps `problem_statement` → `Problem.description`, `task_category` → `expected_type`, etc.
+- Preserves benchmark metadata (`repo`, `base_commit`, `patch`, etc.) in `Problem.metadata`
+- Returns a `ProblemSet` usable by `ExperimentRunner`
+
+CLI integration: `demo evaluate --dataset swe-polybench --limit 50`
 
 ### Phase 2: Dynamic Prompt with Strategy Vocabulary
 
