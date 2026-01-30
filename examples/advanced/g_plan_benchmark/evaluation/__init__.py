@@ -1,5 +1,6 @@
 """Evaluation harness for the G_plan contingent planning benchmark."""
 
+from .adapters import load_swe_bench, load_swe_polybench
 from .problem import Problem, ProblemSet
 from .results import (
     ExperimentConfig,
@@ -18,5 +19,7 @@ __all__ = [
     "Problem",
     "ProblemSet",
     "ProblemTrialResult",
+    "load_swe_bench",
+    "load_swe_polybench",
     "score_experiment",
 ]
