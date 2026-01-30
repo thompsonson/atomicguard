@@ -58,7 +58,14 @@ from atomicguard.domain.prompts import PromptTemplate
 
 from .defects import DefectType, inject_defect
 from .generators import LLMJsonGenerator, LLMPlanGenerator
-from .guards import AnalysisGuard, ExpansivePlanGuard, MediumPlanGuard, MinimalPlanGuard
+from .guards import (
+    AnalysisGuard,
+    ExpansivePlanGuard,
+    MediumPlanGuard,
+    MinimalPlanGuard,
+    ReconGuard,
+    StrategyGuard,
+)
 from .models import PlanDefinition
 
 console = Console()
@@ -233,11 +240,19 @@ class EpsilonTrialResult:
     minimal_feedback: str = ""
     medium_feedback: str = ""
     expansive_feedback: str = ""
-    # Option A: Classify-then-Plan pipeline fields
-    analysis_passed: bool | None = None  # None = single pipeline (no analysis)
+    # Decomposed pipeline fields (None = step not run)
+    analysis_passed: bool | None = None
     analysis_content: str = ""
     analysis_feedback: str = ""
     analysis_time_ms: float = 0.0
+    recon_passed: bool | None = None
+    recon_content: str = ""
+    recon_feedback: str = ""
+    recon_time_ms: float = 0.0
+    strategy_passed: bool | None = None
+    strategy_content: str = ""
+    strategy_feedback: str = ""
+    strategy_time_ms: float = 0.0
 
 
 # =============================================================================
@@ -471,8 +486,8 @@ def complexity(trials: int, output: str | None) -> None:
 @click.option(
     "--pipeline",
     default="single",
-    type=click.Choice(["single", "classify-then-plan"]),
-    help="Pipeline mode: single (one-shot) or classify-then-plan (Option A decomposition)",
+    type=click.Choice(["single", "classify-then-plan", "full"]),
+    help="Pipeline mode: single, classify-then-plan (Option A), or full (4-step decomposition)",
 )
 @click.option("--output", default=None, help="Output JSON file")
 @click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
@@ -493,6 +508,7 @@ def epsilon(
     Pipeline modes:
       single              One-shot plan generation (g_plan_llm only)
       classify-then-plan  Two-step: g_analysis → g_plan_conditioned (Option A)
+      full                Four-step: g_analysis → g_recon → g_strategy → g_plan_full
 
     Supports --backend ollama (default) or --backend huggingface.
     """
@@ -518,6 +534,7 @@ def epsilon(
     pipeline_label = {
         "single": "Single-shot",
         "classify-then-plan": "Classify-then-Plan (Option A)",
+        "full": "Full Decomposition (analysis → recon → strategy → plan)",
     }[pipeline]
 
     console.print("\n[bold]G_plan Epsilon Estimation (LLM Plan Generation)[/bold]")
@@ -528,19 +545,22 @@ def epsilon(
         console.print(f"Host: {host}")
     console.print(f"Trials: {trials}")
 
+    has_presteps = pipeline in ("classify-then-plan", "full")
+    has_recon = pipeline == "full"
+
     # Create LLM generators
     try:
         if backend == "huggingface":
             plan_generator = LLMPlanGenerator(model=model, backend="huggingface")
-            if pipeline == "classify-then-plan":
-                analysis_generator = LLMJsonGenerator(model=model, backend="huggingface")
+            if has_presteps:
+                json_generator = LLMJsonGenerator(model=model, backend="huggingface")
         else:
             base_url = host.rstrip("/")
             if not base_url.endswith("/v1"):
                 base_url += "/v1"
             plan_generator = LLMPlanGenerator(model=model, base_url=base_url)
-            if pipeline == "classify-then-plan":
-                analysis_generator = LLMJsonGenerator(model=model, base_url=base_url)
+            if has_presteps:
+                json_generator = LLMJsonGenerator(model=model, base_url=base_url)
     except (ImportError, ValueError) as err:
         console.print(f"[red]{err}[/red]")
         raise SystemExit(1) from err
@@ -550,9 +570,14 @@ def epsilon(
     plan_template = _load_prompt_template("g_plan_llm")
     base_context = _make_context(specification)
 
-    if pipeline == "classify-then-plan":
+    if has_presteps:
         analysis_template = _load_prompt_template("g_analysis")
         analysis_guard = AnalysisGuard()
+    if has_recon:
+        recon_template = _load_prompt_template("g_recon")
+        strategy_template = _load_prompt_template("g_strategy")
+        recon_guard = ReconGuard()
+        strategy_guard = StrategyGuard()
 
     console.print(f"Specification: {len(specification)} chars")
 
@@ -567,171 +592,266 @@ def epsilon(
     for i in range(trials):
         console.print(f"\n--- Trial {i + 1}/{trials} ---")
 
-        analysis_passed: bool | None = None
-        analysis_content = ""
-        analysis_feedback_str = ""
-        analysis_time = 0.0
-        plan_context = base_context
-
-        # Step 1 (classify-then-plan only): Run g_analysis
-        if pipeline == "classify-then-plan":
-            t0 = time.perf_counter()
-            try:
-                analysis_artifact = analysis_generator.generate(
-                    context=base_context,
-                    template=analysis_template,
-                    action_pair_id="g_analysis",
-                    workflow_id="epsilon_benchmark",
-                )
-                analysis_time = (time.perf_counter() - t0) * 1000
-            except Exception as e:
-                analysis_time = (time.perf_counter() - t0) * 1000
-                console.print(f"  [red]Analysis generation failed: {e}[/red]")
-                trial_results.append(
-                    EpsilonTrialResult(
-                        trial=i + 1,
-                        minimal_passed=False,
-                        medium_passed=False,
-                        expansive_passed=False,
-                        generation_time_ms=analysis_time,
-                        plan_steps=0,
-                        errors=[f"Analysis generation failed: {e}"],
-                        analysis_passed=False,
-                        analysis_content="",
-                        analysis_feedback=str(e),
-                        analysis_time_ms=analysis_time,
-                    )
-                )
-                continue
-
-            analysis_content = analysis_artifact.content
-            analysis_r = analysis_guard.validate(analysis_artifact)
-            analysis_passed = analysis_r.passed
-            analysis_feedback_str = analysis_r.feedback or ""
-
-            a_status = "[green]P[/green]" if analysis_r.passed else "[red]F[/red]"
-            console.print(f"  Analysis: {a_status} ({analysis_time:.0f}ms)")
-
-            if not analysis_r.passed:
-                # Analysis failed — plan generation skipped
-                if verbose:
-                    console.print(f"    {analysis_feedback_str}")
-                trial_results.append(
-                    EpsilonTrialResult(
-                        trial=i + 1,
-                        minimal_passed=False,
-                        medium_passed=False,
-                        expansive_passed=False,
-                        generation_time_ms=analysis_time,
-                        plan_steps=0,
-                        errors=[f"Analysis: {analysis_feedback_str}"],
-                        analysis_passed=False,
-                        analysis_content=analysis_content,
-                        analysis_feedback=analysis_feedback_str,
-                        analysis_time_ms=analysis_time,
-                    )
-                )
-                continue
-
-            # Enrich context with analysis results for plan generation
-            plan_context = base_context.amend(
-                delta_constraints=(
-                    f"## Problem Analysis (from g_analysis)\n{analysis_content}"
-                )
-            )
-
-        # Step 2: Generate plan (single-shot or conditioned on analysis)
-        t0 = time.perf_counter()
-        try:
-            plan_artifact = plan_generator.generate(
-                context=plan_context,
-                template=plan_template,
-                action_pair_id=(
-                    "g_plan_conditioned"
-                    if pipeline == "classify-then-plan"
-                    else "g_plan_llm"
-                ),
-                workflow_id="epsilon_benchmark",
-            )
-            plan_gen_time = (time.perf_counter() - t0) * 1000
-        except Exception as e:
-            plan_gen_time = (time.perf_counter() - t0) * 1000
-            console.print(f"  [red]Plan generation failed: {e}[/red]")
-            trial_results.append(
-                EpsilonTrialResult(
-                    trial=i + 1,
-                    minimal_passed=False,
-                    medium_passed=False,
-                    expansive_passed=False,
-                    generation_time_ms=analysis_time + plan_gen_time,
-                    plan_steps=0,
-                    errors=[f"Plan generation failed: {e}"],
-                    analysis_passed=analysis_passed,
-                    analysis_content=analysis_content,
-                    analysis_feedback=analysis_feedback_str,
-                    analysis_time_ms=analysis_time,
-                )
-            )
-            continue
-
-        total_gen_time = analysis_time + plan_gen_time
-
-        # Count steps in generated plan
-        plan_content = plan_artifact.content
-        plan_steps = 0
-        try:
-            plan_data = json.loads(plan_content)
-            plan_steps = len(plan_data.get("steps", []))
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        # Validate plan at all three levels
-        min_r = minimal_guard.validate(plan_artifact)
-        med_r = medium_guard.validate(plan_artifact)
-        exp_r = expansive_guard.validate(plan_artifact)
-
-        errors: list[str] = []
-        if not min_r.passed and min_r.feedback:
-            errors.append(f"Minimal: {min_r.feedback}")
-        if not med_r.passed and med_r.feedback and min_r.passed:
-            errors.append(f"Medium: {med_r.feedback}")
-        if not exp_r.passed and exp_r.feedback and med_r.passed:
-            errors.append(f"Expansive: {exp_r.feedback}")
-
-        trial_results.append(
-            EpsilonTrialResult(
-                trial=i + 1,
-                minimal_passed=min_r.passed,
-                medium_passed=med_r.passed,
-                expansive_passed=exp_r.passed,
-                generation_time_ms=total_gen_time,
-                plan_steps=plan_steps,
-                errors=errors,
-                plan_content=plan_content,
-                minimal_feedback=min_r.feedback or "",
-                medium_feedback=med_r.feedback or "",
-                expansive_feedback=exp_r.feedback or "",
-                analysis_passed=analysis_passed,
-                analysis_content=analysis_content,
-                analysis_feedback=analysis_feedback_str,
-                analysis_time_ms=analysis_time,
-            )
+        trial = _run_epsilon_trial(
+            trial_num=i + 1,
+            pipeline=pipeline,
+            base_context=base_context,
+            plan_generator=plan_generator,
+            json_generator=json_generator if has_presteps else None,
+            plan_template=plan_template,
+            analysis_template=analysis_template if has_presteps else None,
+            recon_template=recon_template if has_recon else None,
+            strategy_template=strategy_template if has_recon else None,
+            analysis_guard=analysis_guard if has_presteps else None,
+            recon_guard=recon_guard if has_recon else None,
+            strategy_guard=strategy_guard if has_recon else None,
+            minimal_guard=minimal_guard,
+            medium_guard=medium_guard,
+            expansive_guard=expansive_guard,
+            verbose=verbose,
         )
-
-        # Per-trial summary
-        min_s = "[green]P[/green]" if min_r.passed else "[red]F[/red]"
-        med_s = "[green]P[/green]" if med_r.passed else "[red]F[/red]"
-        exp_s = "[green]P[/green]" if exp_r.passed else "[red]F[/red]"
-        console.print(
-            f"  Min:{min_s} Med:{med_s} Exp:{exp_s} "
-            f"| {plan_steps} steps | {total_gen_time:.0f}ms"
-        )
-        if verbose and errors:
-            for err in errors:
-                console.print(f"    {err}")
+        trial_results.append(trial)
 
     # Compute and display results
     _display_epsilon_results(trial_results, model, pipeline, output)
+
+
+def _run_prestep(
+    step_name: str,
+    generator: LLMJsonGenerator,
+    guard: AnalysisGuard | ReconGuard | StrategyGuard,
+    context: Context,
+    template: PromptTemplate,
+    action_pair_id: str,
+    verbose: bool,
+) -> tuple[bool, str, str, float]:
+    """Run a pre-planning step (analysis, recon, or strategy).
+
+    Returns: (passed, content, feedback, time_ms)
+    """
+    t0 = time.perf_counter()
+    try:
+        artifact = generator.generate(
+            context=context,
+            template=template,
+            action_pair_id=action_pair_id,
+            workflow_id="epsilon_benchmark",
+        )
+        elapsed = (time.perf_counter() - t0) * 1000
+    except Exception as e:
+        elapsed = (time.perf_counter() - t0) * 1000
+        console.print(f"  [red]{step_name} generation failed: {e}[/red]")
+        return False, "", str(e), elapsed
+
+    content = artifact.content
+    result = guard.validate(artifact)
+    feedback = result.feedback or ""
+
+    status = "[green]P[/green]" if result.passed else "[red]F[/red]"
+    console.print(f"  {step_name}: {status} ({elapsed:.0f}ms)")
+    if verbose and not result.passed:
+        console.print(f"    {feedback}")
+
+    return result.passed, content, feedback, elapsed
+
+
+def _run_epsilon_trial(
+    trial_num: int,
+    pipeline: str,
+    base_context: Context,
+    plan_generator: LLMPlanGenerator,
+    json_generator: LLMJsonGenerator | None,
+    plan_template: PromptTemplate,
+    analysis_template: PromptTemplate | None,
+    recon_template: PromptTemplate | None,
+    strategy_template: PromptTemplate | None,
+    analysis_guard: AnalysisGuard | None,
+    recon_guard: ReconGuard | None,
+    strategy_guard: StrategyGuard | None,
+    minimal_guard: MinimalPlanGuard,
+    medium_guard: MediumPlanGuard,
+    expansive_guard: ExpansivePlanGuard,
+    verbose: bool,
+) -> EpsilonTrialResult:
+    """Run a single epsilon trial for any pipeline mode."""
+    # Track pre-step results
+    a_passed: bool | None = None
+    a_content = ""
+    a_feedback = ""
+    a_time = 0.0
+    r_passed: bool | None = None
+    r_content = ""
+    r_feedback = ""
+    r_time = 0.0
+    s_passed: bool | None = None
+    s_content = ""
+    s_feedback = ""
+    s_time = 0.0
+
+    plan_context = base_context
+    total_prestep_time = 0.0
+    has_presteps = pipeline in ("classify-then-plan", "full")
+    has_recon = pipeline == "full"
+
+    def _fail_result(errors: list[str]) -> EpsilonTrialResult:
+        """Build a failed trial result at the current point in the pipeline."""
+        return EpsilonTrialResult(
+            trial=trial_num,
+            minimal_passed=False,
+            medium_passed=False,
+            expansive_passed=False,
+            generation_time_ms=total_prestep_time,
+            plan_steps=0,
+            errors=errors,
+            analysis_passed=a_passed,
+            analysis_content=a_content,
+            analysis_feedback=a_feedback,
+            analysis_time_ms=a_time,
+            recon_passed=r_passed,
+            recon_content=r_content,
+            recon_feedback=r_feedback,
+            recon_time_ms=r_time,
+            strategy_passed=s_passed,
+            strategy_content=s_content,
+            strategy_feedback=s_feedback,
+            strategy_time_ms=s_time,
+        )
+
+    # --- Step 1: g_analysis (classify-then-plan and full) ---
+    if has_presteps:
+        assert json_generator is not None
+        assert analysis_template is not None
+        assert analysis_guard is not None
+
+        a_passed, a_content, a_feedback, a_time = _run_prestep(
+            "Analysis", json_generator, analysis_guard,
+            base_context, analysis_template, "g_analysis", verbose,
+        )
+        total_prestep_time += a_time
+        if not a_passed:
+            return _fail_result([f"Analysis: {a_feedback}"])
+
+        plan_context = base_context.amend(
+            delta_constraints=f"## Problem Analysis (from g_analysis)\n{a_content}"
+        )
+
+    # --- Step 2: g_recon (full only) ---
+    if has_recon:
+        assert recon_template is not None
+        assert recon_guard is not None
+
+        r_passed, r_content, r_feedback, r_time = _run_prestep(
+            "Recon", json_generator, recon_guard,
+            plan_context, recon_template, "g_recon", verbose,
+        )
+        total_prestep_time += r_time
+        if not r_passed:
+            return _fail_result([f"Recon: {r_feedback}"])
+
+        plan_context = plan_context.amend(
+            delta_constraints=f"## Codebase Reconnaissance (from g_recon)\n{r_content}"
+        )
+
+    # --- Step 3: g_strategy (full only) ---
+    if has_recon:
+        assert strategy_template is not None
+        assert strategy_guard is not None
+
+        s_passed, s_content, s_feedback, s_time = _run_prestep(
+            "Strategy", json_generator, strategy_guard,
+            plan_context, strategy_template, "g_strategy", verbose,
+        )
+        total_prestep_time += s_time
+        if not s_passed:
+            return _fail_result([f"Strategy: {s_feedback}"])
+
+        plan_context = plan_context.amend(
+            delta_constraints=f"## Selected Strategy (from g_strategy)\n{s_content}"
+        )
+
+    # --- Step 4: Generate plan ---
+    plan_action_pair = {
+        "single": "g_plan_llm",
+        "classify-then-plan": "g_plan_conditioned",
+        "full": "g_plan_full",
+    }[pipeline]
+
+    t0 = time.perf_counter()
+    try:
+        plan_artifact = plan_generator.generate(
+            context=plan_context,
+            template=plan_template,
+            action_pair_id=plan_action_pair,
+            workflow_id="epsilon_benchmark",
+        )
+        plan_gen_time = (time.perf_counter() - t0) * 1000
+    except Exception as e:
+        plan_gen_time = (time.perf_counter() - t0) * 1000
+        console.print(f"  [red]Plan generation failed: {e}[/red]")
+        total_prestep_time += plan_gen_time
+        return _fail_result([f"Plan generation failed: {e}"])
+
+    total_gen_time = total_prestep_time + plan_gen_time
+
+    # Count steps in generated plan
+    plan_content = plan_artifact.content
+    plan_steps = 0
+    try:
+        plan_data = json.loads(plan_content)
+        plan_steps = len(plan_data.get("steps", []))
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Validate plan at all three levels
+    min_r = minimal_guard.validate(plan_artifact)
+    med_r = medium_guard.validate(plan_artifact)
+    exp_r = expansive_guard.validate(plan_artifact)
+
+    errors: list[str] = []
+    if not min_r.passed and min_r.feedback:
+        errors.append(f"Minimal: {min_r.feedback}")
+    if not med_r.passed and med_r.feedback and min_r.passed:
+        errors.append(f"Medium: {med_r.feedback}")
+    if not exp_r.passed and exp_r.feedback and med_r.passed:
+        errors.append(f"Expansive: {exp_r.feedback}")
+
+    # Per-trial summary
+    min_s = "[green]P[/green]" if min_r.passed else "[red]F[/red]"
+    med_s = "[green]P[/green]" if med_r.passed else "[red]F[/red]"
+    exp_s = "[green]P[/green]" if exp_r.passed else "[red]F[/red]"
+    console.print(
+        f"  Min:{min_s} Med:{med_s} Exp:{exp_s} "
+        f"| {plan_steps} steps | {total_gen_time:.0f}ms"
+    )
+    if verbose and errors:
+        for err in errors:
+            console.print(f"    {err}")
+
+    return EpsilonTrialResult(
+        trial=trial_num,
+        minimal_passed=min_r.passed,
+        medium_passed=med_r.passed,
+        expansive_passed=exp_r.passed,
+        generation_time_ms=total_gen_time,
+        plan_steps=plan_steps,
+        errors=errors,
+        plan_content=plan_content,
+        minimal_feedback=min_r.feedback or "",
+        medium_feedback=med_r.feedback or "",
+        expansive_feedback=exp_r.feedback or "",
+        analysis_passed=a_passed,
+        analysis_content=a_content,
+        analysis_feedback=a_feedback,
+        analysis_time_ms=a_time,
+        recon_passed=r_passed,
+        recon_content=r_content,
+        recon_feedback=r_feedback,
+        recon_time_ms=r_time,
+        strategy_passed=s_passed,
+        strategy_content=s_content,
+        strategy_feedback=s_feedback,
+        strategy_time_ms=s_time,
+    )
 
 
 # =============================================================================
@@ -859,40 +979,71 @@ def _display_epsilon_results(
     pipeline_label = {
         "single": "Single-shot",
         "classify-then-plan": "Classify-then-Plan (Option A)",
+        "full": "Full Decomposition (analysis → recon → strategy → plan)",
     }.get(pipeline, pipeline)
     console.print(f"[bold]Epsilon Estimation Results — {pipeline_label}[/bold]")
     console.print(f"[bold]{'=' * 60}[/bold]")
 
-    # Analysis epsilon (classify-then-plan only)
+    # Pre-step epsilon table (for decomposed pipelines)
+    prestep_rows: list[tuple[str, str, int, float, tuple[float, float], float]] = []
+
     is_decomposed = any(r.analysis_passed is not None for r in results)
     if is_decomposed:
-        analysis_pass = sum(
-            1 for r in results if r.analysis_passed is True
-        )
+        analysis_pass = sum(1 for r in results if r.analysis_passed is True)
         analysis_eps = analysis_pass / k if k > 0 else 0.0
         analysis_ci = _wilson_ci(analysis_pass, k)
         avg_analysis_time = (
             sum(r.analysis_time_ms for r in results) / k if k > 0 else 0.0
         )
+        prestep_rows.append((
+            "g_analysis", "analysis_valid",
+            analysis_pass, analysis_eps, analysis_ci, avg_analysis_time,
+        ))
 
-        a_table = Table(title=f"g_analysis Epsilon (k={k})")
-        a_table.add_column("Guard")
-        a_table.add_column("Pass", justify="right")
-        a_table.add_column("Fail", justify="right")
-        a_table.add_column("epsilon-hat", justify="right")
-        a_table.add_column("95% CI", justify="center")
-
-        e_a = f"{1 / analysis_eps:.1f}" if analysis_eps > 0 else "inf"
-        a_table.add_row(
-            "analysis_valid",
-            str(analysis_pass),
-            str(k - analysis_pass),
-            f"{analysis_eps:.2f}",
-            f"[{analysis_ci[0]:.2f}, {analysis_ci[1]:.2f}]",
+    has_recon = any(r.recon_passed is not None for r in results)
+    if has_recon:
+        recon_pass = sum(1 for r in results if r.recon_passed is True)
+        recon_eps = recon_pass / k if k > 0 else 0.0
+        recon_ci = _wilson_ci(recon_pass, k)
+        avg_recon_time = (
+            sum(r.recon_time_ms for r in results) / k if k > 0 else 0.0
         )
-        console.print(a_table)
-        console.print(f"Avg analysis time: {avg_analysis_time:.0f}ms")
-        console.print(f"E[analysis attempts]: {e_a}")
+        prestep_rows.append((
+            "g_recon", "recon_valid",
+            recon_pass, recon_eps, recon_ci, avg_recon_time,
+        ))
+
+    has_strategy = any(r.strategy_passed is not None for r in results)
+    if has_strategy:
+        strategy_pass = sum(1 for r in results if r.strategy_passed is True)
+        strategy_eps = strategy_pass / k if k > 0 else 0.0
+        strategy_ci = _wilson_ci(strategy_pass, k)
+        avg_strategy_time = (
+            sum(r.strategy_time_ms for r in results) / k if k > 0 else 0.0
+        )
+        prestep_rows.append((
+            "g_strategy", "strategy_valid",
+            strategy_pass, strategy_eps, strategy_ci, avg_strategy_time,
+        ))
+
+    if prestep_rows:
+        ps_table = Table(title=f"Pre-step Epsilon (k={k})")
+        ps_table.add_column("Step")
+        ps_table.add_column("Guard")
+        ps_table.add_column("Pass", justify="right")
+        ps_table.add_column("epsilon-hat", justify="right")
+        ps_table.add_column("95% CI", justify="center")
+        ps_table.add_column("Avg (ms)", justify="right")
+
+        for step, guard, passed, eps, ci, avg_t in prestep_rows:
+            ps_table.add_row(
+                step, guard, str(passed),
+                f"{eps:.2f}",
+                f"[{ci[0]:.2f}, {ci[1]:.2f}]",
+                f"{avg_t:.0f}",
+            )
+
+        console.print(ps_table)
         console.print()
 
     # Plan epsilon table
@@ -962,13 +1113,16 @@ def _display_epsilon_results(
             "avg_plan_steps": avg_steps,
         }
 
-        # Include analysis epsilon for decomposed pipeline
-        if is_decomposed:
-            output_data["analysis_epsilon"] = {
-                "pass": analysis_pass,
-                "epsilon_hat": analysis_eps,
-                "ci_95": list(analysis_ci),
-                "avg_time_ms": avg_analysis_time,
+        # Include pre-step epsilon for decomposed pipelines
+        if prestep_rows:
+            output_data["prestep_epsilon"] = {
+                step: {
+                    "pass": passed,
+                    "epsilon_hat": eps,
+                    "ci_95": list(ci),
+                    "avg_time_ms": avg_t,
+                }
+                for step, _guard, passed, eps, ci, avg_t in prestep_rows
             }
 
         output_data["trials_detail"] = [
@@ -994,6 +1148,26 @@ def _display_epsilon_results(
                         "analysis_time_ms": r.analysis_time_ms,
                     }
                     if r.analysis_passed is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "recon_passed": r.recon_passed,
+                        "recon_content": r.recon_content,
+                        "recon_feedback": r.recon_feedback,
+                        "recon_time_ms": r.recon_time_ms,
+                    }
+                    if r.recon_passed is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "strategy_passed": r.strategy_passed,
+                        "strategy_content": r.strategy_content,
+                        "strategy_feedback": r.strategy_feedback,
+                        "strategy_time_ms": r.strategy_time_ms,
+                    }
+                    if r.strategy_passed is not None
                     else {}
                 ),
             }
