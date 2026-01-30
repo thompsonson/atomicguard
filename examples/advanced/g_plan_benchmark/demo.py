@@ -59,7 +59,7 @@ from atomicguard.domain.prompts import PromptTemplate
 from .defects import DefectType, inject_defect
 from .generators import LLMPlanGenerator
 from .guards import ExpansivePlanGuard, MediumPlanGuard, MinimalPlanGuard
-from .models import PlanDefinition, PlanStep
+from .models import PlanDefinition
 
 console = Console()
 
@@ -126,23 +126,16 @@ def _load_specification() -> str:
     return "\n\n".join(parts) if parts else "Design a multi-agent SDLC workflow."
 
 
-def _load_prompt_template(step_id: str) -> PromptTemplate | None:
+def _load_prompt_template(step_id: str) -> PromptTemplate:
     """Load a PromptTemplate from prompts.json."""
-    if not PROMPTS_PATH.exists():
-        return None
     with open(PROMPTS_PATH) as f:
         prompts = json.load(f)
-    entry = prompts.get(step_id)
-    if entry is None:
-        return None
+    entry = prompts[step_id]
     return PromptTemplate(
-        role=entry.get("role", ""),
-        constraints=entry.get("constraints", ""),
-        task=entry.get("task", ""),
-        feedback_wrapper=entry.get(
-            "feedback_wrapper",
-            "GUARD REJECTION:\n{feedback}\nInstruction: Address the rejection above.",
-        ),
+        role=entry["role"],
+        constraints=entry["constraints"],
+        task=entry["task"],
+        feedback_wrapper=entry["feedback_wrapper"],
     )
 
 
@@ -160,24 +153,29 @@ def _make_context(specification: str) -> Context:
 def _generate_scaled_plan(num_steps: int) -> dict[str, Any]:
     """Generate a valid linear plan with specified number of steps."""
     guard_choices = [
-        "syntax", "dynamic_test", "config_extracted",
-        "architecture_tests_valid", "scenarios_valid",
+        "syntax",
+        "dynamic_test",
+        "config_extracted",
+        "architecture_tests_valid",
+        "scenarios_valid",
     ]
     steps = []
     prev_effect = "start"
 
     for i in range(num_steps):
         effect = f"token_{i}"
-        steps.append({
-            "step_id": f"step_{i}",
-            "name": f"Step {i}",
-            "generator": "OllamaGenerator",
-            "guard": random.choice(guard_choices),
-            "retry_budget": random.randint(1, 5),
-            "preconditions": [prev_effect],
-            "effects": [effect],
-            "dependencies": [f"step_{i - 1}"] if i > 0 else [],
-        })
+        steps.append(
+            {
+                "step_id": f"step_{i}",
+                "name": f"Step {i}",
+                "generator": "OllamaGenerator",
+                "guard": random.choice(guard_choices),
+                "retry_budget": random.randint(1, 5),
+                "preconditions": [prev_effect],
+                "effects": [effect],
+                "dependencies": [f"step_{i - 1}"] if i > 0 else [],
+            }
+        )
         prev_effect = effect
 
     return {
@@ -196,7 +194,9 @@ def _wilson_ci(successes: int, trials: int, z: float = 1.96) -> tuple[float, flo
     p_hat = successes / trials
     denom = 1 + z * z / trials
     centre = (p_hat + z * z / (2 * trials)) / denom
-    spread = z * math.sqrt((p_hat * (1 - p_hat) + z * z / (4 * trials)) / trials) / denom
+    spread = (
+        z * math.sqrt((p_hat * (1 - p_hat) + z * z / (4 * trials)) / trials) / denom
+    )
     return (max(0.0, centre - spread), min(1.0, centre + spread))
 
 
@@ -229,6 +229,10 @@ class EpsilonTrialResult:
     generation_time_ms: float
     plan_steps: int
     errors: list[str]
+    plan_content: str = ""
+    minimal_feedback: str = ""
+    medium_feedback: str = ""
+    expansive_feedback: str = ""
 
 
 # =============================================================================
@@ -244,12 +248,15 @@ def cli() -> None:
 
 @cli.command()
 @click.option(
-    "--plan", "plan_source", default="sdlc_v2",
+    "--plan",
+    "plan_source",
+    default="sdlc_v2",
     type=click.Choice(["sdlc_v2", "simple"]),
     help="Plan variant from catalog",
 )
 @click.option(
-    "--from-workflow", is_flag=True,
+    "--from-workflow",
+    is_flag=True,
     help="Load plan from real sdlc_v2/workflow.json instead of catalog",
 )
 def validate(plan_source: str, from_workflow: bool) -> None:
@@ -291,14 +298,17 @@ def validate(plan_source: str, from_workflow: bool) -> None:
 
 @cli.command()
 @click.option(
-    "--plan", "plan_source", default="sdlc_v2",
+    "--plan",
+    "plan_source",
+    default="sdlc_v2",
     type=click.Choice(["sdlc_v2", "simple"]),
     help="Base plan to inject defects into",
 )
 @click.option("--trials", default=100, help="Trials per defect type")
 @click.option("--output", default=None, help="Output JSON file")
 @click.option(
-    "--from-workflow", is_flag=True,
+    "--from-workflow",
+    is_flag=True,
     help="Load base plan from real sdlc_v2/workflow.json",
 )
 def benchmark(
@@ -360,15 +370,17 @@ def benchmark(
             if not exp_r.passed:
                 expansive_detections += 1
 
-        results.append(DefectDetectionResult(
-            defect_type=defect_type.value,
-            minimal_detected=minimal_detections == trials,
-            minimal_time_ms=sum(minimal_times) / len(minimal_times),
-            medium_detected=medium_detections == trials,
-            medium_time_ms=sum(medium_times) / len(medium_times),
-            expansive_detected=expansive_detections == trials,
-            expansive_time_ms=sum(expansive_times) / len(expansive_times),
-        ))
+        results.append(
+            DefectDetectionResult(
+                defect_type=defect_type.value,
+                minimal_detected=minimal_detections == trials,
+                minimal_time_ms=sum(minimal_times) / len(minimal_times),
+                medium_detected=medium_detections == trials,
+                medium_time_ms=sum(medium_times) / len(medium_times),
+                expansive_detected=expansive_detections == trials,
+                expansive_time_ms=sum(expansive_times) / len(expansive_times),
+            )
+        )
 
     # Display results
     _display_detection_results(results, trials, output)
@@ -440,7 +452,9 @@ def complexity(trials: int, output: str | None) -> None:
 @cli.command()
 @click.option("--trials", default=20, help="Number of LLM generation trials")
 @click.option(
-    "--host", default="http://localhost:11434", help="Ollama host URL",
+    "--host",
+    default="http://localhost:11434",
+    help="Ollama host URL",
 )
 @click.option("--model", default="qwen2.5-coder:14b", help="Model to use")
 @click.option("--output", default=None, help="Output JSON file")
@@ -483,9 +497,9 @@ def epsilon(
     # Create LLM generator
     try:
         generator = LLMPlanGenerator(model=model, base_url=base_url)
-    except ImportError:
+    except ImportError as err:
         console.print("[red]openai library required: pip install openai[/red]")
-        raise SystemExit(1)
+        raise SystemExit(1) from err
 
     # Load specification and prompt template
     specification = _load_specification()
@@ -517,21 +531,24 @@ def epsilon(
         except Exception as e:
             gen_time = (time.perf_counter() - t0) * 1000
             console.print(f"  [red]Generation failed: {e}[/red]")
-            trial_results.append(EpsilonTrialResult(
-                trial=i + 1,
-                minimal_passed=False,
-                medium_passed=False,
-                expansive_passed=False,
-                generation_time_ms=gen_time,
-                plan_steps=0,
-                errors=[str(e)],
-            ))
+            trial_results.append(
+                EpsilonTrialResult(
+                    trial=i + 1,
+                    minimal_passed=False,
+                    medium_passed=False,
+                    expansive_passed=False,
+                    generation_time_ms=gen_time,
+                    plan_steps=0,
+                    errors=[str(e)],
+                )
+            )
             continue
 
         # Count steps in generated plan
+        plan_content = artifact.content
         plan_steps = 0
         try:
-            plan_data = json.loads(artifact.content)
+            plan_data = json.loads(plan_content)
             plan_steps = len(plan_data.get("steps", []))
         except (json.JSONDecodeError, TypeError):
             pass
@@ -549,15 +566,21 @@ def epsilon(
         if not exp_r.passed and exp_r.feedback and med_r.passed:
             errors.append(f"Expansive: {exp_r.feedback}")
 
-        trial_results.append(EpsilonTrialResult(
-            trial=i + 1,
-            minimal_passed=min_r.passed,
-            medium_passed=med_r.passed,
-            expansive_passed=exp_r.passed,
-            generation_time_ms=gen_time,
-            plan_steps=plan_steps,
-            errors=errors,
-        ))
+        trial_results.append(
+            EpsilonTrialResult(
+                trial=i + 1,
+                minimal_passed=min_r.passed,
+                medium_passed=med_r.passed,
+                expansive_passed=exp_r.passed,
+                generation_time_ms=gen_time,
+                plan_steps=plan_steps,
+                errors=errors,
+                plan_content=plan_content,
+                minimal_feedback=min_r.feedback or "",
+                medium_feedback=med_r.feedback or "",
+                expansive_feedback=exp_r.feedback or "",
+            )
+        )
 
         # Per-trial summary
         min_s = "[green]P[/green]" if min_r.passed else "[red]F[/red]"
@@ -627,7 +650,7 @@ def _display_detection_results(
     avg_med = sum(r.medium_time_ms for r in results) / total
     avg_exp = sum(r.expansive_time_ms for r in results) / total
 
-    console.print(f"\n[bold]Average Validation Time:[/bold]")
+    console.print("\n[bold]Average Validation Time:[/bold]")
     console.print(f"  Minimal:   {avg_min:.3f}ms")
     console.print(f"  Medium:    {avg_med:.3f}ms")
     console.print(f"  Expansive: {avg_exp:.3f}ms")
@@ -638,9 +661,18 @@ def _display_detection_results(
             "results": [
                 {
                     "defect_type": r.defect_type,
-                    "minimal": {"detected": r.minimal_detected, "time_ms": r.minimal_time_ms},
-                    "medium": {"detected": r.medium_detected, "time_ms": r.medium_time_ms},
-                    "expansive": {"detected": r.expansive_detected, "time_ms": r.expansive_time_ms},
+                    "minimal": {
+                        "detected": r.minimal_detected,
+                        "time_ms": r.minimal_time_ms,
+                    },
+                    "medium": {
+                        "detected": r.medium_detected,
+                        "time_ms": r.medium_time_ms,
+                    },
+                    "expansive": {
+                        "detected": r.expansive_detected,
+                        "time_ms": r.expansive_time_ms,
+                    },
                 }
                 for r in results
             ],
@@ -727,7 +759,7 @@ def _display_epsilon_results(
             error_counts[key] = error_counts.get(key, 0) + 1
 
     if error_counts:
-        console.print(f"\n[bold]Common Failure Modes:[/bold]")
+        console.print("\n[bold]Common Failure Modes:[/bold]")
         for err, count in sorted(error_counts.items(), key=lambda x: -x[1])[:5]:
             console.print(f"  {count}x  {err}")
 
@@ -763,6 +795,12 @@ def _display_epsilon_results(
                     "generation_time_ms": r.generation_time_ms,
                     "plan_steps": r.plan_steps,
                     "errors": r.errors,
+                    "plan_content": r.plan_content,
+                    "guard_feedback": {
+                        "minimal": r.minimal_feedback,
+                        "medium": r.medium_feedback,
+                        "expansive": r.expansive_feedback,
+                    },
                 }
                 for r in results
             ],

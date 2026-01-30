@@ -99,9 +99,7 @@ class MediumPlanGuard(GuardInterface):
 
             unreachable_goals = plan.goal_state - final_tokens
             if unreachable_goals:
-                errors.append(
-                    f"Goal tokens unreachable: {sorted(unreachable_goals)}"
-                )
+                errors.append(f"Goal tokens unreachable: {sorted(unreachable_goals)}")
 
         # 9. Total retry budget check
         if plan.total_retry_budget > self._r_max:
