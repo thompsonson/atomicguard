@@ -1,6 +1,6 @@
 {
   "name": "G_plan Validation Benchmark",
-  "description": "Plan generation and validation using the G_plan taxonomy. Supports deterministic (PlanGenerator), single-shot LLM (LLMPlanGenerator), and decomposed Classify-then-Plan (Option A) pipelines.",
+  "description": "Plan generation and validation using the G_plan taxonomy. Supports deterministic (PlanGenerator), single-shot LLM (LLMPlanGenerator), Classify-then-Plan (Option A), and full 4-step decomposed pipeline.",
   "model": "qwen2.5-coder:14b",
   "rmax": 3,
   "action_pairs": {
@@ -28,6 +28,24 @@
       "guard": "plan_medium",
       "requires": ["g_analysis"],
       "description": "Generate a workflow plan conditioned on the problem analysis (Option A: Classify-then-Plan)"
+    },
+    "g_recon": {
+      "generator": "LLMJsonGenerator",
+      "guard": "recon_valid",
+      "requires": ["g_analysis"],
+      "description": "Extract actionable context: mentioned files, stack traces, APIs, test references, reproduction steps"
+    },
+    "g_strategy": {
+      "generator": "LLMJsonGenerator",
+      "guard": "strategy_valid",
+      "requires": ["g_analysis", "g_recon"],
+      "description": "Select a resolution strategy (S1-S5) based on problem analysis and codebase reconnaissance"
+    },
+    "g_plan_full": {
+      "generator": "LLMPlanGenerator",
+      "guard": "plan_medium",
+      "requires": ["g_analysis", "g_recon", "g_strategy"],
+      "description": "Generate a workflow plan conditioned on analysis, recon, and strategy (full decomposed pipeline)"
     }
   }
 }
