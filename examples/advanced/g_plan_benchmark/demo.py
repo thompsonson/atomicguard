@@ -452,17 +452,24 @@ def complexity(trials: int, output: str | None) -> None:
 @cli.command()
 @click.option("--trials", default=20, help="Number of LLM generation trials")
 @click.option(
+    "--backend",
+    default="ollama",
+    type=click.Choice(["ollama", "huggingface"]),
+    help="LLM backend to use",
+)
+@click.option(
     "--host",
     default="http://localhost:11434",
-    help="Ollama host URL",
+    help="Ollama host URL (ollama backend only)",
 )
-@click.option("--model", default="qwen2.5-coder:14b", help="Model to use")
+@click.option("--model", default=None, help="Model to use (default depends on backend)")
 @click.option("--output", default=None, help="Output JSON file")
 @click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
 def epsilon(
     trials: int,
+    backend: str,
     host: str,
-    model: str,
+    model: str | None,
     output: str | None,
     verbose: bool,
 ) -> None:
@@ -473,6 +480,8 @@ def epsilon(
 
     This is an epsilon estimation experiment for plan generation:
         epsilon_hat = (plans passing G_plan) / (total generated)
+
+    Supports --backend ollama (default) or --backend huggingface.
     """
     log_level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
@@ -483,22 +492,35 @@ def epsilon(
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+
+    # Apply backend-specific defaults
+    if model is None:
+        model = (
+            "Qwen/Qwen2.5-Coder-32B-Instruct"
+            if backend == "huggingface"
+            else "qwen2.5-coder:14b"
+        )
 
     console.print("\n[bold]G_plan Epsilon Estimation (LLM Plan Generation)[/bold]")
+    console.print(f"Backend: {backend}")
     console.print(f"Model: {model}")
-    console.print(f"Host: {host}")
+    if backend == "ollama":
+        console.print(f"Host: {host}")
     console.print(f"Trials: {trials}")
-
-    # Normalize host to OpenAI-compatible base_url
-    base_url = host.rstrip("/")
-    if not base_url.endswith("/v1"):
-        base_url += "/v1"
 
     # Create LLM generator
     try:
-        generator = LLMPlanGenerator(model=model, base_url=base_url)
-    except ImportError as err:
-        console.print("[red]openai library required: pip install openai[/red]")
+        if backend == "huggingface":
+            generator = LLMPlanGenerator(model=model, backend="huggingface")
+        else:
+            # Normalize host to OpenAI-compatible base_url
+            base_url = host.rstrip("/")
+            if not base_url.endswith("/v1"):
+                base_url += "/v1"
+            generator = LLMPlanGenerator(model=model, base_url=base_url)
+    except (ImportError, ValueError) as err:
+        console.print(f"[red]{err}[/red]")
         raise SystemExit(1) from err
 
     # Load specification and prompt template
