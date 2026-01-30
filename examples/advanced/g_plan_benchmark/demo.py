@@ -1178,5 +1178,230 @@ def _display_epsilon_results(
         console.print(f"\n[green]Results saved to {output}[/green]")
 
 
+@cli.command()
+@click.option(
+    "--problems",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to problems JSON file or directory of JSON files",
+)
+@click.option(
+    "--pipeline",
+    "pipelines",
+    multiple=True,
+    default=["single", "full"],
+    type=click.Choice(["single", "classify-then-plan", "full"]),
+    help="Pipeline modes to evaluate (repeat for multiple)",
+)
+@click.option("--trials", default=1, help="Trials per problem per pipeline")
+@click.option(
+    "--backend",
+    default="ollama",
+    type=click.Choice(["ollama", "huggingface"]),
+    help="LLM backend to use",
+)
+@click.option(
+    "--host",
+    default="http://localhost:11434",
+    help="Ollama host URL (ollama backend only)",
+)
+@click.option("--model", default=None, help="Model to use (default depends on backend)")
+@click.option("--output", default=None, help="Output JSON file for full results")
+@click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
+def evaluate(
+    problems: str,
+    pipelines: tuple[str, ...],
+    trials: int,
+    backend: str,
+    host: str,
+    model: str | None,
+    output: str | None,
+    verbose: bool,
+) -> None:
+    """Run evaluation harness across problems, pipelines, and trials.
+
+    Loads a problem set from a JSON file or directory, runs each problem
+    through each pipeline mode, and produces a scorecard with epsilon,
+    strategy alignment, and per-category breakdowns.
+
+    Example:
+        uv run python -m examples.advanced.g_plan_benchmark.demo evaluate \\
+            --problems problems/catalog.json \\
+            --pipeline single --pipeline full \\
+            --trials 3 --output eval_results.json
+    """
+    from .evaluation import ExperimentConfig, ExperimentRunner, ProblemSet, score_experiment
+
+    log_level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+
+    if model is None:
+        model = (
+            "Qwen/Qwen2.5-Coder-32B-Instruct"
+            if backend == "huggingface"
+            else "qwen2.5-coder:14b"
+        )
+
+    # Load problems
+    problem_set = ProblemSet.load(problems)
+    console.print(f"\n[bold]Evaluation Harness[/bold]")
+    console.print(f"Problems: {len(problem_set)} from {problems}")
+    console.print(f"Pipelines: {', '.join(pipelines)}")
+    console.print(f"Trials per problem: {trials}")
+    console.print(f"Model: {model} ({backend})")
+    total = len(problem_set) * len(pipelines) * trials
+    console.print(f"Total trials: {total}")
+
+    # Configure and run
+    config = ExperimentConfig(
+        pipelines=list(pipelines),
+        trials_per_problem=trials,
+        model=model,
+        backend=backend,
+        host=host,
+    )
+
+    runner = ExperimentRunner(config)
+
+    def _on_trial(problem_id: str, pipeline: str, trial_num: int, result) -> None:
+        status = "[green]OK[/green]" if result.pipeline_succeeded else "[red]FAIL[/red]"
+        console.print(
+            f"  {problem_id} | {pipeline} | trial {trial_num}: {status} "
+            f"({result.total_time_ms:.0f}ms)"
+        )
+        if verbose and result.errors:
+            for err in result.errors:
+                console.print(f"    {err}")
+
+    result = runner.run(problem_set, on_trial=_on_trial)
+
+    # Score
+    scorecard = score_experiment(result, problem_set)
+
+    # Display scorecard
+    _display_scorecard(scorecard)
+
+    # Save results
+    if output:
+        output_data = {
+            "scorecard": scorecard.to_dict(),
+            "raw_results": result.to_dict(),
+        }
+        with open(output, "w") as f:
+            json.dump(output_data, f, indent=2)
+        console.print(f"\n[green]Results saved to {output}[/green]")
+
+
+def _display_scorecard(scorecard) -> None:
+    """Display the experiment scorecard."""
+    console.print(f"\n[bold]{'=' * 60}[/bold]")
+    console.print("[bold]Evaluation Scorecard[/bold]")
+    console.print(f"[bold]{'=' * 60}[/bold]")
+
+    for name, card in scorecard.pipelines.items():
+        console.print(f"\n[bold]{name}[/bold]")
+
+        # Pipeline epsilon table
+        table = Table(title=f"Epsilon — {name}")
+        table.add_column("Metric")
+        table.add_column("Pass", justify="right")
+        table.add_column("Total", justify="right")
+        table.add_column("epsilon-hat", justify="right")
+        table.add_column("95% CI", justify="center")
+        table.add_column("E[attempts]", justify="right")
+
+        for label, score in [
+            ("Pipeline (end-to-end)", card.pipeline_epsilon),
+            ("Minimal", card.minimal_epsilon),
+            ("Medium", card.medium_epsilon),
+            ("Expansive", card.expansive_epsilon),
+        ]:
+            ci = score.ci_95
+            e_att = f"{score.e_attempts:.1f}" if score.e_attempts != float("inf") else "inf"
+            table.add_row(
+                label,
+                str(score.passed),
+                str(score.total),
+                f"{score.epsilon_hat:.2f}",
+                f"[{ci[0]:.2f}, {ci[1]:.2f}]",
+                e_att,
+            )
+
+        # Pre-step rows
+        for label, score in [
+            ("g_analysis", card.analysis_epsilon),
+            ("g_recon", card.recon_epsilon),
+            ("g_strategy", card.strategy_epsilon),
+        ]:
+            if score is not None:
+                ci = score.ci_95
+                e_att = f"{score.e_attempts:.1f}" if score.e_attempts != float("inf") else "inf"
+                table.add_row(
+                    label,
+                    str(score.passed),
+                    str(score.total),
+                    f"{score.epsilon_hat:.2f}",
+                    f"[{ci[0]:.2f}, {ci[1]:.2f}]",
+                    e_att,
+                )
+
+        console.print(table)
+
+        # Strategy alignment
+        if card.strategy_alignment.total > 0:
+            sa = card.strategy_alignment
+            ci = sa.ci_95
+            console.print(
+                f"  Strategy alignment: {sa.correct}/{sa.total} "
+                f"({sa.accuracy:.0%}) CI [{ci[0]:.2f}, {ci[1]:.2f}]"
+            )
+
+        # Per-category breakdown
+        if card.categories:
+            cat_table = Table(title=f"Per-Category — {name}")
+            cat_table.add_column("Category")
+            cat_table.add_column("Pipeline eps", justify="right")
+            cat_table.add_column("Medium eps", justify="right")
+            cat_table.add_column("Strategy align", justify="right")
+            cat_table.add_column("n", justify="right")
+
+            for cat in card.categories:
+                align_str = (
+                    f"{cat.strategy_alignment.accuracy:.0%}"
+                    if cat.strategy_alignment.total > 0
+                    else "—"
+                )
+                cat_table.add_row(
+                    cat.category,
+                    f"{cat.pipeline_epsilon.epsilon_hat:.2f}",
+                    f"{cat.medium_epsilon.epsilon_hat:.2f}",
+                    align_str,
+                    str(cat.pipeline_epsilon.total),
+                )
+
+            console.print(cat_table)
+
+        console.print(f"  Avg time: {card.avg_time_ms:.0f}ms")
+
+    # Cross-pipeline comparison
+    if scorecard.comparison:
+        console.print(f"\n[bold]Cross-Pipeline Comparison[/bold]")
+        for key, delta in scorecard.comparison.get("delta_vs_baseline", {}).items():
+            sign = "+" if delta["delta_pp"] >= 0 else ""
+            console.print(
+                f"  {delta['other']} vs {delta['baseline']}: "
+                f"{sign}{delta['delta_pp']}pp "
+                f"({delta['baseline_epsilon']:.2f} → {delta['other_epsilon']:.2f})"
+            )
+
+
 if __name__ == "__main__":
     cli()
