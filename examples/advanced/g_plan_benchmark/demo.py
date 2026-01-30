@@ -57,8 +57,8 @@ from atomicguard.domain.models import (
 from atomicguard.domain.prompts import PromptTemplate
 
 from .defects import DefectType, inject_defect
-from .generators import LLMPlanGenerator
-from .guards import ExpansivePlanGuard, MediumPlanGuard, MinimalPlanGuard
+from .generators import LLMJsonGenerator, LLMPlanGenerator
+from .guards import AnalysisGuard, ExpansivePlanGuard, MediumPlanGuard, MinimalPlanGuard
 from .models import PlanDefinition
 
 console = Console()
@@ -233,6 +233,11 @@ class EpsilonTrialResult:
     minimal_feedback: str = ""
     medium_feedback: str = ""
     expansive_feedback: str = ""
+    # Option A: Classify-then-Plan pipeline fields
+    analysis_passed: bool | None = None  # None = single pipeline (no analysis)
+    analysis_content: str = ""
+    analysis_feedback: str = ""
+    analysis_time_ms: float = 0.0
 
 
 # =============================================================================
@@ -463,6 +468,12 @@ def complexity(trials: int, output: str | None) -> None:
     help="Ollama host URL (ollama backend only)",
 )
 @click.option("--model", default=None, help="Model to use (default depends on backend)")
+@click.option(
+    "--pipeline",
+    default="single",
+    type=click.Choice(["single", "classify-then-plan"]),
+    help="Pipeline mode: single (one-shot) or classify-then-plan (Option A decomposition)",
+)
 @click.option("--output", default=None, help="Output JSON file")
 @click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
 def epsilon(
@@ -470,6 +481,7 @@ def epsilon(
     backend: str,
     host: str,
     model: str | None,
+    pipeline: str,
     output: str | None,
     verbose: bool,
 ) -> None:
@@ -478,8 +490,9 @@ def epsilon(
     Generates N plans via LLM, validates each through Minimal/Medium/Expansive,
     and reports epsilon-hat (pass rate) with 95% Wilson confidence intervals.
 
-    This is an epsilon estimation experiment for plan generation:
-        epsilon_hat = (plans passing G_plan) / (total generated)
+    Pipeline modes:
+      single              One-shot plan generation (g_plan_llm only)
+      classify-then-plan  Two-step: g_analysis → g_plan_conditioned (Option A)
 
     Supports --backend ollama (default) or --backend huggingface.
     """
@@ -502,35 +515,48 @@ def epsilon(
             else "qwen2.5-coder:14b"
         )
 
+    pipeline_label = {
+        "single": "Single-shot",
+        "classify-then-plan": "Classify-then-Plan (Option A)",
+    }[pipeline]
+
     console.print("\n[bold]G_plan Epsilon Estimation (LLM Plan Generation)[/bold]")
+    console.print(f"Pipeline: {pipeline_label}")
     console.print(f"Backend: {backend}")
     console.print(f"Model: {model}")
     if backend == "ollama":
         console.print(f"Host: {host}")
     console.print(f"Trials: {trials}")
 
-    # Create LLM generator
+    # Create LLM generators
     try:
         if backend == "huggingface":
-            generator = LLMPlanGenerator(model=model, backend="huggingface")
+            plan_generator = LLMPlanGenerator(model=model, backend="huggingface")
+            if pipeline == "classify-then-plan":
+                analysis_generator = LLMJsonGenerator(model=model, backend="huggingface")
         else:
-            # Normalize host to OpenAI-compatible base_url
             base_url = host.rstrip("/")
             if not base_url.endswith("/v1"):
                 base_url += "/v1"
-            generator = LLMPlanGenerator(model=model, base_url=base_url)
+            plan_generator = LLMPlanGenerator(model=model, base_url=base_url)
+            if pipeline == "classify-then-plan":
+                analysis_generator = LLMJsonGenerator(model=model, base_url=base_url)
     except (ImportError, ValueError) as err:
         console.print(f"[red]{err}[/red]")
         raise SystemExit(1) from err
 
-    # Load specification and prompt template
+    # Load specification and prompt templates
     specification = _load_specification()
-    template = _load_prompt_template("g_plan_llm")
-    context = _make_context(specification)
+    plan_template = _load_prompt_template("g_plan_llm")
+    base_context = _make_context(specification)
+
+    if pipeline == "classify-then-plan":
+        analysis_template = _load_prompt_template("g_analysis")
+        analysis_guard = AnalysisGuard()
 
     console.print(f"Specification: {len(specification)} chars")
 
-    # Guards
+    # Plan guards
     minimal_guard = MinimalPlanGuard()
     medium_guard = MediumPlanGuard()
     expansive_guard = ExpansivePlanGuard()
@@ -541,33 +567,117 @@ def epsilon(
     for i in range(trials):
         console.print(f"\n--- Trial {i + 1}/{trials} ---")
 
+        analysis_passed: bool | None = None
+        analysis_content = ""
+        analysis_feedback_str = ""
+        analysis_time = 0.0
+        plan_context = base_context
+
+        # Step 1 (classify-then-plan only): Run g_analysis
+        if pipeline == "classify-then-plan":
+            t0 = time.perf_counter()
+            try:
+                analysis_artifact = analysis_generator.generate(
+                    context=base_context,
+                    template=analysis_template,
+                    action_pair_id="g_analysis",
+                    workflow_id="epsilon_benchmark",
+                )
+                analysis_time = (time.perf_counter() - t0) * 1000
+            except Exception as e:
+                analysis_time = (time.perf_counter() - t0) * 1000
+                console.print(f"  [red]Analysis generation failed: {e}[/red]")
+                trial_results.append(
+                    EpsilonTrialResult(
+                        trial=i + 1,
+                        minimal_passed=False,
+                        medium_passed=False,
+                        expansive_passed=False,
+                        generation_time_ms=analysis_time,
+                        plan_steps=0,
+                        errors=[f"Analysis generation failed: {e}"],
+                        analysis_passed=False,
+                        analysis_content="",
+                        analysis_feedback=str(e),
+                        analysis_time_ms=analysis_time,
+                    )
+                )
+                continue
+
+            analysis_content = analysis_artifact.content
+            analysis_r = analysis_guard.validate(analysis_artifact)
+            analysis_passed = analysis_r.passed
+            analysis_feedback_str = analysis_r.feedback or ""
+
+            a_status = "[green]P[/green]" if analysis_r.passed else "[red]F[/red]"
+            console.print(f"  Analysis: {a_status} ({analysis_time:.0f}ms)")
+
+            if not analysis_r.passed:
+                # Analysis failed — plan generation skipped
+                if verbose:
+                    console.print(f"    {analysis_feedback_str}")
+                trial_results.append(
+                    EpsilonTrialResult(
+                        trial=i + 1,
+                        minimal_passed=False,
+                        medium_passed=False,
+                        expansive_passed=False,
+                        generation_time_ms=analysis_time,
+                        plan_steps=0,
+                        errors=[f"Analysis: {analysis_feedback_str}"],
+                        analysis_passed=False,
+                        analysis_content=analysis_content,
+                        analysis_feedback=analysis_feedback_str,
+                        analysis_time_ms=analysis_time,
+                    )
+                )
+                continue
+
+            # Enrich context with analysis results for plan generation
+            plan_context = base_context.amend(
+                delta_constraints=(
+                    f"## Problem Analysis (from g_analysis)\n{analysis_content}"
+                )
+            )
+
+        # Step 2: Generate plan (single-shot or conditioned on analysis)
         t0 = time.perf_counter()
         try:
-            artifact = generator.generate(
-                context=context,
-                template=template,
-                action_pair_id="g_plan_llm",
+            plan_artifact = plan_generator.generate(
+                context=plan_context,
+                template=plan_template,
+                action_pair_id=(
+                    "g_plan_conditioned"
+                    if pipeline == "classify-then-plan"
+                    else "g_plan_llm"
+                ),
                 workflow_id="epsilon_benchmark",
             )
-            gen_time = (time.perf_counter() - t0) * 1000
+            plan_gen_time = (time.perf_counter() - t0) * 1000
         except Exception as e:
-            gen_time = (time.perf_counter() - t0) * 1000
-            console.print(f"  [red]Generation failed: {e}[/red]")
+            plan_gen_time = (time.perf_counter() - t0) * 1000
+            console.print(f"  [red]Plan generation failed: {e}[/red]")
             trial_results.append(
                 EpsilonTrialResult(
                     trial=i + 1,
                     minimal_passed=False,
                     medium_passed=False,
                     expansive_passed=False,
-                    generation_time_ms=gen_time,
+                    generation_time_ms=analysis_time + plan_gen_time,
                     plan_steps=0,
-                    errors=[str(e)],
+                    errors=[f"Plan generation failed: {e}"],
+                    analysis_passed=analysis_passed,
+                    analysis_content=analysis_content,
+                    analysis_feedback=analysis_feedback_str,
+                    analysis_time_ms=analysis_time,
                 )
             )
             continue
 
+        total_gen_time = analysis_time + plan_gen_time
+
         # Count steps in generated plan
-        plan_content = artifact.content
+        plan_content = plan_artifact.content
         plan_steps = 0
         try:
             plan_data = json.loads(plan_content)
@@ -575,10 +685,10 @@ def epsilon(
         except (json.JSONDecodeError, TypeError):
             pass
 
-        # Validate at all three levels
-        min_r = minimal_guard.validate(artifact)
-        med_r = medium_guard.validate(artifact)
-        exp_r = expansive_guard.validate(artifact)
+        # Validate plan at all three levels
+        min_r = minimal_guard.validate(plan_artifact)
+        med_r = medium_guard.validate(plan_artifact)
+        exp_r = expansive_guard.validate(plan_artifact)
 
         errors: list[str] = []
         if not min_r.passed and min_r.feedback:
@@ -594,13 +704,17 @@ def epsilon(
                 minimal_passed=min_r.passed,
                 medium_passed=med_r.passed,
                 expansive_passed=exp_r.passed,
-                generation_time_ms=gen_time,
+                generation_time_ms=total_gen_time,
                 plan_steps=plan_steps,
                 errors=errors,
                 plan_content=plan_content,
                 minimal_feedback=min_r.feedback or "",
                 medium_feedback=med_r.feedback or "",
                 expansive_feedback=exp_r.feedback or "",
+                analysis_passed=analysis_passed,
+                analysis_content=analysis_content,
+                analysis_feedback=analysis_feedback_str,
+                analysis_time_ms=analysis_time,
             )
         )
 
@@ -610,14 +724,14 @@ def epsilon(
         exp_s = "[green]P[/green]" if exp_r.passed else "[red]F[/red]"
         console.print(
             f"  Min:{min_s} Med:{med_s} Exp:{exp_s} "
-            f"| {plan_steps} steps | {gen_time:.0f}ms"
+            f"| {plan_steps} steps | {total_gen_time:.0f}ms"
         )
         if verbose and errors:
             for err in errors:
                 console.print(f"    {err}")
 
     # Compute and display results
-    _display_epsilon_results(trial_results, model, output)
+    _display_epsilon_results(trial_results, model, pipeline, output)
 
 
 # =============================================================================
@@ -719,6 +833,7 @@ def _display_detection_results(
 def _display_epsilon_results(
     results: list[EpsilonTrialResult],
     model: str,
+    pipeline: str,
     output: str | None,
 ) -> None:
     """Display epsilon estimation results."""
@@ -741,9 +856,46 @@ def _display_epsilon_results(
 
     # Summary table
     console.print(f"\n[bold]{'=' * 60}[/bold]")
-    console.print("[bold]Epsilon Estimation Results[/bold]")
+    pipeline_label = {
+        "single": "Single-shot",
+        "classify-then-plan": "Classify-then-Plan (Option A)",
+    }.get(pipeline, pipeline)
+    console.print(f"[bold]Epsilon Estimation Results — {pipeline_label}[/bold]")
     console.print(f"[bold]{'=' * 60}[/bold]")
 
+    # Analysis epsilon (classify-then-plan only)
+    is_decomposed = any(r.analysis_passed is not None for r in results)
+    if is_decomposed:
+        analysis_pass = sum(
+            1 for r in results if r.analysis_passed is True
+        )
+        analysis_eps = analysis_pass / k if k > 0 else 0.0
+        analysis_ci = _wilson_ci(analysis_pass, k)
+        avg_analysis_time = (
+            sum(r.analysis_time_ms for r in results) / k if k > 0 else 0.0
+        )
+
+        a_table = Table(title=f"g_analysis Epsilon (k={k})")
+        a_table.add_column("Guard")
+        a_table.add_column("Pass", justify="right")
+        a_table.add_column("Fail", justify="right")
+        a_table.add_column("epsilon-hat", justify="right")
+        a_table.add_column("95% CI", justify="center")
+
+        e_a = f"{1 / analysis_eps:.1f}" if analysis_eps > 0 else "inf"
+        a_table.add_row(
+            "analysis_valid",
+            str(analysis_pass),
+            str(k - analysis_pass),
+            f"{analysis_eps:.2f}",
+            f"[{analysis_ci[0]:.2f}, {analysis_ci[1]:.2f}]",
+        )
+        console.print(a_table)
+        console.print(f"Avg analysis time: {avg_analysis_time:.0f}ms")
+        console.print(f"E[analysis attempts]: {e_a}")
+        console.print()
+
+    # Plan epsilon table
     table = Table(title=f"G_plan Epsilon (k={k}, model={model})")
     table.add_column("Rigor Level")
     table.add_column("Pass", justify="right")
@@ -769,14 +921,13 @@ def _display_epsilon_results(
 
     console.print(table)
 
-    console.print(f"\nAvg generation time: {avg_gen_time:.0f}ms")
+    console.print(f"\nAvg total generation time: {avg_gen_time:.0f}ms")
     console.print(f"Avg plan steps: {avg_steps:.1f}")
 
     # Error frequency analysis
     error_counts: dict[str, int] = {}
     for r in results:
         for err in r.errors:
-            # Normalize error to first line for grouping
             key = err.split("\n")[0][:80]
             error_counts[key] = error_counts.get(key, 0) + 1
 
@@ -786,8 +937,9 @@ def _display_epsilon_results(
             console.print(f"  {count}x  {err}")
 
     if output:
-        output_data = {
+        output_data: dict[str, Any] = {
             "model": model,
+            "pipeline": pipeline,
             "trials": k,
             "epsilon": {
                 "minimal": {
@@ -808,25 +960,45 @@ def _display_epsilon_results(
             },
             "avg_generation_time_ms": avg_gen_time,
             "avg_plan_steps": avg_steps,
-            "trials_detail": [
-                {
-                    "trial": r.trial,
-                    "minimal_passed": r.minimal_passed,
-                    "medium_passed": r.medium_passed,
-                    "expansive_passed": r.expansive_passed,
-                    "generation_time_ms": r.generation_time_ms,
-                    "plan_steps": r.plan_steps,
-                    "errors": r.errors,
-                    "plan_content": r.plan_content,
-                    "guard_feedback": {
-                        "minimal": r.minimal_feedback,
-                        "medium": r.medium_feedback,
-                        "expansive": r.expansive_feedback,
-                    },
-                }
-                for r in results
-            ],
         }
+
+        # Include analysis epsilon for decomposed pipeline
+        if is_decomposed:
+            output_data["analysis_epsilon"] = {
+                "pass": analysis_pass,
+                "epsilon_hat": analysis_eps,
+                "ci_95": list(analysis_ci),
+                "avg_time_ms": avg_analysis_time,
+            }
+
+        output_data["trials_detail"] = [
+            {
+                "trial": r.trial,
+                "minimal_passed": r.minimal_passed,
+                "medium_passed": r.medium_passed,
+                "expansive_passed": r.expansive_passed,
+                "generation_time_ms": r.generation_time_ms,
+                "plan_steps": r.plan_steps,
+                "errors": r.errors,
+                "plan_content": r.plan_content,
+                "guard_feedback": {
+                    "minimal": r.minimal_feedback,
+                    "medium": r.medium_feedback,
+                    "expansive": r.expansive_feedback,
+                },
+                **(
+                    {
+                        "analysis_passed": r.analysis_passed,
+                        "analysis_content": r.analysis_content,
+                        "analysis_feedback": r.analysis_feedback,
+                        "analysis_time_ms": r.analysis_time_ms,
+                    }
+                    if r.analysis_passed is not None
+                    else {}
+                ),
+            }
+            for r in results
+        ]
         with open(output, "w") as f:
             json.dump(output_data, f, indent=2)
         console.print(f"\n[green]Results saved to {output}[/green]")
