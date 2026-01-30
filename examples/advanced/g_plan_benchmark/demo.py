@@ -6,7 +6,8 @@ Validates the G_plan taxonomy (Minimal/Medium/Expansive) against
 multi-agent SDLC plans with injected defects.
 
 All validation uses real AtomicGuard GuardInterface implementations.
-Plans are loaded from the catalog via a deterministic PlanGenerator.
+Plans are loaded from the catalog via a deterministic PlanGenerator,
+or generated via LLM using LLMPlanGenerator (epsilon estimation mode).
 
 Usage:
     # Validate a plan at all rigor levels
@@ -20,11 +21,20 @@ Usage:
 
     # Load plan from real sdlc_v2 workflow.json
     uv run python -m examples.advanced.g_plan_benchmark.demo validate --from-workflow
+
+    # Estimate epsilon for LLM plan generation
+    uv run python -m examples.advanced.g_plan_benchmark.demo epsilon --trials 20
+
+    # Epsilon with specific model/host
+    uv run python -m examples.advanced.g_plan_benchmark.demo epsilon \\
+        --trials 20 --host http://localhost:11434 --model qwen2.5-coder:14b
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -37,13 +47,17 @@ from rich.console import Console
 from rich.table import Table
 
 from atomicguard.domain.models import (
+    AmbientEnvironment,
     Artifact,
     ArtifactStatus,
+    Context,
     ContextSnapshot,
     GuardResult,
 )
+from atomicguard.domain.prompts import PromptTemplate
 
 from .defects import DefectType, inject_defect
+from .generators import LLMPlanGenerator
 from .guards import ExpansivePlanGuard, MediumPlanGuard, MinimalPlanGuard
 from .models import PlanDefinition, PlanStep
 
@@ -51,7 +65,9 @@ console = Console()
 
 SCRIPT_DIR = Path(__file__).parent
 PLANS_DIR = SCRIPT_DIR / "plans"
+PROMPTS_PATH = SCRIPT_DIR / "prompts.json"
 SDLC_V2_WORKFLOW = SCRIPT_DIR.parent / "sdlc_v2" / "workflow.json"
+SDLC_V2_SAMPLE_INPUT = SCRIPT_DIR.parent / "sdlc_v2" / "sample_input"
 
 
 # =============================================================================
@@ -96,6 +112,51 @@ def _load_from_workflow() -> dict[str, Any]:
     return plan.to_dict()
 
 
+def _load_specification() -> str:
+    """Load specification from sdlc_v2 sample_input files."""
+    arch_path = SDLC_V2_SAMPLE_INPUT / "architecture.md"
+    req_path = SDLC_V2_SAMPLE_INPUT / "requirements.md"
+
+    parts = []
+    if arch_path.exists():
+        parts.append(f"# Architecture Documentation\n\n{arch_path.read_text()}")
+    if req_path.exists():
+        parts.append(f"# Requirements Documentation\n\n{req_path.read_text()}")
+
+    return "\n\n".join(parts) if parts else "Design a multi-agent SDLC workflow."
+
+
+def _load_prompt_template(step_id: str) -> PromptTemplate | None:
+    """Load a PromptTemplate from prompts.json."""
+    if not PROMPTS_PATH.exists():
+        return None
+    with open(PROMPTS_PATH) as f:
+        prompts = json.load(f)
+    entry = prompts.get(step_id)
+    if entry is None:
+        return None
+    return PromptTemplate(
+        role=entry.get("role", ""),
+        constraints=entry.get("constraints", ""),
+        task=entry.get("task", ""),
+        feedback_wrapper=entry.get(
+            "feedback_wrapper",
+            "GUARD REJECTION:\n{feedback}\nInstruction: Address the rejection above.",
+        ),
+    )
+
+
+def _make_context(specification: str) -> Context:
+    """Build a Context for the LLM generator."""
+    return Context(
+        ambient=AmbientEnvironment(repository=None, constraints=""),
+        specification=specification,
+        current_artifact=None,
+        feedback_history=(),
+        dependency_artifacts=(),
+    )
+
+
 def _generate_scaled_plan(num_steps: int) -> dict[str, Any]:
     """Generate a valid linear plan with specified number of steps."""
     guard_choices = [
@@ -128,6 +189,17 @@ def _generate_scaled_plan(num_steps: int) -> dict[str, Any]:
     }
 
 
+def _wilson_ci(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson score interval for binomial proportion (95% CI by default)."""
+    if trials == 0:
+        return (0.0, 0.0)
+    p_hat = successes / trials
+    denom = 1 + z * z / trials
+    centre = (p_hat + z * z / (2 * trials)) / denom
+    spread = z * math.sqrt((p_hat * (1 - p_hat) + z * z / (4 * trials)) / trials) / denom
+    return (max(0.0, centre - spread), min(1.0, centre + spread))
+
+
 # =============================================================================
 # BENCHMARK DATA STRUCTURES
 # =============================================================================
@@ -144,6 +216,19 @@ class DefectDetectionResult:
     medium_time_ms: float
     expansive_detected: bool
     expansive_time_ms: float
+
+
+@dataclass
+class EpsilonTrialResult:
+    """Result of a single LLM plan generation + validation trial."""
+
+    trial: int
+    minimal_passed: bool
+    medium_passed: bool
+    expansive_passed: bool
+    generation_time_ms: float
+    plan_steps: int
+    errors: list[str]
 
 
 # =============================================================================
@@ -227,7 +312,7 @@ def benchmark(
 
     if from_workflow:
         base_plan_dict = _load_from_workflow()
-        console.print(f"Base plan: sdlc_v2/workflow.json")
+        console.print("Base plan: sdlc_v2/workflow.json")
     else:
         base_plan_dict = _load_plan(plan_source)
         console.print(f"Base plan: {plan_source}")
@@ -352,6 +437,144 @@ def complexity(trials: int, output: str | None) -> None:
         console.print(f"\n[green]Results saved to {output}[/green]")
 
 
+@cli.command()
+@click.option("--trials", default=20, help="Number of LLM generation trials")
+@click.option(
+    "--host", default="http://localhost:11434", help="Ollama host URL",
+)
+@click.option("--model", default="qwen2.5-coder:14b", help="Model to use")
+@click.option("--output", default=None, help="Output JSON file")
+@click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
+def epsilon(
+    trials: int,
+    host: str,
+    model: str,
+    output: str | None,
+    verbose: bool,
+) -> None:
+    """Estimate epsilon for LLM plan generation against G_plan guards.
+
+    Generates N plans via LLM, validates each through Minimal/Medium/Expansive,
+    and reports epsilon-hat (pass rate) with 95% Wilson confidence intervals.
+
+    This is an epsilon estimation experiment for plan generation:
+        epsilon_hat = (plans passing G_plan) / (total generated)
+    """
+    log_level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    console.print("\n[bold]G_plan Epsilon Estimation (LLM Plan Generation)[/bold]")
+    console.print(f"Model: {model}")
+    console.print(f"Host: {host}")
+    console.print(f"Trials: {trials}")
+
+    # Normalize host to OpenAI-compatible base_url
+    base_url = host.rstrip("/")
+    if not base_url.endswith("/v1"):
+        base_url += "/v1"
+
+    # Create LLM generator
+    try:
+        generator = LLMPlanGenerator(model=model, base_url=base_url)
+    except ImportError:
+        console.print("[red]openai library required: pip install openai[/red]")
+        raise SystemExit(1)
+
+    # Load specification and prompt template
+    specification = _load_specification()
+    template = _load_prompt_template("g_plan_llm")
+    context = _make_context(specification)
+
+    console.print(f"Specification: {len(specification)} chars")
+
+    # Guards
+    minimal_guard = MinimalPlanGuard()
+    medium_guard = MediumPlanGuard()
+    expansive_guard = ExpansivePlanGuard()
+
+    # Run trials
+    trial_results: list[EpsilonTrialResult] = []
+
+    for i in range(trials):
+        console.print(f"\n--- Trial {i + 1}/{trials} ---")
+
+        t0 = time.perf_counter()
+        try:
+            artifact = generator.generate(
+                context=context,
+                template=template,
+                action_pair_id="g_plan_llm",
+                workflow_id="epsilon_benchmark",
+            )
+            gen_time = (time.perf_counter() - t0) * 1000
+        except Exception as e:
+            gen_time = (time.perf_counter() - t0) * 1000
+            console.print(f"  [red]Generation failed: {e}[/red]")
+            trial_results.append(EpsilonTrialResult(
+                trial=i + 1,
+                minimal_passed=False,
+                medium_passed=False,
+                expansive_passed=False,
+                generation_time_ms=gen_time,
+                plan_steps=0,
+                errors=[str(e)],
+            ))
+            continue
+
+        # Count steps in generated plan
+        plan_steps = 0
+        try:
+            plan_data = json.loads(artifact.content)
+            plan_steps = len(plan_data.get("steps", []))
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Validate at all three levels
+        min_r = minimal_guard.validate(artifact)
+        med_r = medium_guard.validate(artifact)
+        exp_r = expansive_guard.validate(artifact)
+
+        errors: list[str] = []
+        if not min_r.passed and min_r.feedback:
+            errors.append(f"Minimal: {min_r.feedback}")
+        if not med_r.passed and med_r.feedback and min_r.passed:
+            errors.append(f"Medium: {med_r.feedback}")
+        if not exp_r.passed and exp_r.feedback and med_r.passed:
+            errors.append(f"Expansive: {exp_r.feedback}")
+
+        trial_results.append(EpsilonTrialResult(
+            trial=i + 1,
+            minimal_passed=min_r.passed,
+            medium_passed=med_r.passed,
+            expansive_passed=exp_r.passed,
+            generation_time_ms=gen_time,
+            plan_steps=plan_steps,
+            errors=errors,
+        ))
+
+        # Per-trial summary
+        min_s = "[green]P[/green]" if min_r.passed else "[red]F[/red]"
+        med_s = "[green]P[/green]" if med_r.passed else "[red]F[/red]"
+        exp_s = "[green]P[/green]" if exp_r.passed else "[red]F[/red]"
+        console.print(
+            f"  Min:{min_s} Med:{med_s} Exp:{exp_s} "
+            f"| {plan_steps} steps | {gen_time:.0f}ms"
+        )
+        if verbose and errors:
+            for err in errors:
+                console.print(f"    {err}")
+
+    # Compute and display results
+    _display_epsilon_results(trial_results, model, output)
+
+
 # =============================================================================
 # DISPLAY HELPERS
 # =============================================================================
@@ -433,6 +656,116 @@ def _display_detection_results(
                     "expansive": avg_exp,
                 },
             },
+        }
+        with open(output, "w") as f:
+            json.dump(output_data, f, indent=2)
+        console.print(f"\n[green]Results saved to {output}[/green]")
+
+
+def _display_epsilon_results(
+    results: list[EpsilonTrialResult],
+    model: str,
+    output: str | None,
+) -> None:
+    """Display epsilon estimation results."""
+    k = len(results)
+
+    min_pass = sum(1 for r in results if r.minimal_passed)
+    med_pass = sum(1 for r in results if r.medium_passed)
+    exp_pass = sum(1 for r in results if r.expansive_passed)
+
+    min_eps = min_pass / k if k > 0 else 0.0
+    med_eps = med_pass / k if k > 0 else 0.0
+    exp_eps = exp_pass / k if k > 0 else 0.0
+
+    min_ci = _wilson_ci(min_pass, k)
+    med_ci = _wilson_ci(med_pass, k)
+    exp_ci = _wilson_ci(exp_pass, k)
+
+    avg_gen_time = sum(r.generation_time_ms for r in results) / k if k > 0 else 0.0
+    avg_steps = sum(r.plan_steps for r in results) / k if k > 0 else 0.0
+
+    # Summary table
+    console.print(f"\n[bold]{'=' * 60}[/bold]")
+    console.print("[bold]Epsilon Estimation Results[/bold]")
+    console.print(f"[bold]{'=' * 60}[/bold]")
+
+    table = Table(title=f"G_plan Epsilon (k={k}, model={model})")
+    table.add_column("Rigor Level")
+    table.add_column("Pass", justify="right")
+    table.add_column("Fail", justify="right")
+    table.add_column("epsilon-hat", justify="right")
+    table.add_column("95% CI", justify="center")
+    table.add_column("E[attempts]", justify="right")
+
+    for label, passed, eps, ci in [
+        ("Minimal", min_pass, min_eps, min_ci),
+        ("Medium", med_pass, med_eps, med_ci),
+        ("Expansive", exp_pass, exp_eps, exp_ci),
+    ]:
+        e_attempts = f"{1 / eps:.1f}" if eps > 0 else "inf"
+        table.add_row(
+            label,
+            str(passed),
+            str(k - passed),
+            f"{eps:.2f}",
+            f"[{ci[0]:.2f}, {ci[1]:.2f}]",
+            e_attempts,
+        )
+
+    console.print(table)
+
+    console.print(f"\nAvg generation time: {avg_gen_time:.0f}ms")
+    console.print(f"Avg plan steps: {avg_steps:.1f}")
+
+    # Error frequency analysis
+    error_counts: dict[str, int] = {}
+    for r in results:
+        for err in r.errors:
+            # Normalize error to first line for grouping
+            key = err.split("\n")[0][:80]
+            error_counts[key] = error_counts.get(key, 0) + 1
+
+    if error_counts:
+        console.print(f"\n[bold]Common Failure Modes:[/bold]")
+        for err, count in sorted(error_counts.items(), key=lambda x: -x[1])[:5]:
+            console.print(f"  {count}x  {err}")
+
+    if output:
+        output_data = {
+            "model": model,
+            "trials": k,
+            "epsilon": {
+                "minimal": {
+                    "pass": min_pass,
+                    "epsilon_hat": min_eps,
+                    "ci_95": list(min_ci),
+                },
+                "medium": {
+                    "pass": med_pass,
+                    "epsilon_hat": med_eps,
+                    "ci_95": list(med_ci),
+                },
+                "expansive": {
+                    "pass": exp_pass,
+                    "epsilon_hat": exp_eps,
+                    "ci_95": list(exp_ci),
+                },
+            },
+            "avg_generation_time_ms": avg_gen_time,
+            "avg_plan_steps": avg_steps,
+            "trials_detail": [
+                {
+                    "trial": r.trial,
+                    "minimal_passed": r.minimal_passed,
+                    "medium_passed": r.medium_passed,
+                    "expansive_passed": r.expansive_passed,
+                    "generation_time_ms": r.generation_time_ms,
+                    "plan_steps": r.plan_steps,
+                    "errors": r.errors,
+                }
+                for r in results
+            ],
         }
         with open(output, "w") as f:
             json.dump(output_data, f, indent=2)

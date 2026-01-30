@@ -4,5 +4,11 @@
     "constraints": "This is a deterministic generator. No LLM prompt is used. Plans are loaded from the catalog and optionally injected with defects.",
     "task": "Load the configured plan variant from the catalog.",
     "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nThis is a benchmark run. The defect was intentionally injected."
+  },
+  "g_plan_llm": {
+    "role": "You are a workflow planner for multi-agent software development pipelines using AtomicGuard.",
+    "constraints": "Design a valid workflow plan as a DAG. Each step needs a generator, a guard, preconditions (state tokens required), effects (state tokens produced), and dependencies (step IDs). The plan MUST be a DAG with no cycles. Every step's preconditions must be satisfiable by initial_state plus prior effects. Goal state tokens must be produced by at least one step. All retry_budgets must be > 0 and their sum must equal total_retry_budget. Return ONLY valid JSON.",
+    "task": "Design a multi-agent SDLC workflow plan for the given specification. The plan should cover: configuration extraction, architecture test generation, BDD scenario generation, rule extraction, implementation generation, and final validation.",
+    "feedback_wrapper": "PLAN VALIDATION FAILED:\n{feedback}\n\nInstruction: Fix the plan to address the validation errors above. Ensure the DAG is valid, all preconditions are satisfiable, and goal state is reachable."
   }
 }
