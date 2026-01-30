@@ -1,7 +1,8 @@
 {
   "name": "G_plan Validation Benchmark",
-  "description": "Single action pair: deterministic plan generation + G_plan guard validation. Used to benchmark guard detection rates across rigor levels.",
-  "rmax": 1,
+  "description": "Plan generation and validation using the G_plan taxonomy. Supports both deterministic (PlanGenerator) and LLM-backed (LLMPlanGenerator) plan generation.",
+  "model": "qwen2.5-coder:14b",
+  "rmax": 3,
   "action_pairs": {
     "g_plan": {
       "generator": "PlanGenerator",
@@ -10,7 +11,12 @@
         "defect": null
       },
       "guard": "plan_medium",
-      "description": "Generate (or load) a workflow plan and validate at configured rigor level"
+      "description": "Load a workflow plan from catalog and validate at configured rigor level"
+    },
+    "g_plan_llm": {
+      "generator": "LLMPlanGenerator",
+      "guard": "plan_medium",
+      "description": "Generate a workflow plan via LLM and validate at configured rigor level"
     }
   }
 }

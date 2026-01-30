@@ -98,26 +98,40 @@ uv run python -m examples.advanced.g_plan_benchmark.demo complexity --trials 100
 
 # Save results to JSON
 uv run python -m examples.advanced.g_plan_benchmark.demo benchmark --output results.json
+
+# Estimate epsilon for LLM plan generation (requires Ollama)
+uv run python -m examples.advanced.g_plan_benchmark.demo epsilon --trials 20
+
+# Epsilon with specific model and host
+uv run python -m examples.advanced.g_plan_benchmark.demo epsilon \
+    --trials 20 --host http://localhost:11434 --model qwen2.5-coder:14b
+
+# Verbose epsilon output (per-trial details + debug logging)
+uv run python -m examples.advanced.g_plan_benchmark.demo epsilon --trials 20 -v
+
+# Save epsilon results to JSON
+uv run python -m examples.advanced.g_plan_benchmark.demo epsilon --trials 20 --output epsilon.json
 ```
 
 ## File Structure
 
 ```
 g_plan_benchmark/
-├── demo.py                 # CLI: validate, benchmark, complexity
-├── models.py               # PlanDefinition, PlanStep (PDDL bridge)
-├── defects.py              # DefectType enum + inject_defect()
-├── workflow.json            # AtomicGuard workflow config (single action pair)
-├── prompts.json             # Prompt template (deterministic, no LLM)
+├── demo.py                      # CLI: validate, benchmark, complexity, epsilon
+├── models.py                    # PlanDefinition, PlanStep (PDDL bridge)
+├── defects.py                   # DefectType enum + inject_defect()
+├── workflow.json                # AtomicGuard workflow config (g_plan + g_plan_llm)
+├── prompts.json                 # Prompt templates (deterministic + LLM)
 ├── guards/
-│   ├── minimal.py          # MinimalPlanGuard(GuardInterface)
-│   ├── medium.py           # MediumPlanGuard(GuardInterface)
-│   └── expansive.py        # ExpansivePlanGuard(GuardInterface)
+│   ├── minimal.py               # MinimalPlanGuard(GuardInterface)
+│   ├── medium.py                # MediumPlanGuard(GuardInterface)
+│   └── expansive.py             # ExpansivePlanGuard(GuardInterface)
 ├── generators/
-│   └── plan_generator.py   # PlanGenerator(GeneratorInterface) — deterministic
+│   ├── plan_generator.py        # PlanGenerator(GeneratorInterface) — deterministic
+│   └── llm_plan_generator.py    # LLMPlanGenerator(GeneratorInterface) — LLM-backed
 └── plans/
-    ├── sdlc_v2.json        # 6-step SDLC plan (derived from real workflow.json)
-    └── simple.json         # 3-step linear plan
+    ├── sdlc_v2.json             # 6-step SDLC plan (derived from real workflow.json)
+    └── simple.json              # 3-step linear plan
 ```
 
 ## Design Decisions
@@ -140,18 +154,26 @@ The original `g_plan_benchmark.py` reimplemented plan representation, guard logi
 | Plan loading | `PlanDefinition.from_workflow_json()` reads real configs |
 | Defect injection | Operates on plan dicts before `Artifact` wrapping |
 
-### Extending to LLM-Generated Plans (Option A)
+### LLM Epsilon Estimation (Option A)
 
-To test epsilon of plan generation itself, swap the generator in `workflow.json`:
+The `epsilon` command estimates the pass rate of LLM-generated plans against G_plan guards:
 
-```json
-{
-  "g_plan": {
-    "generator": "LLMPlanGenerator",
-    "guard": "plan_medium",
-    "requires": []
-  }
-}
+```
+epsilon_hat = (plans passing G_plan) / (total generated)
 ```
 
-The guards validate identically regardless of artifact source. This would be an epsilon estimation experiment, not a guard detection experiment.
+This measures how reliably an LLM can produce structurally and semantically valid workflow plans. The `LLMPlanGenerator` follows the same pattern as `ADDGenerator` in `sdlc_v2`: it builds a prompt from the specification and prompt template, calls the LLM via an OpenAI-compatible API (Ollama), extracts JSON from the response, and wraps it as an `Artifact`.
+
+Results include:
+- **epsilon-hat** per rigor level (Minimal / Medium / Expansive)
+- **95% Wilson confidence intervals** for each estimate
+- **E[attempts]** = 1/epsilon (expected retries to get a valid plan)
+- **Common failure modes** — frequency analysis of guard rejection reasons
+
+The `workflow.json` includes a `g_plan_llm` action pair configured with `LLMPlanGenerator` and `plan_medium` guard, making this a full AtomicGuard action pair:
+
+```
+A_plan_llm = ⟨ρ, LLMPlanGenerator, MediumPlanGuard⟩
+```
+
+The guards validate identically regardless of artifact source — deterministic or LLM-generated.
