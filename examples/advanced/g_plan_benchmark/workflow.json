@@ -1,0 +1,16 @@
+{
+  "name": "G_plan Validation Benchmark",
+  "description": "Single action pair: deterministic plan generation + G_plan guard validation. Used to benchmark guard detection rates across rigor levels.",
+  "rmax": 1,
+  "action_pairs": {
+    "g_plan": {
+      "generator": "PlanGenerator",
+      "generator_config": {
+        "plan_source": "sdlc_v2",
+        "defect": null
+      },
+      "guard": "plan_medium",
+      "description": "Generate (or load) a workflow plan and validate at configured rigor level"
+    }
+  }
+}
