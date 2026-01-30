@@ -25,75 +25,6 @@ from atomicguard.domain.prompts import PromptTemplate
 
 logger = logging.getLogger("g_plan_benchmark")
 
-LLM_PLAN_SYSTEM_PROMPT = """\
-You are a workflow planner for multi-agent software development pipelines.
-
-Your job is to design a workflow plan as a DAG of steps. Each step has:
-- A generator (the agent that produces the artifact)
-- A guard (the validator that checks the artifact)
-- Preconditions (state tokens required before the step can run)
-- Effects (state tokens produced when the step succeeds)
-- Dependencies (step IDs that must complete first)
-
-## REQUIRED OUTPUT FORMAT
-
-Return a single JSON object with this exact structure:
-
-{
-  "plan_id": "descriptive-name",
-  "initial_state": ["intent_received"],
-  "goal_state": ["<final_step_id>"],
-  "total_retry_budget": <sum of all step retry_budgets>,
-  "steps": [
-    {
-      "step_id": "unique_id",
-      "name": "Human-readable description",
-      "generator": "GeneratorClassName",
-      "guard": "guard_name",
-      "retry_budget": 3,
-      "preconditions": ["token_required"],
-      "effects": ["token_produced"],
-      "dependencies": ["step_id_of_dependency"]
-    }
-  ]
-}
-
-## RULES
-
-1. The plan MUST be a DAG (no circular dependencies)
-2. Every step's preconditions must be satisfiable by initial_state + prior effects
-3. The goal_state tokens must be produced by at least one step's effects
-4. Every step must have retry_budget > 0
-5. total_retry_budget must equal the sum of all step retry_budgets
-6. Dependencies must reference valid step_ids
-7. Steps with no dependencies should have preconditions from initial_state
-
-## AVAILABLE GUARDS
-
-Use these guard names (from the AtomicGuard catalog):
-- "syntax" - AST parse check
-- "dynamic_test" - Test execution
-- "config_extracted" - Configuration validation
-- "architecture_tests_valid" - Architecture test validation
-- "scenarios_valid" - BDD scenario validation
-- "rules_valid" - Rules extraction validation
-- "all_tests_pass" - All tests passing
-- "composite_validation" - Composite validation pipeline
-- "merge_ready" - Final merge readiness check
-- "human" - Human review gate
-
-## AVAILABLE GENERATORS
-
-- "ConfigExtractorGenerator" - Extract project configuration
-- "ADDGenerator" - Generate architecture tests
-- "BDDGenerator" - Generate BDD scenarios
-- "RulesExtractorGenerator" - Extract structured rules (deterministic)
-- "CoderGenerator" - Generate implementation code
-- "IdentityGenerator" - Pass-through (for validation-only steps)
-
-Return ONLY the JSON object. No markdown, no explanation.
-"""
-
 
 @dataclass
 class LLMPlanGeneratorConfig:
@@ -159,19 +90,22 @@ class LLMPlanGenerator(GeneratorInterface):
         """
         logger.info("[LLMPlanGenerator] Building prompt...")
 
-        # Build the user prompt
+        # Build system prompt from template role + constraints
         if template is not None:
+            system_prompt = f"{template.role}\n\n{template.constraints}"
             user_prompt = template.render(context)
         else:
+            system_prompt = "You are a workflow planner. Return a valid JSON plan."
             user_prompt = (
                 f"Design a workflow plan for the following problem:\n\n"
                 f"{context.specification}"
             )
 
-        logger.debug(f"[LLMPlanGenerator] Prompt length: {len(user_prompt)} chars")
+        logger.debug(f"[LLMPlanGenerator] System prompt: {len(system_prompt)} chars")
+        logger.debug(f"[LLMPlanGenerator] User prompt: {len(user_prompt)} chars")
 
         messages = [
-            {"role": "system", "content": LLM_PLAN_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
