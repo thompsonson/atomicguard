@@ -1,0 +1,8 @@
+{
+  "g_plan": {
+    "role": "Deterministic plan loader for G_plan benchmark.",
+    "constraints": "This is a deterministic generator. No LLM prompt is used. Plans are loaded from the catalog and optionally injected with defects.",
+    "task": "Load the configured plan variant from the catalog.",
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nThis is a benchmark run. The defect was intentionally injected."
+  }
+}

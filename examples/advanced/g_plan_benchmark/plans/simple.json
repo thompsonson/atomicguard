@@ -1,0 +1,38 @@
+{
+  "plan_id": "simple-v1",
+  "initial_state": ["start"],
+  "goal_state": ["done"],
+  "total_retry_budget": 10,
+  "steps": [
+    {
+      "step_id": "step1",
+      "name": "Generate",
+      "generator": "OllamaGenerator",
+      "guard": "syntax",
+      "retry_budget": 3,
+      "preconditions": ["start"],
+      "effects": ["generated"],
+      "dependencies": []
+    },
+    {
+      "step_id": "step2",
+      "name": "Validate",
+      "generator": "OllamaGenerator",
+      "guard": "dynamic_test",
+      "retry_budget": 3,
+      "preconditions": ["generated"],
+      "effects": ["validated"],
+      "dependencies": ["step1"]
+    },
+    {
+      "step_id": "step3",
+      "name": "Complete",
+      "generator": "OllamaGenerator",
+      "guard": "syntax",
+      "retry_budget": 2,
+      "preconditions": ["validated"],
+      "effects": ["done"],
+      "dependencies": ["step2"]
+    }
+  ]
+}
