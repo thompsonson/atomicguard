@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from atomicguard.domain.models import (
     Artifact,
     ArtifactStatus,
     ContextSnapshot,
-    GuardResult,
 )
 
 from examples.advanced.g_plan_benchmark.evaluation.problem import Problem, ProblemSet
@@ -332,6 +329,134 @@ class TestExperimentRunnerCallback:
         runner.run(_make_problem_set(), on_trial=on_trial)
         assert len(calls) == 1
         assert calls[0] == ("BUG-1", "single", 1)
+
+
+class TestExperimentRunnerClassifyThenPlan:
+    """Test the 'classify-then-plan' pipeline (analysis + plan, no recon/strategy)."""
+
+    def test_classify_then_plan_success(self):
+        config = ExperimentConfig(pipelines=["classify-then-plan"], trials_per_problem=1)
+        runner = ExperimentRunner(config)
+
+        mock_json_gen = MagicMock()
+        mock_plan_gen = MagicMock()
+        runner._json_generator = mock_json_gen
+        runner._plan_generator = mock_plan_gen
+
+        mock_json_gen.generate.return_value = _make_artifact(
+            _valid_analysis_json(), "g_analysis"
+        )
+        mock_plan_gen.generate.return_value = _make_artifact(
+            _valid_plan_json(), "g_plan_conditioned"
+        )
+
+        result = runner.run(_make_problem_set())
+
+        trial = result.pipeline_results["classify-then-plan"].trials[0]
+        assert trial.pipeline_succeeded is True
+        assert trial.analysis is not None
+        assert trial.analysis.passed is True
+        # classify-then-plan skips recon and strategy
+        assert trial.recon is None
+        assert trial.strategy is None
+        assert trial.classified_type == "bug_fix"
+
+    def test_classify_then_plan_analysis_failure(self):
+        config = ExperimentConfig(pipelines=["classify-then-plan"], trials_per_problem=1)
+        runner = ExperimentRunner(config)
+
+        mock_json_gen = MagicMock()
+        mock_plan_gen = MagicMock()
+        runner._json_generator = mock_json_gen
+        runner._plan_generator = mock_plan_gen
+
+        # Analysis returns garbage
+        mock_json_gen.generate.return_value = _make_artifact(
+            '{"not_valid": true}', "g_analysis"
+        )
+
+        result = runner.run(_make_problem_set())
+
+        trial = result.pipeline_results["classify-then-plan"].trials[0]
+        assert trial.pipeline_succeeded is False
+        assert trial.analysis is not None
+        assert trial.analysis.passed is False
+        # Plan should not have been attempted
+        assert trial.plan.plan_content == ""
+
+
+class TestExperimentRunnerMultipleProblems:
+    """Test running across multiple problems."""
+
+    def test_two_problems_single_pipeline(self):
+        config = ExperimentConfig(pipelines=["single"], trials_per_problem=1)
+        runner = ExperimentRunner(config)
+
+        mock_plan_gen = MagicMock()
+        mock_plan_gen.generate.return_value = _make_artifact(_valid_plan_json())
+        runner._plan_generator = mock_plan_gen
+        runner._json_generator = MagicMock()
+
+        ps = ProblemSet([
+            Problem(problem_id="BUG-1", description="Fix crash", expected_type="bug_fix"),
+            Problem(problem_id="FEAT-1", description="Add search", expected_type="feature"),
+        ])
+        result = runner.run(ps)
+
+        trials = result.pipeline_results["single"].trials
+        assert len(trials) == 2
+        assert {t.problem_id for t in trials} == {"BUG-1", "FEAT-1"}
+        # Both get the same valid plan, so both should succeed
+        assert all(t.pipeline_succeeded for t in trials)
+
+    def test_two_problems_three_trials_each(self):
+        config = ExperimentConfig(pipelines=["single"], trials_per_problem=3)
+        runner = ExperimentRunner(config)
+
+        mock_plan_gen = MagicMock()
+        mock_plan_gen.generate.return_value = _make_artifact(_valid_plan_json())
+        runner._plan_generator = mock_plan_gen
+        runner._json_generator = MagicMock()
+
+        ps = ProblemSet([
+            Problem(problem_id="P1", description="d1"),
+            Problem(problem_id="P2", description="d2"),
+        ])
+        result = runner.run(ps)
+
+        trials = result.pipeline_results["single"].trials
+        assert len(trials) == 6  # 2 problems × 3 trials
+        # Check that each problem gets 3 trials
+        p1_trials = [t for t in trials if t.problem_id == "P1"]
+        p2_trials = [t for t in trials if t.problem_id == "P2"]
+        assert len(p1_trials) == 3
+        assert len(p2_trials) == 3
+
+    def test_problem_description_reaches_context(self):
+        """Verify each problem's description is used as the specification."""
+        config = ExperimentConfig(pipelines=["single"], trials_per_problem=1)
+        runner = ExperimentRunner(config)
+
+        captured_contexts = []
+
+        def _capture_generate(**kwargs):
+            captured_contexts.append(kwargs.get("context"))
+            return _make_artifact(_valid_plan_json())
+
+        mock_plan_gen = MagicMock()
+        mock_plan_gen.generate.side_effect = lambda **kwargs: _capture_generate(**kwargs)
+        runner._plan_generator = mock_plan_gen
+        runner._json_generator = MagicMock()
+
+        ps = ProblemSet([
+            Problem(problem_id="P1", description="Fix the KeyError bug"),
+            Problem(problem_id="P2", description="Add dark mode toggle"),
+        ])
+        runner.run(ps)
+
+        assert len(captured_contexts) == 2
+        assert captured_contexts[0].specification == "Fix the KeyError bug"
+        assert captured_contexts[1].specification == "Add dark mode toggle"
 
 
 class TestExperimentRunnerMultipleTrials:
