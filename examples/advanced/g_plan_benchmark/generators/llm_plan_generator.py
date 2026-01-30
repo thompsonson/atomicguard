@@ -5,6 +5,10 @@ Uses an LLM to generate workflow plans from a problem specification,
 following the same pattern as ADDGenerator / CoderGenerator in sdlc_v2.
 The generated plan artifact is then validated by G_plan guards.
 
+Supports two backends:
+    - "ollama" (default): OpenAI-compatible API via local Ollama instance
+    - "huggingface": HuggingFace Inference API via huggingface_hub
+
 This enables epsilon estimation for plan generation:
     epsilon_hat = (plans passing G_plan) / (total generated)
 """
@@ -16,7 +20,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from atomicguard.domain.interfaces import GeneratorInterface
@@ -25,15 +29,21 @@ from atomicguard.domain.prompts import PromptTemplate
 
 logger = logging.getLogger("g_plan_benchmark")
 
+SUPPORTED_BACKENDS = ("ollama", "huggingface")
+
 
 @dataclass
 class LLMPlanGeneratorConfig:
     """Configuration for LLMPlanGenerator."""
 
     model: str = "qwen2.5-coder:14b"
+    backend: str = "ollama"
     base_url: str = "http://localhost:11434/v1"
+    api_key: str | None = None  # Required for huggingface; auto-detected from HF_TOKEN
+    provider: str | None = None  # HuggingFace inference provider (e.g. "auto")
     timeout: float = 120.0
     temperature: float = 0.7
+    max_tokens: int = 4096
 
 
 class LLMPlanGenerator(GeneratorInterface):
@@ -48,6 +58,8 @@ class LLMPlanGenerator(GeneratorInterface):
     - Returns an Artifact with the plan as content
 
     The artifact is then validated by G_plan guards (Minimal/Medium/Expansive).
+
+    Supports "ollama" (OpenAI-compatible) and "huggingface" backends.
     """
 
     config_class = LLMPlanGeneratorConfig
@@ -60,19 +72,81 @@ class LLMPlanGenerator(GeneratorInterface):
         if config is None:
             config = LLMPlanGeneratorConfig(**kwargs)
 
+        if config.backend not in SUPPORTED_BACKENDS:
+            raise ValueError(
+                f"Unsupported backend '{config.backend}'. "
+                f"Choose from: {', '.join(SUPPORTED_BACKENDS)}"
+            )
+
+        self._model = config.model
+        self._backend = config.backend
+        self._temperature = config.temperature
+        self._max_tokens = config.max_tokens
+        self._version_counter = 0
+
+        if config.backend == "huggingface":
+            self._init_huggingface(config)
+        else:
+            self._init_ollama(config)
+
+    def _init_ollama(self, config: LLMPlanGeneratorConfig) -> None:
+        """Initialise the OpenAI-compatible client for Ollama."""
         try:
             from openai import OpenAI
         except ImportError as err:
             raise ImportError("openai library required: pip install openai") from err
 
-        self._model = config.model
-        self._client = OpenAI(
+        self._openai_client = OpenAI(
             base_url=config.base_url,
             api_key="ollama",
             timeout=config.timeout,
         )
-        self._temperature = config.temperature
-        self._version_counter = 0
+
+    def _init_huggingface(self, config: LLMPlanGeneratorConfig) -> None:
+        """Initialise the HuggingFace InferenceClient."""
+        try:
+            from huggingface_hub import InferenceClient
+        except ImportError as err:
+            raise ImportError(
+                "huggingface_hub library required: pip install huggingface_hub"
+            ) from err
+
+        import os
+
+        api_key = config.api_key
+        if api_key is None:
+            api_key = os.environ.get("HF_TOKEN")
+            if not api_key:
+                raise ValueError(
+                    "HuggingFace API key required: set HF_TOKEN environment "
+                    "variable or pass api_key in config"
+                )
+
+        client_kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "timeout": config.timeout,
+        }
+        if config.provider is not None:
+            client_kwargs["provider"] = config.provider
+
+        self._hf_client = InferenceClient(**client_kwargs)
+
+    def _call_llm(self, messages: list[dict[str, str]]) -> str:
+        """Dispatch the LLM call to the configured backend."""
+        if self._backend == "huggingface":
+            response = self._hf_client.chat_completion(
+                messages=cast(Any, messages),
+                model=self._model,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+            )
+        else:
+            response = self._openai_client.chat.completions.create(
+                model=self._model,
+                messages=cast(Any, messages),
+                temperature=self._temperature,
+            )
+        return response.choices[0].message.content or ""
 
     def generate(
         self,
@@ -97,19 +171,16 @@ class LLMPlanGenerator(GeneratorInterface):
         logger.debug(f"[LLMPlanGenerator] System prompt: {len(system_prompt)} chars")
         logger.debug(f"[LLMPlanGenerator] User prompt: {len(user_prompt)} chars")
 
-        messages = [
+        messages: list[dict[str, str]] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
 
         try:
-            logger.info(f"[LLMPlanGenerator] Calling LLM ({self._model})...")
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,  # type: ignore[arg-type]
-                temperature=self._temperature,
+            logger.info(
+                f"[LLMPlanGenerator] Calling LLM ({self._backend}/{self._model})..."
             )
-            raw_content = response.choices[0].message.content or ""
+            raw_content = self._call_llm(messages)
             logger.info(f"[LLMPlanGenerator] Got response ({len(raw_content)} chars)")
             content = self._extract_json(raw_content)
 
