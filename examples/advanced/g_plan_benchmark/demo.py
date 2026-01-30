@@ -487,7 +487,7 @@ def complexity(trials: int, output: str | None) -> None:
     "--pipeline",
     default="single",
     type=click.Choice(["single", "classify-then-plan", "full"]),
-    help="Pipeline mode: single, classify-then-plan (Option A), or full (4-step decomposition)",
+    help="Pipeline mode: single, classify-then-plan, or full (4-step decomposition)",
 )
 @click.option("--output", default=None, help="Output JSON file")
 @click.option("--verbose", "-v", is_flag=True, help="Show per-trial details")
@@ -507,7 +507,7 @@ def epsilon(
 
     Pipeline modes:
       single              One-shot plan generation (g_plan_llm only)
-      classify-then-plan  Two-step: g_analysis → g_plan_conditioned (Option A)
+      classify-then-plan  Two-step: g_analysis → g_plan_conditioned
       full                Four-step: g_analysis → g_recon → g_strategy → g_plan_full
 
     Supports --backend ollama (default) or --backend huggingface.
@@ -533,7 +533,7 @@ def epsilon(
 
     pipeline_label = {
         "single": "Single-shot",
-        "classify-then-plan": "Classify-then-Plan (Option A)",
+        "classify-then-plan": "Classify-then-Plan",
         "full": "Full Decomposition (analysis → recon → strategy → plan)",
     }[pipeline]
 
@@ -978,7 +978,7 @@ def _display_epsilon_results(
     console.print(f"\n[bold]{'=' * 60}[/bold]")
     pipeline_label = {
         "single": "Single-shot",
-        "classify-then-plan": "Classify-then-Plan (Option A)",
+        "classify-then-plan": "Classify-then-Plan",
         "full": "Full Decomposition (analysis → recon → strategy → plan)",
     }.get(pipeline, pipeline)
     console.print(f"[bold]Epsilon Estimation Results — {pipeline_label}[/bold]")

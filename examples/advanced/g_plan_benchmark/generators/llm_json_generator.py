@@ -6,8 +6,8 @@ guard. Used for pre-planning steps like problem analysis, reconnaissance,
 and critique — any step where the LLM produces structured JSON rather than
 a workflow plan.
 
-This is the generator referenced in the planning workflow decomposition
-(Option A: Classify-then-Plan) for the g_analysis action pair.
+Used in the classify-then-plan and full decomposed pipelines for the
+g_analysis, g_recon, and g_strategy action pairs.
 
 Shares all LLM infrastructure with LLMPlanGenerator (same backends,
 same JSON extraction, same prompt rendering).
