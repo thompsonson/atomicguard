@@ -337,3 +337,121 @@ class TestScoreExperiment:
         card = scorecard.pipelines["single"]
         assert card.pipeline_epsilon.passed == 2
         assert card.pipeline_epsilon.total == 3
+
+    def test_guard_epsilon_excludes_trials_without_plan(self):
+        """Guard-level epsilon should only count trials that reached plan generation.
+
+        If a pre-step fails (plan_content is empty), that trial should not
+        contribute to minimal/medium/expansive totals — only to pipeline_epsilon.
+        """
+        ps = ProblemSet([
+            Problem(problem_id="P1", description="d", expected_type="bug_fix"),
+            Problem(problem_id="P2", description="d", expected_type="bug_fix"),
+            Problem(problem_id="P3", description="d", expected_type="bug_fix"),
+        ])
+        result = ExperimentResult(
+            config=ExperimentConfig(pipelines=["full"]),
+            pipeline_results={
+                "full": PipelineResult(
+                    pipeline="full",
+                    trials=[
+                        # P1: analysis failed, never reached plan generation
+                        _make_trial(
+                            "P1", "full",
+                            analysis_passed=False,
+                            pipeline_succeeded=False,
+                            plan_content="",  # no plan generated
+                            minimal_passed=False,
+                            medium_passed=False,
+                            expansive_passed=False,
+                        ),
+                        # P2: all pre-steps passed, plan passed Medium
+                        _make_trial(
+                            "P2", "full",
+                            analysis_passed=True,
+                            pipeline_succeeded=True,
+                            plan_content='{"steps":[{"step_id":"s1"}]}',
+                            minimal_passed=True,
+                            medium_passed=True,
+                            expansive_passed=True,
+                        ),
+                        # P3: all pre-steps passed, plan failed Minimal
+                        _make_trial(
+                            "P3", "full",
+                            analysis_passed=True,
+                            pipeline_succeeded=False,
+                            plan_content='{"bad_plan": true}',
+                            minimal_passed=False,
+                            medium_passed=False,
+                            expansive_passed=False,
+                        ),
+                    ],
+                ),
+            },
+        )
+
+        scorecard = score_experiment(result, ps)
+        card = scorecard.pipelines["full"]
+
+        # Pipeline epsilon: 1 out of 3 total trials succeeded
+        assert card.pipeline_epsilon.passed == 1
+        assert card.pipeline_epsilon.total == 3
+
+        # Guard-level epsilon: only 2 trials reached plan generation (P2 and P3)
+        # P1 has empty plan_content, so it's excluded
+        assert card.minimal_epsilon.total == 2
+        assert card.minimal_epsilon.passed == 1  # only P2
+        assert card.medium_epsilon.total == 2
+        assert card.medium_epsilon.passed == 1  # only P2
+
+    def test_strategy_alignment_ignores_unknown_types(self):
+        """Strategy alignment should skip problems with no expected strategy."""
+        ps = ProblemSet([
+            Problem(problem_id="P1", description="d", expected_type="bug_fix"),
+            Problem(problem_id="P2", description="d", expected_type="unknown"),
+        ])
+        result = ExperimentResult(
+            config=ExperimentConfig(pipelines=["full"]),
+            pipeline_results={
+                "full": PipelineResult(
+                    pipeline="full",
+                    trials=[
+                        _make_trial("P1", "full", selected_strategy="S1_locate_and_fix"),
+                        _make_trial("P2", "full", selected_strategy="S1_locate_and_fix"),
+                    ],
+                ),
+            },
+        )
+
+        scorecard = score_experiment(result, ps)
+        card = scorecard.pipelines["full"]
+        # Only P1 has an expected strategy (bug_fix → S1).
+        # P2 is "unknown" with no mapping, so it should be excluded.
+        assert card.strategy_alignment.total == 1
+        assert card.strategy_alignment.correct == 1
+
+    def test_strategy_alignment_wrong_selection(self):
+        """Strategy alignment correctly detects mismatched strategy selection."""
+        ps = ProblemSet([
+            Problem(problem_id="BUG", description="d", expected_type="bug_fix"),
+            Problem(problem_id="FEAT", description="d", expected_type="feature"),
+        ])
+        result = ExperimentResult(
+            config=ExperimentConfig(pipelines=["full"]),
+            pipeline_results={
+                "full": PipelineResult(
+                    pipeline="full",
+                    trials=[
+                        # BUG selects S2 instead of expected S1 — wrong
+                        _make_trial("BUG", "full", selected_strategy="S2_tdd_feature"),
+                        # FEAT selects S2 — correct (feature → S2)
+                        _make_trial("FEAT", "full", selected_strategy="S2_tdd_feature"),
+                    ],
+                ),
+            },
+        )
+
+        scorecard = score_experiment(result, ps)
+        card = scorecard.pipelines["full"]
+        assert card.strategy_alignment.total == 2
+        assert card.strategy_alignment.correct == 1  # only FEAT is correct
