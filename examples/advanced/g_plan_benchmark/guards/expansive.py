@@ -49,9 +49,7 @@ class ExpansivePlanGuard(GuardInterface):
         r_max: int = 100,
         **_kwargs: Any,
     ):
-        self._medium_guard = MediumPlanGuard(
-            guard_catalog=guard_catalog, r_max=r_max
-        )
+        self._medium_guard = MediumPlanGuard(guard_catalog=guard_catalog, r_max=r_max)
 
     def validate(self, artifact: Artifact, **deps: Artifact) -> GuardResult:
         """Validate plan artifact at expansive rigor."""
@@ -93,9 +91,7 @@ class ExpansivePlanGuard(GuardInterface):
 
             # Branch 1: Success path
             success_state = current_state | step.effects
-            success_path = explore_branches(
-                step_idx + 1, success_state, depth + 1
-            )
+            success_path = explore_branches(step_idx + 1, success_state, depth + 1)
 
             # Branch 2..R: Failure/retry paths (capped for tractability)
             retry_branches = min(step.retry_budget - 1, 2)

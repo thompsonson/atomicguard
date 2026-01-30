@@ -101,9 +101,7 @@ class MinimalPlanGuard(GuardInterface):
         # 3. Guard exists: all guard references in catalog
         for step in plan.steps:
             if step.guard and step.guard not in self._guard_catalog:
-                errors.append(
-                    f"Step {step.step_id}: unknown guard '{step.guard}'"
-                )
+                errors.append(f"Step {step.step_id}: unknown guard '{step.guard}'")
 
         # 4. Budget defined: retry_budget > 0 for all steps
         for step in plan.steps:

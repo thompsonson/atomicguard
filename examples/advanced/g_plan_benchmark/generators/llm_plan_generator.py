@@ -77,10 +77,10 @@ class LLMPlanGenerator(GeneratorInterface):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "g_plan",
         workflow_id: str = "unknown",
-        workflow_ref: str | None = None,
+        workflow_ref: str | None = None,  # noqa: ARG002
     ) -> Artifact:
         """
         Generate a workflow plan via LLM.
@@ -91,15 +91,8 @@ class LLMPlanGenerator(GeneratorInterface):
         logger.info("[LLMPlanGenerator] Building prompt...")
 
         # Build system prompt from template role + constraints
-        if template is not None:
-            system_prompt = f"{template.role}\n\n{template.constraints}"
-            user_prompt = template.render(context)
-        else:
-            system_prompt = "You are a workflow planner. Return a valid JSON plan."
-            user_prompt = (
-                f"Design a workflow plan for the following problem:\n\n"
-                f"{context.specification}"
-            )
+        system_prompt = f"{template.role}\n\n{template.constraints}"
+        user_prompt = template.render(context)
 
         logger.debug(f"[LLMPlanGenerator] System prompt: {len(system_prompt)} chars")
         logger.debug(f"[LLMPlanGenerator] User prompt: {len(user_prompt)} chars")
@@ -117,9 +110,7 @@ class LLMPlanGenerator(GeneratorInterface):
                 temperature=self._temperature,
             )
             raw_content = response.choices[0].message.content or ""
-            logger.info(
-                f"[LLMPlanGenerator] Got response ({len(raw_content)} chars)"
-            )
+            logger.info(f"[LLMPlanGenerator] Got response ({len(raw_content)} chars)")
             content = self._extract_json(raw_content)
 
         except Exception as e:
@@ -175,6 +166,4 @@ class LLMPlanGenerator(GeneratorInterface):
             except json.JSONDecodeError:
                 pass
 
-        return json.dumps(
-            {"error": "Could not extract JSON", "raw": content[:500]}
-        )
+        return json.dumps({"error": "Could not extract JSON", "raw": content[:500]})

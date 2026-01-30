@@ -165,6 +165,7 @@ epsilon_hat = (plans passing G_plan) / (total generated)
 This measures how reliably an LLM can produce structurally and semantically valid workflow plans. The `LLMPlanGenerator` follows the same pattern as `ADDGenerator` in `sdlc_v2`: it builds a prompt from the specification and prompt template, calls the LLM via an OpenAI-compatible API (Ollama), extracts JSON from the response, and wraps it as an `Artifact`.
 
 Results include:
+
 - **epsilon-hat** per rigor level (Minimal / Medium / Expansive)
 - **95% Wilson confidence intervals** for each estimate
 - **E[attempts]** = 1/epsilon (expected retries to get a valid plan)
