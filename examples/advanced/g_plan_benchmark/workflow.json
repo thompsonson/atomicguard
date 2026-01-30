@@ -1,6 +1,6 @@
 {
   "name": "G_plan Validation Benchmark",
-  "description": "Plan generation and validation using the G_plan taxonomy. Supports both deterministic (PlanGenerator) and LLM-backed (LLMPlanGenerator) plan generation.",
+  "description": "Plan generation and validation using the G_plan taxonomy. Supports deterministic (PlanGenerator), single-shot LLM (LLMPlanGenerator), and decomposed Classify-then-Plan (Option A) pipelines.",
   "model": "qwen2.5-coder:14b",
   "rmax": 3,
   "action_pairs": {
@@ -16,7 +16,18 @@
     "g_plan_llm": {
       "generator": "LLMPlanGenerator",
       "guard": "plan_medium",
-      "description": "Generate a workflow plan via LLM and validate at configured rigor level"
+      "description": "Generate a workflow plan via LLM and validate at configured rigor level (single-shot)"
+    },
+    "g_analysis": {
+      "generator": "LLMJsonGenerator",
+      "guard": "analysis_valid",
+      "description": "Classify the problem type, language, severity, and key signals from the problem statement"
+    },
+    "g_plan_conditioned": {
+      "generator": "LLMPlanGenerator",
+      "guard": "plan_medium",
+      "requires": ["g_analysis"],
+      "description": "Generate a workflow plan conditioned on the problem analysis (Option A: Classify-then-Plan)"
     }
   }
 }
