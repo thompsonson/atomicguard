@@ -103,9 +103,7 @@ class PlanGenerator(GeneratorInterface):
                 plan_dict = inject_defect(plan_dict, defect_type)
                 logger.debug(f"[PlanGenerator] Injected defect: {self._defect}")
             except ValueError:
-                logger.warning(
-                    f"[PlanGenerator] Unknown defect type: {self._defect}"
-                )
+                logger.warning(f"[PlanGenerator] Unknown defect type: {self._defect}")
 
         self._version_counter += 1
         content = json.dumps(plan_dict, indent=2)
