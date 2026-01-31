@@ -32,7 +32,6 @@ def impl_artifact(test_context_snapshot: ContextSnapshot) -> Artifact:
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=test_context_snapshot,
     )
 
@@ -51,7 +50,6 @@ def test_artifact(test_context_snapshot: ContextSnapshot) -> Artifact:
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=test_context_snapshot,
     )
 
@@ -70,7 +68,6 @@ def test_artifact_with_import(test_context_snapshot: ContextSnapshot) -> Artifac
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=test_context_snapshot,
     )
 
@@ -90,7 +87,6 @@ def failing_test_artifact(test_context_snapshot: ContextSnapshot) -> Artifact:
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=test_context_snapshot,
     )
 
@@ -117,7 +113,6 @@ def failing_test_artifact_standalone(
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=test_context_snapshot,
     )
 
@@ -138,7 +133,6 @@ def failing_test_artifact_for_dynamic(
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=test_context_snapshot,
     )
 

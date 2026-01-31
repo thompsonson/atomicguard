@@ -29,6 +29,8 @@ The schemas map directly to the paper's mathematical definitions:
 | H | Feedback History | `artifact.context.feedback_history` |
 | v | Guard Result | `artifact.guard_result.passed` + `.fatal` |
 | φ | Feedback | `artifact.guard_result.feedback` |
+| W_ref | Workflow Reference | `artifact.workflow_ref` (Extension 01) |
+| Ψ_ref | Config Reference | `artifact.config_ref` (Extension 07) |
 
 ### Guard Parameters (θ)
 
@@ -52,6 +54,42 @@ G_θ: 𝒜 × 𝒞 → {⊤, ⊥_retry, ⊥_fatal} × Σ*
 
 where θ = guard-specific parameters (e.g., min_gates=3)
 ```
+
+### Composite Guards (Extension 08)
+
+Guards can be composed using `CompositeGuardSpec`:
+
+```json
+{
+  "guard": "composite",
+  "guards": {
+    "compose": "sequential",
+    "policy": "all_pass",
+    "guards": [
+      "syntax",
+      {"type": "quality_gates", "config": {"run_mypy": true}},
+      {"compose": "parallel", "guards": ["ruff_check", "pylint_check"]}
+    ]
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `compose` | `sequential` \| `parallel` | `sequential` | Composition strategy (Definitions 39-40) |
+| `policy` | `all_pass` \| `any_pass` \| `majority_pass` | `all_pass` | Aggregation policy (Definition 41) |
+| `guards` | `GuardSpec[]` | - | Sub-guards to compose (supports nesting) |
+
+Simple array syntax remains supported for backwards compatibility:
+
+```json
+{
+  "guard": "composite",
+  "guards": ["syntax", "import", "tests"]
+}
+```
+
+This is equivalent to `Sequential([...], ALL_PASS)`.
 
 ### Specification Sources (Ψ)
 
@@ -110,6 +148,23 @@ Where:
 - `constraints` = Ω (from ℰ)
 - `feedback_history` = H (accumulated)
 - `dependency_artifacts` = Resolved ρ dependencies
+
+### Extension Fields
+
+The artifact schema includes fields from framework extensions:
+
+| Field | Extension | Purpose |
+|-------|-----------|---------|
+| `source` | Core | Origin of content: `generated`, `human`, `imported` |
+| `workflow_ref` | 01 (Versioned Environment) | W_ref - Content-addressed workflow hash for integrity verification |
+| `config_ref` | 07 (Incremental Execution) | Ψ_ref - Configuration fingerprint for change detection |
+| `metadata` | Core | Extensible metadata dictionary |
+
+These enable:
+
+- **Workflow integrity**: Verify workflow hasn't changed since checkpoint (W_ref)
+- **Incremental execution**: Skip unchanged action pairs based on config fingerprint (Ψ_ref)
+- **Provenance tracking**: Distinguish LLM-generated vs human-provided artifacts
 
 ## Validation
 

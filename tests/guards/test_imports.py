@@ -37,7 +37,6 @@ def make_artifact(content: str, context: ContextSnapshot) -> Artifact:
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=context,
     )
 

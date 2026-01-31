@@ -298,11 +298,17 @@ def _generate_instructions(
     """Generate instructions.md content."""
     short_id = checkpoint.checkpoint_id[:12]
 
+    # Add W_ref if present (Extension 01)
+    w_ref_line = ""
+    if hasattr(checkpoint, "workflow_ref") and checkpoint.workflow_ref:
+        w_ref_short = checkpoint.workflow_ref[:16]
+        w_ref_line = f"\n**Workflow Ref:** {w_ref_short}..."
+
     return f"""# Workflow Checkpoint
 
 **Checkpoint ID:** {checkpoint.checkpoint_id}
 **Created:** {checkpoint.created_at}
-**Failed Step:** {checkpoint.failed_step}
+**Failed Step:** {checkpoint.failed_step}{w_ref_line}
 
 ## What Happened
 
@@ -377,6 +383,17 @@ The following attempts were made before checkpoint creation:
     else:
         feedback_section = "## Feedback History\n\n_No prior attempts recorded._"
 
+    # Add W_ref section if present (Extension 01)
+    w_ref_section = ""
+    if hasattr(checkpoint, "workflow_ref") and checkpoint.workflow_ref:
+        w_ref_section = f"""## Workflow Reference (Extension 01)
+
+**W_ref:** `{checkpoint.workflow_ref}`
+
+This content-addressed hash verifies the workflow hasn't changed since checkpoint creation.
+
+"""
+
     return f"""# Workflow Context
 
 ## Specification
@@ -387,7 +404,7 @@ The following attempts were made before checkpoint creation:
 
 {checkpoint.constraints}
 
-{artifacts_json}
+{w_ref_section}{artifacts_json}
 
 {feedback_section}
 

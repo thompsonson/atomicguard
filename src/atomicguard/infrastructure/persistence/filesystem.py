@@ -6,6 +6,7 @@ Implements the Versioned Repository R from Definition 4.
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from atomicguard.domain.models import (
     ArtifactStatus,
     ContextSnapshot,
     FeedbackEntry,
+    GuardResult,
+    SubGuardOutcome,
 )
 
 
@@ -31,6 +34,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         self._objects_dir = self._base_dir / "objects"
         self._index_path = self._base_dir / "index.json"
         self._cache: dict[str, Artifact] = {}
+        self._lock = threading.Lock()  # Thread safety for concurrent writes
         self._index: dict[str, Any] = self._load_or_create_index()
 
     def _load_or_create_index(self) -> dict[str, Any]:
@@ -52,9 +56,52 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             json.dump(self._index, f, indent=2)
         temp_path.rename(self._index_path)  # Atomic on POSIX
 
+    def _guard_result_to_dict(self, guard_result: GuardResult | None) -> dict | None:
+        """Serialize GuardResult to JSON-compatible dict."""
+        if guard_result is None:
+            return None
+        return {
+            "passed": guard_result.passed,
+            "feedback": guard_result.feedback,
+            "fatal": guard_result.fatal,
+            "guard_name": guard_result.guard_name,
+            "sub_results": [
+                {
+                    "guard_name": sr.guard_name,
+                    "passed": sr.passed,
+                    "feedback": sr.feedback,
+                    "execution_time_ms": sr.execution_time_ms,
+                }
+                for sr in guard_result.sub_results
+            ],
+        }
+
+    def _dict_to_guard_result(self, data: dict | None) -> GuardResult | None:
+        """Deserialize GuardResult from JSON dict."""
+        if data is None:
+            return None
+        # Handle legacy format where guard_result was just a boolean
+        if isinstance(data, bool):
+            return GuardResult(passed=data, feedback="")
+        return GuardResult(
+            passed=data["passed"],
+            feedback=data.get("feedback", ""),
+            fatal=data.get("fatal", False),
+            guard_name=data.get("guard_name"),
+            sub_results=tuple(
+                SubGuardOutcome(
+                    guard_name=sr["guard_name"],
+                    passed=sr["passed"],
+                    feedback=sr["feedback"],
+                    execution_time_ms=sr.get("execution_time_ms", 0.0),
+                )
+                for sr in data.get("sub_results", [])
+            ),
+        )
+
     def _artifact_to_dict(self, artifact: Artifact) -> dict:
         """Serialize artifact to JSON-compatible dict."""
-        return {
+        result = {
             "artifact_id": artifact.artifact_id,
             "workflow_id": artifact.workflow_id,
             "content": artifact.content,
@@ -64,8 +111,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             "created_at": artifact.created_at,
             "attempt_number": artifact.attempt_number,
             "status": artifact.status.value,
-            "guard_result": artifact.guard_result,
-            "feedback": artifact.feedback,
+            "guard_result": self._guard_result_to_dict(artifact.guard_result),
             "context": {
                 "workflow_id": artifact.context.workflow_id,
                 "specification": artifact.context.specification,
@@ -78,6 +124,10 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 "dependency_artifacts": dict(artifact.context.dependency_artifacts),
             },
         }
+        # Include metadata if present
+        if artifact.metadata:
+            result["metadata"] = dict(artifact.metadata)
+        return result
 
     def _dict_to_artifact(self, data: dict) -> Artifact:
         """Deserialize artifact from JSON dict."""
@@ -98,6 +148,25 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             # Deserialize dict → tuple for immutability
             dependency_artifacts=tuple(dep_data.items()),
         )
+        # Get metadata if present
+        metadata = data.get("metadata", {})
+
+        # Handle legacy format: guard_result was bool, feedback was separate field
+        guard_result_data = data.get("guard_result")
+        if guard_result_data is None and "feedback" in data:
+            # Legacy artifact with no guard_result but has feedback
+            # This shouldn't happen often, but handle gracefully
+            pass
+        elif isinstance(guard_result_data, bool):
+            # Legacy format: convert bool + feedback to GuardResult
+            guard_result_data = {
+                "passed": guard_result_data,
+                "feedback": data.get("feedback", ""),
+                "fatal": False,
+                "guard_name": None,
+                "sub_results": [],
+            }
+
         return Artifact(
             artifact_id=data["artifact_id"],
             workflow_id=data.get("workflow_id", "unknown"),
@@ -108,9 +177,9 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             created_at=data["created_at"],
             attempt_number=data["attempt_number"],
             status=ArtifactStatus(data["status"]),
-            guard_result=data["guard_result"],
-            feedback=data["feedback"],
+            guard_result=self._dict_to_guard_result(guard_result_data),
             context=context,
+            metadata=metadata,  # Will be converted to MappingProxyType in __post_init__
         )
 
     def _get_object_path(self, artifact_id: str) -> Path:
@@ -122,52 +191,55 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         """
         Append artifact to DAG (immutable, append-only).
 
+        Thread-safe: uses lock to ensure atomic index updates.
+
         Args:
             artifact: The artifact to store
 
         Returns:
             The artifact_id
         """
-        # 1. Serialize to JSON
-        artifact_dict = self._artifact_to_dict(artifact)
+        with self._lock:
+            # 1. Serialize to JSON
+            artifact_dict = self._artifact_to_dict(artifact)
 
-        # 2. Write to objects/{prefix}/{artifact_id}.json
-        object_path = self._get_object_path(artifact.artifact_id)
-        object_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(object_path, "w") as f:
-            json.dump(artifact_dict, f, indent=2)
+            # 2. Write to objects/{prefix}/{artifact_id}.json
+            object_path = self._get_object_path(artifact.artifact_id)
+            object_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(object_path, "w") as f:
+                json.dump(artifact_dict, f, indent=2)
 
-        # 3. Update index
-        self._index["artifacts"][artifact.artifact_id] = {
-            "path": str(object_path.relative_to(self._base_dir)),
-            "workflow_id": artifact.workflow_id,
-            "action_pair_id": artifact.action_pair_id,
-            "parent_action_pair_id": artifact.parent_action_pair_id,
-            "status": artifact.status.value,
-            "created_at": artifact.created_at,
-        }
+            # 3. Update index
+            self._index["artifacts"][artifact.artifact_id] = {
+                "path": str(object_path.relative_to(self._base_dir)),
+                "workflow_id": artifact.workflow_id,
+                "action_pair_id": artifact.action_pair_id,
+                "parent_action_pair_id": artifact.parent_action_pair_id,
+                "status": artifact.status.value,
+                "created_at": artifact.created_at,
+            }
 
-        # Track by action pair
-        if artifact.action_pair_id not in self._index["action_pairs"]:
-            self._index["action_pairs"][artifact.action_pair_id] = []
-        self._index["action_pairs"][artifact.action_pair_id].append(
-            artifact.artifact_id
-        )
+            # Track by action pair
+            if artifact.action_pair_id not in self._index["action_pairs"]:
+                self._index["action_pairs"][artifact.action_pair_id] = []
+            self._index["action_pairs"][artifact.action_pair_id].append(
+                artifact.artifact_id
+            )
 
-        # Track by workflow
-        if "workflows" not in self._index:
-            self._index["workflows"] = {}
-        if artifact.workflow_id not in self._index["workflows"]:
-            self._index["workflows"][artifact.workflow_id] = []
-        self._index["workflows"][artifact.workflow_id].append(artifact.artifact_id)
+            # Track by workflow
+            if "workflows" not in self._index:
+                self._index["workflows"] = {}
+            if artifact.workflow_id not in self._index["workflows"]:
+                self._index["workflows"][artifact.workflow_id] = []
+            self._index["workflows"][artifact.workflow_id].append(artifact.artifact_id)
 
-        # 4. Atomically update index
-        self._update_index_atomic()
+            # 4. Atomically update index
+            self._update_index_atomic()
 
-        # 5. Add to cache
-        self._cache[artifact.artifact_id] = artifact
+            # 5. Add to cache
+            self._cache[artifact.artifact_id] = artifact
 
-        return artifact.artifact_id
+            return artifact.artifact_id
 
     def get_artifact(self, artifact_id: str) -> Artifact:
         """Retrieve artifact by ID (cache-first)."""
@@ -238,8 +310,8 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             attempt_number=artifact.attempt_number,
             status=new_status,
             guard_result=artifact.guard_result,
-            feedback=artifact.feedback,
             context=artifact.context,
+            metadata=artifact.metadata,
         )
 
         # Update file
@@ -294,3 +366,18 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # Sort by created_at descending and return the latest
         candidates.sort(key=lambda x: x[1], reverse=True)
         return self.get_artifact(candidates[0][0])
+
+    def get_all(self) -> list[Artifact]:
+        """Return all artifacts in the DAG.
+
+        Returns:
+            List of all artifacts, sorted by created_at.
+        """
+        # Get all artifact IDs from index and sort by created_at
+        artifact_ids_with_times = [
+            (aid, info.get("created_at", ""))
+            for aid, info in self._index.get("artifacts", {}).items()
+        ]
+        artifact_ids_with_times.sort(key=lambda x: x[1])
+
+        return [self.get_artifact(aid) for aid, _ in artifact_ids_with_times]

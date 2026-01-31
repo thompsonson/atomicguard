@@ -8,10 +8,16 @@ Organization by validation profile:
 - static/: Pure AST-based validation (no execution)
 - dynamic/: Subprocess-based validation (test execution)
 - interactive/: Human-in-loop validation
-- composite/: Guard composition patterns
+- composite/: Guard composition patterns (Extension 08)
 """
 
-from atomicguard.guards.composite import CompositeGuard
+from atomicguard.guards.composite import (
+    AggregationPolicy,
+    CompositeGuard,
+    ParallelGuard,
+    SequentialGuard,
+    SubGuardResult,
+)
 from atomicguard.guards.dynamic import DynamicTestGuard, TestGuard
 from atomicguard.guards.interactive import HumanReviewGuard
 from atomicguard.guards.static import ImportGuard, SyntaxGuard
@@ -25,6 +31,10 @@ __all__ = [
     "DynamicTestGuard",
     # Interactive guards (human-in-loop)
     "HumanReviewGuard",
-    # Composition patterns
+    # Composition patterns (Extension 08)
     "CompositeGuard",
+    "SequentialGuard",
+    "ParallelGuard",
+    "AggregationPolicy",
+    "SubGuardResult",
 ]

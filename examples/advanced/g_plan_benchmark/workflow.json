@@ -1,0 +1,51 @@
+{
+  "name": "G_plan Validation Benchmark",
+  "description": "Plan generation and validation using the G_plan taxonomy. Supports deterministic (PlanGenerator), single-shot LLM (LLMPlanGenerator), classify-then-plan, and full 4-step decomposed pipeline.",
+  "model": "qwen2.5-coder:14b",
+  "rmax": 3,
+  "action_pairs": {
+    "g_plan": {
+      "generator": "PlanGenerator",
+      "generator_config": {
+        "plan_source": "sdlc_v2",
+        "defect": null
+      },
+      "guard": "plan_medium",
+      "description": "Load a workflow plan from catalog and validate at configured rigor level"
+    },
+    "g_plan_llm": {
+      "generator": "LLMPlanGenerator",
+      "guard": "plan_medium",
+      "description": "Generate a workflow plan via LLM and validate at configured rigor level (single-shot)"
+    },
+    "g_analysis": {
+      "generator": "LLMJsonGenerator",
+      "guard": "analysis_valid",
+      "description": "Classify the problem type, language, severity, and key signals from the problem statement"
+    },
+    "g_plan_conditioned": {
+      "generator": "LLMPlanGenerator",
+      "guard": "plan_medium",
+      "requires": ["g_analysis"],
+      "description": "Generate a workflow plan conditioned on the problem analysis (classify-then-plan pipeline)"
+    },
+    "g_recon": {
+      "generator": "LLMJsonGenerator",
+      "guard": "recon_valid",
+      "requires": ["g_analysis"],
+      "description": "Extract actionable context: mentioned files, stack traces, APIs, test references, reproduction steps"
+    },
+    "g_strategy": {
+      "generator": "LLMJsonGenerator",
+      "guard": "strategy_valid",
+      "requires": ["g_analysis", "g_recon"],
+      "description": "Select a resolution strategy (S1-S5) based on problem analysis and codebase reconnaissance"
+    },
+    "g_plan_full": {
+      "generator": "LLMPlanGenerator",
+      "guard": "plan_medium",
+      "requires": ["g_analysis", "g_recon", "g_strategy"],
+      "description": "Generate a workflow plan conditioned on analysis, recon, and strategy (full decomposed pipeline)"
+    }
+  }
+}

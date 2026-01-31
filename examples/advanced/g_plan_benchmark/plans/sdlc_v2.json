@@ -1,0 +1,68 @@
+{
+  "plan_id": "sdlc-v2",
+  "initial_state": ["intent_received"],
+  "goal_state": ["g_merge_ready"],
+  "total_retry_budget": 36,
+  "steps": [
+    {
+      "step_id": "g_config",
+      "name": "Extract project configuration",
+      "generator": "ConfigExtractorGenerator",
+      "guard": "config_extracted",
+      "retry_budget": 6,
+      "preconditions": ["intent_received"],
+      "effects": ["g_config"],
+      "dependencies": []
+    },
+    {
+      "step_id": "g_add",
+      "name": "Generate architecture tests",
+      "generator": "ADDGenerator",
+      "guard": "architecture_tests_valid",
+      "retry_budget": 6,
+      "preconditions": ["g_config"],
+      "effects": ["g_add"],
+      "dependencies": ["g_config"]
+    },
+    {
+      "step_id": "g_bdd",
+      "name": "Generate BDD scenarios",
+      "generator": "BDDGenerator",
+      "guard": "scenarios_valid",
+      "retry_budget": 6,
+      "preconditions": ["g_config"],
+      "effects": ["g_bdd"],
+      "dependencies": ["g_config"]
+    },
+    {
+      "step_id": "g_rules",
+      "name": "Extract structured architecture rules",
+      "generator": "RulesExtractorGenerator",
+      "guard": "rules_valid",
+      "retry_budget": 6,
+      "preconditions": ["g_add", "g_config"],
+      "effects": ["g_rules"],
+      "dependencies": ["g_add", "g_config"]
+    },
+    {
+      "step_id": "g_coder",
+      "name": "Generate implementation",
+      "generator": "CoderGenerator",
+      "guard": "composite_validation",
+      "retry_budget": 6,
+      "preconditions": ["g_rules", "g_bdd", "g_add"],
+      "effects": ["g_coder"],
+      "dependencies": ["g_rules", "g_bdd", "g_add"]
+    },
+    {
+      "step_id": "g_merge_ready",
+      "name": "Final merge ready check",
+      "generator": "IdentityGenerator",
+      "guard": "merge_ready",
+      "retry_budget": 6,
+      "preconditions": ["g_config", "g_add", "g_bdd", "g_rules", "g_coder"],
+      "effects": ["g_merge_ready"],
+      "dependencies": ["g_config", "g_add", "g_bdd", "g_rules", "g_coder"]
+    }
+  ]
+}

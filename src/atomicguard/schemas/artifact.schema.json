@@ -4,7 +4,7 @@
   "title": "AtomicGuard Artifact",
   "description": "Immutable versioned artifact in DAG (Definition 2)",
   "type": "object",
-  "required": ["artifact_id", "workflow_id", "content", "action_pair_id", "attempt_number", "status"],
+  "required": ["artifact_id", "workflow_id", "content", "action_pair_id", "attempt_number", "status", "guard_result"],
   "properties": {
     "artifact_id": {
       "type": "string",
@@ -49,10 +49,33 @@
       "description": "ISO 8601 timestamp of artifact creation"
     },
     "guard_result": {
-      "$ref": "#/$defs/GuardResult"
+      "oneOf": [
+        { "$ref": "#/$defs/GuardResult" },
+        { "type": "null" }
+      ],
+      "description": "Full guard validation result (null if pending)"
     },
     "context": {
       "$ref": "#/$defs/Context"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["generated", "human", "imported"],
+      "default": "generated",
+      "description": "Origin of artifact content (ArtifactSource enum)"
+    },
+    "workflow_ref": {
+      "type": ["string", "null"],
+      "description": "W_ref - Content-addressed workflow hash for integrity verification (Extension 01, Definition 11)"
+    },
+    "config_ref": {
+      "type": ["string", "null"],
+      "description": "Ψ_ref - Configuration fingerprint for incremental execution change detection (Extension 07, Definition 33)"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Extensible metadata dictionary",
+      "additionalProperties": true
     }
   },
   "$defs": {
@@ -72,8 +95,43 @@
           "type": "boolean",
           "default": false,
           "description": "v = ⊥_fatal (non-recoverable, requires escalation)"
+        },
+        "guard_name": {
+          "type": ["string", "null"],
+          "description": "Name of the guard that produced this result"
+        },
+        "sub_results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubGuardOutcome"
+          },
+          "description": "Sub-guard results for composite guards (Extension 08)"
         }
       }
+    },
+    "SubGuardOutcome": {
+      "type": "object",
+      "description": "Outcome from a single sub-guard within a composite (Definition 43)",
+      "properties": {
+        "guard_name": {
+          "type": "string",
+          "description": "Class name of the sub-guard"
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether this sub-guard passed"
+        },
+        "feedback": {
+          "type": "string",
+          "description": "Feedback from this sub-guard"
+        },
+        "execution_time_ms": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Time spent in this sub-guard (milliseconds)"
+        }
+      },
+      "required": ["guard_name", "passed", "feedback"]
     },
     "Context": {
       "type": "object",

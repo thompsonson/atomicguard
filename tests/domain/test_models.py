@@ -109,7 +109,6 @@ class TestArtifact:
             attempt_number=2,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         assert artifact.previous_attempt_id == "original-001"
@@ -293,7 +292,6 @@ class TestArtifactSource:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         assert artifact.source == ArtifactSource.GENERATED
@@ -311,7 +309,6 @@ class TestArtifactSource:
             attempt_number=3,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
             source=ArtifactSource.HUMAN,
         )
