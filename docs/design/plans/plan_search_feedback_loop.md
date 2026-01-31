@@ -5,6 +5,8 @@
 > **Depends on**: [planning_workflow_decomposition.md](planning_workflow_decomposition.md) (implemented), `evaluation/` harness (implemented)
 >
 > **Paper**: ISMIS 2026 — "The Chaos and the Scaffold: Contingent Planning for LLMs"
+>
+> **Prior work**: [IA Series: AI Search](https://matt.thompson.gr/2025/04/24/ia-series-n-ai-search.html), [IA Series: Search Algorithms](https://matt.thompson.gr/2025/04/24/ia-series-n-search-algorithms.html)
 
 ---
 
@@ -24,9 +26,74 @@ If `g_plan_full` fails validation (Medium guard rejects the plan), the trial fai
 
 Within a single action pair, `DualStateAgent` already retries with accumulated `feedback_history` (up to `rmax` attempts). But **across pipeline steps**, there is no feedback mechanism. This leaves value on the table: a plan that fails Medium guard with "preconditions not satisfiable" is a signal that the strategy may be wrong, not just that the plan text needs reformatting.
 
+This is fundamentally a **search problem**. The IA Series on [AI Search](https://matt.thompson.gr/2025/04/24/ia-series-n-ai-search.html) and [Search Algorithms](https://matt.thompson.gr/2025/04/24/ia-series-n-search-algorithms.html) established the framework for reasoning about AI problems as search through state spaces. The planning pipeline maps directly onto this framework: the state space is the set of possible pipeline outputs, the operators are generation and backtracking, and the guard feedback provides the heuristic signal that makes the search informed rather than blind.
+
 ---
 
-## 2. The Planning Space as a Search Tree
+## 2. Framing as Classical AI Search
+
+The decomposed planning pipeline is an instance of a classical AI search problem. This section maps the pipeline onto the standard search formalism established in the [IA Series on AI Search](https://matt.thompson.gr/2025/04/24/ia-series-n-ai-search.html).
+
+### 2.1 The Five Components
+
+Every search problem is defined by five components. For plan generation:
+
+| Search component | Pipeline mapping |
+|---|---|
+| **State space** | The set of all possible tuples `(A, R, S, P)` where each element is either `None` or a generated artifact |
+| **Initial state** | `(None, None, None, None)` — no pipeline step has run |
+| **Goal test** | All four guards pass: `AnalysisGuard(A) ∧ ReconGuard(R) ∧ StrategyGuard(S) ∧ MediumPlanGuard(P)` |
+| **Operators** | `generate(step)`, `retry(step, feedback)`, `backtrack(target, failure_summary)` |
+| **Path cost** | Number of LLM calls consumed (each operator application = 1 call) |
+
+The **state space** has structure: it is a layered DAG where level *i* depends on all levels *j < i*. This is not a flat state space — the dependency ordering constrains which operators apply at each point.
+
+### 2.2 Informed vs. Uninformed Search
+
+The [Search Algorithms](https://matt.thompson.gr/2025/04/24/ia-series-n-search-algorithms.html) post distinguishes **uninformed** search (blind exploration using only the problem structure) from **informed** search (using a heuristic to guide expansion).
+
+In this pipeline:
+
+- **Uninformed** = Retry at the same level on failure, backtrack one level when retries are exhausted. The system knows the tree structure but not *why* something failed.
+- **Informed** = Guard feedback provides a heuristic signal. A `MediumPlanGuard` failure saying "preconditions not satisfiable" tells you the strategy is likely wrong (backtrack depth 1), while "not parseable as JSON" says the plan just needs reformatting (depth 0). The heuristic function `h(feedback) → backtrack_depth` converts guard output into search guidance.
+
+This is the key insight: **guards are not just validators — they are heuristic functions for the planning search**. Each guard failure carries signal about *where in the pipeline* the root cause lies, making the search informed.
+
+### 2.3 Search Algorithm Selection
+
+From the classical algorithm taxonomy:
+
+| Algorithm | Applicable? | Notes |
+|---|---|---|
+| **Depth-first search** | Yes (default) | Natural fit: exhaust cheap options (plan retry) before expensive ones (analysis redo). Memory-efficient — only tracks current path. |
+| **Breadth-first search** | Possible but expensive | Would generate all analyses before any recon. Wasteful: most first analyses are good enough. |
+| **Iterative deepening** | Yes (future) | Start with small budgets, increase on failure. Gets DFS memory efficiency with BFS completeness guarantees. |
+| **A\* / best-first** | Yes (with guard scores) | If guards returned a numeric quality score (not just pass/fail), A\* could prioritize the most promising partial paths. Currently guards are binary, so A\* degenerates to DFS. |
+| **Beam search** | Yes (research variant) | Maintain top-K candidates at each level. Useful for comparing strategies in parallel. K× more expensive than DFS. |
+| **Hill climbing** | Effectively what within-step retry does | Retry with feedback is local search — improve the current artifact without backtracking. |
+
+**DFS is chosen as the default** because of the cost gradient: deeper nodes are cheaper to regenerate (plan retries reuse all prior context), so exhausting depth-first minimizes expected LLM calls.
+
+### 2.4 The Two Levels of Search
+
+The paper title is "The Chaos and the Scaffold: Contingent Planning for LLMs." This design introduces search at two levels:
+
+1. **Object level** (existing): The generated plan itself is a contingent plan — a DAG with branches for guard success/failure. Each step has a retry budget. The `ExpansivePlanGuard` validates that this object-level search space (the plan's execution traces) reaches the goal.
+
+2. **Meta level** (this design): The *planning process* is a search — a search for a valid plan. Guard feedback guides this meta-search. The search tree is over *pipeline outputs*, not over plan execution traces.
+
+The scaffold (guards + pipeline structure) constrains the chaos (LLM generation) at both levels. The meta-level search is itself a contingent plan:
+
+- "If plan generation fails with structural errors, retry plan"
+- "If plan generation fails with convergence errors, revise strategy"
+- "If strategy revision also fails, reconsider reconnaissance"
+- "If nothing works within budget, report unsolvable"
+
+This is a **plan for planning** — and it could itself be represented as a DAG validated by guards, closing the recursive loop.
+
+---
+
+## 3. The Planning Space as a Search Tree
 
 Each pipeline execution traces a path through a search tree. The tree has four levels corresponding to the four pipeline steps:
 
@@ -59,21 +126,17 @@ P₁     P₂       P₃  ← plan candidates
 
 A successful evaluation finds a root-to-leaf path where every node passes its guard. The current pipeline performs a single root-to-leaf traversal with no branching.
 
-### 2.1 State Representation
+### 3.1 State Representation
 
-A search state is a tuple:
+The formal state representation from Section 2.1 applies here concretely. Each node in the tree represents a partial state:
 
-```
-σ = (A, R, S, P)
-```
+- Level 0 (root): `(None, None, None, None)`
+- Level 1 (after analysis): `(A_i, None, None, None)`
+- Level 2 (after recon): `(A_i, R_j, None, None)`
+- Level 3 (after strategy): `(A_i, R_j, S_k, None)`
+- Level 4 (leaf): `(A_i, R_j, S_k, P_l)` — apply goal test
 
-where each element is `None` (not yet generated) or an artifact. The initial state is `(None, None, None, None)`. A goal state is `(A, R, S, P)` where:
-- `A` passes `AnalysisGuard`
-- `R` passes `ReconGuard`
-- `S` passes `StrategyGuard`
-- `P` passes `MediumPlanGuard` (or a configurable target level)
-
-### 2.2 Operators
+### 3.2 Operators
 
 | Operator | Precondition | Effect |
 |---|---|---|
@@ -81,23 +144,23 @@ where each element is `None` (not yet generated) or an artifact. The initial sta
 | `retry(step, feedback)` | Step attempted, guard failed, budget remaining | Produces new candidate with feedback in context |
 | `backtrack(target_step, failure_summary)` | A descendant of `target_step` failed | Clears all steps below `target_step`, amends `target_step`'s context with failure summary |
 
-### 2.3 Why DFS
+### 3.3 Why DFS
 
-Depth-first is the right default strategy:
+As established in Section 2.3, DFS is chosen because of the cost gradient:
 
 1. **Cost gradient**: Retrying the deepest level (plan generation) is cheapest — it reuses all accumulated context from analysis/recon/strategy. Backtracking to strategy requires regenerating strategy + plan. Backtracking to analysis requires regenerating everything.
 2. **Most failures are local**: A structurally invalid plan (bad JSON, missing fields) doesn't indicate a wrong strategy. Retrying at the plan level with guard feedback is the correct response.
 3. **Memory efficiency**: DFS only needs the current path, not the full frontier.
 
-Breadth-first or beam search would be appropriate if you wanted to compare multiple strategies in parallel, but that's a different question (exploration vs. exploitation) and more expensive.
+This is the within-step analogue of hill climbing: retry with feedback is local search at a single tree level. DFS with backtracking extends this to the full tree when local search fails.
 
 ---
 
-## 3. Feedback as Heuristic
+## 4. Feedback as Heuristic
 
 Not all guard failures carry the same signal. The key design decision is: **given a failure at step N, how far should we backtrack?**
 
-### 3.1 Failure Classification
+### 4.1 Failure Classification
 
 Guard feedback can be classified by what it implies about the *cause* of failure:
 
@@ -112,7 +175,7 @@ Guard feedback can be classified by what it implies about the *cause* of failure
 | ExpansivePlanGuard | "MAX_EXPLORATIONS exceeded" | Plan too complex to verify | g_strategy (depth 1) |
 | Repeated identical failures | Same feedback across rmax retries | Analysis misclassification | g_analysis (depth 3) |
 
-### 3.2 Heuristic Function
+### 4.2 Heuristic Function
 
 ```
 h: (step_id, GuardResult, retry_count, history) → backtrack_depth
@@ -157,9 +220,9 @@ A future version could use an LLM call to classify the failure, but that consume
 
 ---
 
-## 4. Budget Model
+## 5. Budget Model
 
-### 4.1 Hierarchical Budget
+### 5.1 Hierarchical Budget
 
 Each step has two budgets:
 
@@ -181,7 +244,7 @@ B_max = Σ_i (rmax_i × (1 + backtrack_budget_i))
 
 But in practice, feedback-guided search terminates much earlier.
 
-### 4.2 Example Budget Allocation
+### 5.2 Example Budget Allocation
 
 ```
 g_analysis:  rmax=2, backtrack_budget=1  → max 4 analysis calls
@@ -193,7 +256,7 @@ g_plan:      rmax=3, backtrack_budget=0  → max 3 plan calls per strategy
 **Worst case**: 4 + 6 + 8 + (3 × 8) = 42 LLM calls.
 **Common case**: Analysis passes first try, recon passes, strategy needs one revision after plan feedback, plan passes on retry = 5 LLM calls.
 
-### 4.3 Termination Conditions
+### 5.3 Termination Conditions
 
 The search terminates when:
 
@@ -206,7 +269,7 @@ Condition 3 is the "paths that don't find a solution" meta-problem. The system r
 
 ---
 
-## 5. Context Amendment on Backtrack
+## 6. Context Amendment on Backtrack
 
 The feedback loop closes through `Context.amend()`. When backtracking from step N to ancestor step K, the ancestor's context is amended with a **failure summary** describing what went wrong downstream:
 
@@ -241,7 +304,7 @@ def _build_backtrack_context(
 
 This reuses the existing `Context.amend()` mechanism. The LLM sees the failure in its constraints section and can adjust its output accordingly.
 
-### 5.1 Feedback Wrapper Integration
+### 6.1 Feedback Wrapper Integration
 
 The existing `PromptTemplate.feedback_wrapper` already handles within-step retry feedback. For cross-step backtrack feedback, the failure information arrives via `delta_constraints` rather than `feedback_history`. This keeps the two feedback channels distinct:
 
@@ -252,9 +315,9 @@ Both appear in the rendered prompt but serve different purposes.
 
 ---
 
-## 6. Architecture
+## 7. Architecture
 
-### 6.1 Component: PlanSearchOrchestrator
+### 7.1 Component: PlanSearchOrchestrator
 
 ```python
 @dataclass(frozen=True)
@@ -285,7 +348,7 @@ class SearchResult:
     termination_reason: str         # "success" | "budget_exhausted" | "all_pruned"
 ```
 
-### 6.2 Search Algorithm (Pseudocode)
+### 7.2 Search Algorithm (Pseudocode)
 
 ```
 function PLAN_SEARCH(specification, config):
@@ -338,7 +401,7 @@ function PLAN_SEARCH(specification, config):
     return DFS(root, 0)
 ```
 
-### 6.3 Relationship to Existing Components
+### 7.3 Relationship to Existing Components
 
 | Existing component | Role in search |
 |---|---|
@@ -352,9 +415,9 @@ function PLAN_SEARCH(specification, config):
 
 ---
 
-## 7. Measurable Outcomes
+## 8. Measurable Outcomes
 
-### 7.1 New Metrics
+### 8.1 New Metrics
 
 | Metric | Definition | What it shows |
 |---|---|---|
@@ -364,13 +427,13 @@ function PLAN_SEARCH(specification, config):
 | `backtrack_depth_dist` | Distribution of backtrack depths | Where failures typically originate |
 | `ε_search(B) - ε_single` | Improvement from search over single-shot | Core paper result |
 
-### 7.2 Publishable Results
+### 8.2 Publishable Results
 
 1. **ε vs budget curve**: Plot `ε_search(B)` for B = 1, 5, 10, 20, 30. Shows diminishing returns and the budget where search saturates.
 2. **Backtrack depth analysis**: Per problem category, how deep does search typically backtrack? Hypothesis: bug fixes mostly retry at plan level (depth 0), while features require strategy revision (depth 1).
 3. **Heuristic value**: Compare feedback-guided backtracking vs. blind DFS (always backtrack one level). If the heuristic helps, it validates the guard feedback as a useful signal.
 
-### 7.3 Integration with Evaluation Harness
+### 8.3 Integration with Evaluation Harness
 
 The existing `ExperimentRunner` runs `problem × pipeline × trial`. Adding search means:
 
@@ -390,29 +453,29 @@ The scorecard gains new columns:
 
 ---
 
-## 8. Design Decisions
+## 9. Design Decisions
 
-### 8.1 Chosen: DFS with feedback heuristic
+### 9.1 Chosen: DFS with feedback heuristic
 
 **Rationale**: Minimizes LLM calls for the common case (plan retry succeeds). The heuristic prevents wasted retries when the failure clearly originates upstream. DFS naturally exhausts cheap options before expensive ones.
 
 **Alternative considered**: Beam search (maintain top-K candidates at each level). More exploratory but K× more expensive. Appropriate for research experiments comparing strategies, not for production planning. Could be added as a search variant later.
 
-### 8.2 Chosen: Rule-based heuristic first
+### 9.2 Chosen: Rule-based heuristic first
 
 **Rationale**: Guard feedback strings are structured enough for pattern matching. An LLM-based classifier would consume search budget and add latency. Start with rules; if they prove insufficient, upgrade to LLM-based classification later.
 
-### 8.3 Chosen: Separate orchestrator, not modifying Workflow
+### 9.3 Chosen: Separate orchestrator, not modifying Workflow
 
 **Rationale**: `Workflow` is the production orchestrator for executing validated plans. The search orchestrator is a *planning-time* component that finds valid plans. Mixing search into `Workflow` would complicate the execution model. Keeping them separate maintains the distinction between "finding a plan" and "executing a plan."
 
-### 8.4 Open question: Should failed branches influence subsequent branches?
+### 9.4 Open question: Should failed branches influence subsequent branches?
 
 When backtracking from strategy S₁ to try S₂, should S₂'s context include information about S₁'s failure? The current design says **yes** — `_build_backtrack_context()` appends the failure summary. But this accumulates context, and after multiple backtracks the prompt may become cluttered. A **context window** that only keeps the most recent N failures may be needed.
 
 ---
 
-## 9. Implementation Order
+## 10. Implementation Order
 
 1. **SearchConfig + SearchNode + SearchResult** data models (pure dataclasses, no dependencies)
 2. **backtrack_heuristic()** rule-based classifier
@@ -424,28 +487,17 @@ When backtracking from strategy S₁ to try S₂, should S₂'s context include 
 
 ---
 
-## 10. Relationship to Paper
-
-The paper title is "The Chaos and the Scaffold: Contingent Planning for LLMs." This design introduces contingency at two levels:
-
-1. **Object level** (existing): The generated plan is contingent — it has branches for guard success/failure, with retry budgets per step.
-2. **Meta level** (this design): The planning *process* is contingent — it branches based on whether the generated plan passes validation, using guard feedback to direct the search.
-
-The scaffold (guards + pipeline structure) constrains the chaos (LLM generation) at both levels. The meta-level search is itself a contingent plan:
-
-- "If plan generation fails with structural errors, retry plan"
-- "If plan generation fails with convergence errors, revise strategy"
-- "If strategy revision also fails, reconsider reconnaissance"
-- "If nothing works within budget, report unsolvable"
-
-This is a **plan for planning** — and it could itself be represented as a DAG validated by guards, closing the recursive loop.
-
----
-
 ## 11. See Also
 
+**Prior work:**
+- [IA Series: AI Search](https://matt.thompson.gr/2025/04/24/ia-series-n-ai-search.html) — Framing AI problems as search through state spaces
+- [IA Series: Search Algorithms](https://matt.thompson.gr/2025/04/24/ia-series-n-search-algorithms.html) — Survey of search algorithms (DFS, BFS, A\*, iterative deepening, beam search)
+
+**Design documents:**
 - [planning_workflow_decomposition.md](planning_workflow_decomposition.md) — The implemented linear pipeline this extends
 - [benchmark_evaluation_framework.md](benchmark_evaluation_framework.md) — Evaluation harness that would run search experiments
-- `src/atomicguard/application/agent.py` — `DualStateAgent` within-step retry loop
-- `src/atomicguard/application/workflow.py` — `Workflow` forward-only orchestrator
+
+**Source code:**
+- `src/atomicguard/application/agent.py` — `DualStateAgent` within-step retry loop (hill climbing)
+- `src/atomicguard/application/workflow.py` — `Workflow` forward-only orchestrator (single path, no backtracking)
 - `examples/advanced/g_plan_benchmark/evaluation/runner.py` — `ExperimentRunner`
