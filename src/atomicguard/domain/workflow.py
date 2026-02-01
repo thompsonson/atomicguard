@@ -215,12 +215,12 @@ class ResumeResult:
     """Result of resuming a workflow from checkpoint."""
 
     success: bool
-    workflow_state: WorkflowState | None = None
+    workflow_state: RestoredWorkflowState | None = None
     error: str | None = None
 
 
 @dataclass
-class WorkflowState:
+class RestoredWorkflowState:
     """Reconstructed workflow state for resume."""
 
     completed_steps: tuple[str, ...]
@@ -313,14 +313,14 @@ class WorkflowResumer:
         state = self.restore_state(checkpoint_id)
         return ResumeResult(success=True, workflow_state=state)
 
-    def restore_state(self, checkpoint_id: str) -> WorkflowState:
+    def restore_state(self, checkpoint_id: str) -> RestoredWorkflowState:
         """Restore workflow state from checkpoint.
 
         Args:
             checkpoint_id: ID of checkpoint to restore from.
 
         Returns:
-            WorkflowState with completed steps and artifact IDs.
+            RestoredWorkflowState with completed steps and artifact IDs.
         """
         checkpoint = self._checkpoint_dag.get_checkpoint(checkpoint_id)
         if checkpoint is None:
@@ -328,7 +328,7 @@ class WorkflowResumer:
 
         artifact_ids = dict(checkpoint.artifact_ids)
 
-        return WorkflowState(
+        return RestoredWorkflowState(
             completed_steps=checkpoint.completed_steps,
             artifact_ids=artifact_ids,
             next_step=checkpoint.failed_step,

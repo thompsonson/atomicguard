@@ -29,7 +29,7 @@ if TYPE_CHECKING:
         GuardInterface,
     )
     from atomicguard.domain.models import Context
-    from atomicguard.domain.workflow import WorkflowState
+    from atomicguard.domain.workflow import RestoredWorkflowState
 
 
 class ResumeResult:
@@ -200,14 +200,14 @@ class WorkflowResumeService:
                 needs_retry=True,
             )
 
-    def get_restored_state(self, checkpoint_id: str) -> WorkflowState:
+    def get_restored_state(self, checkpoint_id: str) -> RestoredWorkflowState:
         """Get restored workflow state from checkpoint.
 
         Args:
             checkpoint_id: ID of checkpoint to restore from.
 
         Returns:
-            WorkflowState with completed steps and artifact IDs.
+            RestoredWorkflowState with completed steps and artifact IDs.
         """
         return self._resumer.restore_state(checkpoint_id)
 
