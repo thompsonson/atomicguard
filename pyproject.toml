@@ -51,6 +51,7 @@ Changelog = "https://github.com/thompsonson/atomicguard/blob/main/CHANGELOG.md"
 [project.entry-points."atomicguard.generators"]
 # Core generators
 OllamaGenerator = "atomicguard.infrastructure.llm:OllamaGenerator"
+HuggingFaceGenerator = "atomicguard.infrastructure.llm:HuggingFaceGenerator"
 MockGenerator = "atomicguard.infrastructure.llm:MockGenerator"
 
 # Note: Dev dependencies are in [dependency-groups] below, not here.

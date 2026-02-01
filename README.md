@@ -59,6 +59,67 @@ print(artifact.content)
 
 See [examples/](examples/) for more detailed usage, including a [mock example](examples/basic_mock.py) that works without an LLM.
 
+## LLM Backends
+
+AtomicGuard supports multiple LLM backends. Each generator implements `GeneratorInterface` and can be swapped in with no other code changes.
+
+### Ollama (local or cloud)
+
+Uses the OpenAI-compatible API. Works with any Ollama-served model:
+
+```python
+from atomicguard.infrastructure.llm import OllamaGenerator
+
+# Local instance (default: http://localhost:11434/v1)
+generator = OllamaGenerator(model="qwen2.5-coder:7b")
+```
+
+### HuggingFace Inference API
+
+Connects to HuggingFace Inference Providers via `huggingface_hub`. Supports any model available through the HF Inference API, including third-party providers like Together AI.
+
+```bash
+# Install the optional dependency
+pip install huggingface_hub
+
+# Set your API token
+export HF_TOKEN="hf_your_token_here"
+```
+
+```python
+from atomicguard.infrastructure.llm import HuggingFaceGenerator
+from atomicguard.infrastructure.llm.huggingface import HuggingFaceGeneratorConfig
+
+# Default: Qwen/Qwen2.5-Coder-32B-Instruct
+generator = HuggingFaceGenerator()
+
+# Custom model and provider
+generator = HuggingFaceGenerator(HuggingFaceGeneratorConfig(
+    model="Qwen/Qwen2.5-Coder-32B-Instruct",
+    provider="together",       # or "auto", "hf-inference"
+    temperature=0.7,
+    max_tokens=4096,
+))
+```
+
+Drop-in replacement in any workflow:
+
+```python
+from atomicguard import (
+    SyntaxGuard, TestGuard, CompositeGuard,
+    ActionPair, DualStateAgent, InMemoryArtifactDAG
+)
+from atomicguard.infrastructure.llm import HuggingFaceGenerator
+
+generator = HuggingFaceGenerator()
+guard = CompositeGuard([SyntaxGuard(), TestGuard("assert add(2, 3) == 5")])
+action_pair = ActionPair(generator=generator, guard=guard)
+agent = DualStateAgent(action_pair, InMemoryArtifactDAG(), rmax=3)
+
+artifact = agent.execute("Write a function that adds two numbers")
+print(artifact.content)
+```
+
 ## Benchmarks
 
 Run the simulation from the paper:
