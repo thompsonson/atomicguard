@@ -67,8 +67,7 @@ def build_guard(config: dict[str, Any]) -> GuardInterface:
     if guard_type not in GUARD_REGISTRY:
         valid_types = list(GUARD_REGISTRY.keys()) + ["composite"]
         raise ConfigurationError(
-            f"Unknown guard type: '{guard_type}'. "
-            f"Valid types: {', '.join(valid_types)}"
+            f"Unknown guard type: '{guard_type}'. Valid types: {', '.join(valid_types)}"
         )
 
     guard_class = GUARD_REGISTRY[guard_type]

@@ -184,27 +184,25 @@ def _build_artifact_diagram(
         return f"```mermaid\ngraph LR\n    error[Error: {e}]\n```"
 
 
-def create_artifact_browser() -> (
-    tuple[
-        gr.Dropdown,  # workflow_dropdown (filter by workflow)
-        gr.Dataframe,  # artifact_tree (clickable table)
-        gr.State,  # artifact_id_map (row_idx -> artifact_id)
-        gr.Markdown,  # artifact_diagram
-        gr.Code,  # content_display
-        gr.JSON,  # metadata_display
-        gr.Dataframe,  # provenance_display
-        gr.JSON,  # context_display
-        gr.Dropdown,  # compare_left
-        gr.Dropdown,  # compare_right
-        gr.Code,  # compare_left_content
-        gr.Code,  # compare_right_content
-        Callable[..., Any],  # refresh_artifacts_fn
-        Callable[..., Any],  # load_artifact_fn
-        Callable[..., Any],  # update_diagram_fn
-        Callable[..., Any],  # compare_fn
-        Callable[..., Any],  # get_workflow_choices_fn
-    ]
-):
+def create_artifact_browser() -> tuple[
+    gr.Dropdown,  # workflow_dropdown (filter by workflow)
+    gr.Dataframe,  # artifact_tree (clickable table)
+    gr.State,  # artifact_id_map (row_idx -> artifact_id)
+    gr.Markdown,  # artifact_diagram
+    gr.Code,  # content_display
+    gr.JSON,  # metadata_display
+    gr.Dataframe,  # provenance_display
+    gr.JSON,  # context_display
+    gr.Dropdown,  # compare_left
+    gr.Dropdown,  # compare_right
+    gr.Code,  # compare_left_content
+    gr.Code,  # compare_right_content
+    Callable[..., Any],  # refresh_artifacts_fn
+    Callable[..., Any],  # load_artifact_fn
+    Callable[..., Any],  # update_diagram_fn
+    Callable[..., Any],  # compare_fn
+    Callable[..., Any],  # get_workflow_choices_fn
+]:
     """
     Create the artifact browser component with clickable list, diagram, and comparison.
 
