@@ -1,0 +1,24 @@
+{
+  "name": "S1 Direct",
+  "description": "Experiment 7.2 Arm 2: Analysis then patch (2 action pairs, rmax=0).",
+  "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+  "rmax": 0,
+  "action_pairs": {
+    "ap_analysis": {
+      "generator": "AnalysisGenerator",
+      "guard": "analysis",
+      "guard_config": {},
+      "description": "Analyze the bug: classify type, identify root cause, list affected files"
+    },
+    "ap_patch": {
+      "generator": "PatchGenerator",
+      "guard": "patch",
+      "guard_config": {
+        "require_git_apply": false,
+        "require_syntax_valid": true
+      },
+      "requires": ["ap_analysis"],
+      "description": "Generate patch to fix the bug based on analysis"
+    }
+  }
+}

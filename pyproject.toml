@@ -54,8 +54,15 @@ OllamaGenerator = "atomicguard.infrastructure.llm:OllamaGenerator"
 HuggingFaceGenerator = "atomicguard.infrastructure.llm:HuggingFaceGenerator"
 MockGenerator = "atomicguard.infrastructure.llm:MockGenerator"
 
+[project.optional-dependencies]
+experiment = [
+    "datasets>=2.0.0",
+    "huggingface_hub>=0.20",
+    "swebench>=2.0.0",
+    "docker>=7.0.0",
+]
+
 # Note: Dev dependencies are in [dependency-groups] below, not here.
-# [project.optional-dependencies] is for end-user extras only.
 
 [build-system]
 requires = ["setuptools>=75.0.0", "wheel"]

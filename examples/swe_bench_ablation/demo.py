@@ -17,8 +17,13 @@ from atomicguard import ActionPair, Workflow, WorkflowStatus
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
-from .generators import LocalizationGenerator, PatchGenerator
-from .guards import LocalizationGuard, PatchGuard
+from .generators import (
+    AnalysisGenerator,
+    LocalizationGenerator,
+    PatchGenerator,
+    TestGenerator,
+)
+from .guards import AnalysisGuard, LocalizationGuard, PatchGuard, TestSyntaxGuard
 
 logger = logging.getLogger("swe_bench_ablation")
 
@@ -39,16 +44,20 @@ ARTIFACT_DAG_DIR = OUTPUT_DIR / "artifact_dag"
 def get_generator_registry() -> dict[str, type]:
     """Get generator class registry."""
     return {
+        "AnalysisGenerator": AnalysisGenerator,
         "LocalizationGenerator": LocalizationGenerator,
         "PatchGenerator": PatchGenerator,
+        "TestGenerator": TestGenerator,
     }
 
 
 def get_guard_registry() -> dict[str, type]:
     """Get guard class registry."""
     return {
+        "analysis": AnalysisGuard,
         "localization": LocalizationGuard,
         "patch": PatchGuard,
+        "test_syntax": TestSyntaxGuard,
     }
 
 
@@ -96,6 +105,7 @@ def build_workflow(
     base_url: str,
     artifact_dag: FilesystemArtifactDAG,
     repo_root: str | None = None,
+    api_key: str = "ollama",
 ) -> Workflow:
     """Build a Workflow from configuration.
 
@@ -137,7 +147,11 @@ def build_workflow(
         guard_cls = guard_registry[guard_name]
 
         # Build generator with model config
-        gen_kwargs: dict[str, Any] = {"model": model, "base_url": base_url}
+        gen_kwargs: dict[str, Any] = {
+            "model": model,
+            "base_url": base_url,
+            "api_key": api_key,
+        }
         generator = gen_cls(**gen_kwargs)
 
         # Build guard with config
@@ -268,6 +282,108 @@ def list_workflows() -> None:
         click.echo(f"  {f.stem}: {name}")
         if desc:
             click.echo(f"    {desc}")
+
+
+@cli.command()
+@click.option(
+    "--model",
+    default="Qwen/Qwen2.5-Coder-32B-Instruct",
+    help="HuggingFace model ID",
+)
+@click.option(
+    "--arms",
+    default="singleshot,s1_direct,s1_tdd",
+    help="Comma-separated arm names to run",
+)
+@click.option(
+    "--output-dir",
+    default="output/experiment_7_2",
+    help="Directory for experiment results",
+)
+@click.option("--split", default="test", help="Dataset split")
+@click.option("--max-instances", default=0, type=int, help="Max instances (0=all)")
+@click.option("--resume", is_flag=True, help="Resume from existing results")
+def experiment(
+    model: str,
+    arms: str,
+    output_dir: str,
+    split: str,
+    max_instances: int,
+    resume: bool,
+) -> None:
+    """Run Experiment 7.2: Bug Fix Strategy Comparison on SWE-PolyBench."""
+    from .experiment_runner import ExperimentRunner
+
+    arm_map = {
+        "singleshot": "02_singleshot",
+        "s1_direct": "03_s1_direct",
+        "s1_tdd": "04_s1_tdd",
+    }
+    arm_list = [arm_map[a.strip()] for a in arms.split(",") if a.strip() in arm_map]
+
+    if not arm_list:
+        click.echo(click.style("No valid arms specified", fg="red"))
+        return
+
+    click.echo(f"Running Experiment 7.2 with model={model}")
+    click.echo(f"Arms: {arm_list}")
+    click.echo(f"Output: {output_dir}")
+
+    runner = ExperimentRunner(
+        model=model,
+        output_dir=output_dir,
+    )
+    runner.run_all(
+        arms=arm_list,
+        split=split,
+        max_instances=max_instances if max_instances > 0 else None,
+        resume_from=output_dir if resume else None,
+    )
+
+
+@cli.command()
+@click.option(
+    "--results",
+    default="output/experiment_7_2/results.jsonl",
+    help="Path to results.jsonl file",
+)
+@click.option(
+    "--resolved",
+    default=None,
+    help="Path to resolved.json (instance_id -> bool) from swebench evaluation",
+)
+@click.option(
+    "--output-dir",
+    default="output/experiment_7_2",
+    help="Directory for visualization output",
+)
+def visualize(results: str, resolved: str | None, output_dir: str) -> None:
+    """Generate visualizations from experiment results."""
+    from .analysis import generate_visualizations, load_results
+
+    click.echo(f"Loading results from {results}")
+    arm_results = load_results(results)
+
+    if not arm_results:
+        click.echo(click.style("No results found", fg="red"))
+        return
+
+    click.echo(f"Loaded {len(arm_results)} results")
+
+    resolved_map: dict[str, bool] | None = None
+    if resolved:
+        resolved_path = Path(resolved)
+        if resolved_path.exists():
+            resolved_map = json.loads(resolved_path.read_text())
+            click.echo(f"Loaded {len(resolved_map or {})} resolved entries")
+        else:
+            click.echo(click.style(f"Resolved file not found: {resolved}", fg="yellow"))
+
+    paths = generate_visualizations(arm_results, resolved_map, output_dir)
+
+    click.echo(click.style(f"Generated {len(paths)} visualizations:", fg="green"))
+    for p in paths:
+        click.echo(f"  {p}")
 
 
 if __name__ == "__main__":

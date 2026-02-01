@@ -11,6 +11,7 @@ import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
@@ -24,7 +25,7 @@ from atomicguard.domain.models import (
 )
 from atomicguard.domain.prompts import PromptTemplate
 
-from ..models import Localization, Patch, SearchReplaceEdit
+from ..models import Analysis, Localization, Patch, SearchReplaceEdit
 
 logger = logging.getLogger("swe_bench_ablation.generators")
 
@@ -40,6 +41,7 @@ class PatchGenerator(GeneratorInterface):
         self,
         model: str = "qwen2.5-coder:14b",
         base_url: str = "http://localhost:11434/v1",
+        api_key: str = "ollama",
         timeout: float = 180.0,
         include_file_content: bool = True,
         max_context_lines: int = 100,
@@ -49,7 +51,8 @@ class PatchGenerator(GeneratorInterface):
 
         Args:
             model: LLM model to use
-            base_url: Ollama API base URL
+            base_url: API base URL (Ollama or HuggingFace Inference API)
+            api_key: API key (use HF_TOKEN for HuggingFace)
             timeout: Request timeout in seconds
             include_file_content: Whether to include file content in prompt
             max_context_lines: Maximum lines of context per file
@@ -62,7 +65,7 @@ class PatchGenerator(GeneratorInterface):
         self._model = model
         self._client = OpenAI(
             base_url=base_url,
-            api_key="ollama",
+            api_key=api_key,
             timeout=timeout,
         )
         self._include_file_content = include_file_content
@@ -113,6 +116,7 @@ class PatchGenerator(GeneratorInterface):
             {"role": "user", "content": prompt},
         ]
 
+        metadata: dict[str, Any] = {}
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -121,6 +125,13 @@ class PatchGenerator(GeneratorInterface):
             )
             content = response.choices[0].message.content or ""
             logger.debug(f"[PatchGenerator] Response: {content[:200]}...")
+
+            if hasattr(response, "usage") and response.usage:
+                metadata = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
 
             # Parse search-replace blocks and convert to patch
             result = self._process_response(content, repo_root)
@@ -156,6 +167,7 @@ class PatchGenerator(GeneratorInterface):
             guard_result=None,
             context=context_snapshot,
             workflow_ref=workflow_ref,
+            metadata=MappingProxyType(metadata),
         )
 
     def _build_prompt(
@@ -174,9 +186,26 @@ class PatchGenerator(GeneratorInterface):
         # Problem statement
         parts.append(f"\n\n## Problem Statement\n{context.specification}")
 
-        # Get localization from dependencies
+        # Get analysis from dependencies (S1-direct and S1-TDD arms)
+        analysis = self._get_analysis(context)
+        if analysis:
+            parts.append("\n\n## Bug Analysis")
+            parts.append(f"Bug type: {analysis.bug_type.value}")
+            parts.append(f"Root cause: {analysis.root_cause_hypothesis}")
+            parts.append(f"Likely files: {', '.join(analysis.likely_files)}")
+            parts.append(f"Fix approach: {analysis.fix_approach}")
+
+            # Include file content from analysis
+            if self._include_file_content and repo_root:
+                parts.append("\n\n## Current File Content")
+                for file_path in analysis.likely_files[:3]:
+                    content = self._read_file(repo_root, file_path)
+                    if content:
+                        parts.append(f"\n### {file_path}\n```python\n{content}\n```")
+
+        # Get localization from dependencies (baseline arm)
         localization = self._get_localization(context)
-        if localization:
+        if localization and not analysis:
             parts.append("\n\n## Files to Modify")
             parts.append(f"Files: {', '.join(localization.files)}")
             if localization.functions:
@@ -192,6 +221,11 @@ class PatchGenerator(GeneratorInterface):
                     content = self._read_file(repo_root, file_path)
                     if content:
                         parts.append(f"\n### {file_path}\n```python\n{content}\n```")
+
+        # Get test code from dependencies (S1-TDD arm)
+        test_code = self._get_test_code(context)
+        if test_code:
+            parts.append(f"\n\n## Failing Test\n```python\n{test_code}\n```")
 
         # Constraints from template
         if template and template.constraints:
@@ -238,12 +272,23 @@ TIPS:
 
         return "\n".join(parts)
 
+    def _get_analysis(self, context: Context) -> Analysis | None:
+        """Extract analysis from dependency artifacts."""
+        for dep_id, artifact_id in context.dependency_artifacts:
+            if "analysis" in dep_id.lower():
+                artifact = context.ambient.repository.get_artifact(artifact_id)
+                if artifact:
+                    try:
+                        data = json.loads(artifact.content)
+                        return Analysis.model_validate(data)
+                    except Exception:
+                        pass
+        return None
+
     def _get_localization(self, context: Context) -> Localization | None:
         """Extract localization from dependency artifacts."""
-        # Look for localization in dependencies
         for dep_id, artifact_id in context.dependency_artifacts:
             if "localize" in dep_id.lower():
-                # Get the artifact content
                 artifact = context.ambient.repository.get_artifact(artifact_id)
                 if artifact:
                     try:
@@ -251,6 +296,15 @@ TIPS:
                         return Localization.model_validate(data)
                     except Exception:
                         pass
+        return None
+
+    def _get_test_code(self, context: Context) -> str | None:
+        """Extract test code from dependency artifacts."""
+        for dep_id, artifact_id in context.dependency_artifacts:
+            if "test" in dep_id.lower():
+                artifact = context.ambient.repository.get_artifact(artifact_id)
+                if artifact and artifact.content.strip():
+                    return artifact.content
         return None
 
     def _read_file(self, repo_root: str, file_path: str) -> str | None:

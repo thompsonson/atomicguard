@@ -1,0 +1,110 @@
+"""AnalysisGuard: Validates structured bug analysis output.
+
+Ensures the analysis has valid JSON matching the Analysis schema,
+with non-empty required fields and at least one likely file.
+"""
+
+import json
+import logging
+from typing import Any
+
+from atomicguard.domain.interfaces import GuardInterface
+from atomicguard.domain.models import Artifact, GuardResult
+
+from ..models import Analysis
+
+logger = logging.getLogger("swe_bench_ablation.guards")
+
+
+class AnalysisGuard(GuardInterface):
+    """Validates analysis output.
+
+    Checks:
+    - Valid JSON matching Analysis schema
+    - Non-empty root_cause_hypothesis and fix_approach
+    - At least one likely_files entry
+    """
+
+    def __init__(
+        self,
+        **kwargs: Any,  # noqa: ARG002
+    ):
+        """Initialize the guard."""
+
+    def validate(
+        self,
+        artifact: Artifact,
+        **deps: Artifact,  # noqa: ARG002
+    ) -> GuardResult:
+        """Validate the analysis artifact.
+
+        Args:
+            artifact: The analysis artifact to validate
+            **deps: Artifacts from prior workflow steps
+
+        Returns:
+            GuardResult with pass/fail and feedback
+        """
+        logger.info(
+            "[AnalysisGuard] Validating artifact %s...", artifact.artifact_id[:8]
+        )
+
+        try:
+            data = json.loads(artifact.content)
+        except json.JSONDecodeError as e:
+            return GuardResult(
+                passed=False,
+                feedback=f"Invalid JSON: {e}",
+                guard_name="AnalysisGuard",
+            )
+
+        if "error" in data:
+            return GuardResult(
+                passed=False,
+                feedback=f"Generator returned error: {data['error']}",
+                guard_name="AnalysisGuard",
+            )
+
+        try:
+            analysis = Analysis.model_validate(data)
+        except Exception as e:
+            return GuardResult(
+                passed=False,
+                feedback=f"Schema validation failed: {e}",
+                guard_name="AnalysisGuard",
+            )
+
+        errors: list[str] = []
+
+        if not analysis.root_cause_hypothesis.strip():
+            errors.append("root_cause_hypothesis is empty")
+
+        if not analysis.fix_approach.strip():
+            errors.append("fix_approach is empty")
+
+        if not analysis.likely_files:
+            errors.append(
+                "No likely_files identified. Must identify at least one file."
+            )
+
+        if errors:
+            feedback = "Analysis validation failed:\n- " + "\n- ".join(errors)
+            logger.info("[AnalysisGuard] REJECTED: %s", feedback)
+            return GuardResult(
+                passed=False,
+                feedback=feedback,
+                guard_name="AnalysisGuard",
+            )
+
+        feedback = (
+            f"Analysis valid: bug_type={analysis.bug_type.value}, "
+            f"{len(analysis.likely_files)} files, "
+            f"confidence={analysis.confidence}"
+        )
+        logger.info("[AnalysisGuard] PASSED: %s", feedback)
+
+        return GuardResult(
+            passed=True,
+            feedback=feedback,
+            guard_name="AnalysisGuard",
+        )
