@@ -201,7 +201,7 @@ class TestCrossWorkflowDependencies:
                 previous_attempt_id=None,
                 parent_action_pair_id=None,
                 action_pair_id="g_test",
-                created_at=f"2025-01-0{i+1}T00:00:00Z",
+                created_at=f"2025-01-0{i + 1}T00:00:00Z",
                 attempt_number=1,
                 status=status,
                 guard_result=None,

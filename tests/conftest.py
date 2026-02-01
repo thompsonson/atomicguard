@@ -267,7 +267,7 @@ def populated_dag(
             artifact_id=f"art-{i:03d}",
             workflow_id=f"wf-{i % 3:03d}",
             content=f"def func_{i}(): pass",
-            previous_attempt_id=None if i < 3 else f"art-{i-3:03d}",
+            previous_attempt_id=None if i < 3 else f"art-{i - 3:03d}",
             parent_action_pair_id=None,
             action_pair_id=f"ap-{i % 5:03d}",
             created_at=f"2025-01-{(i % 28) + 1:02d}T{i % 24:02d}:00:00Z",
