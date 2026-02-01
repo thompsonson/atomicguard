@@ -1,0 +1,18 @@
+{
+  "name": "TDD Stack - Fully Automated (HuggingFace)",
+  "specification": "Write pytest-style unit tests for a Stack implementation.\n\nRequirements for tests:\n1. Test class named `TestStack`\n2. Test push() and pop() operations\n3. Test peek() returns top element without removing it\n4. Test is_empty() returns correct boolean\n5. Test stack underflow (pop on empty stack raises IndexError)\n6. Use assert statements\n\nReturn only the Python test code, no implementation.",
+  "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+  "rmax": 3,
+  "action_pairs": {
+    "g_test": {
+      "generator": "HuggingFaceGenerator",
+      "guard": "composite",
+      "guards": ["syntax", "import"]
+    },
+    "g_impl": {
+      "generator": "HuggingFaceGenerator",
+      "guard": "dynamic_test",
+      "requires": ["g_test"]
+    }
+  }
+}
