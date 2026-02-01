@@ -250,6 +250,13 @@ Option C is the fallback if we want to run the experiment before fixing the
 framework, but it means we're testing prompt composition, not the Workflow
 infrastructure itself.
 
+**Verified against extensions branch (PRs 2-5):** The context enrichment gap
+persists across all four PRs. `Context.amend()` (added in PR 2) is for human
+amendments via the ⊕ operator — it appends specification text during resume,
+but does NOT resolve dependency artifact content for generators. The
+`DualStateAgent._compose_context()` comment even says "Store IDs, not full
+artifacts". The fix (Option A) should be included in the combined PR.
+
 ### What needs to be built
 
 | Component                          | Description                                             | Effort   | Blocking? |
