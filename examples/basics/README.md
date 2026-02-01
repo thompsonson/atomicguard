@@ -8,6 +8,7 @@ Start here to learn the fundamentals of AtomicGuard.
 |-------|------|-----|-------------|
 | 1 | [01_mock.py](01_mock.py) | Mock | Core concepts without external dependencies |
 | 2 | [02_ollama.py](02_ollama.py) | Ollama | Real LLM with composite guards |
+| 3 | [03_huggingface.py](03_huggingface.py) | HuggingFace | Real LLM via HuggingFace Inference API |
 
 ## 01_mock.py - Getting Started
 
@@ -21,7 +22,7 @@ Demonstrates:
 - Artifact provenance tracking
 
 ```bash
-python -m examples.basics.01_mock
+uv run python -m examples.basics.01_mock
 ```
 
 The mock generator intentionally produces a syntax error on first attempt, then succeeds on retry - showing how guards drive refinement.
@@ -42,7 +43,28 @@ Demonstrates:
 ollama pull qwen2.5-coder:7b
 
 # Then run:
-python -m examples.basics.02_ollama
+uv run python -m examples.basics.02_ollama
+```
+
+## 03_huggingface.py - HuggingFace Inference API
+
+**Requires `huggingface_hub`** and an API token.
+
+Demonstrates:
+
+- `HuggingFaceGenerator` with HuggingFace Inference Providers
+- Same guard composition as 02 (SyntaxGuard + TestGuard)
+- Configurable model, provider, temperature, and max_tokens
+
+```bash
+# Install the optional dependency:
+uv pip install huggingface_hub
+
+# Set your API token:
+export HF_TOKEN="hf_your_token_here"
+
+# Run:
+uv run python -m examples.basics.03_huggingface
 ```
 
 ## Key Concepts
