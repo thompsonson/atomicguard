@@ -65,16 +65,14 @@ class OllamaGenerator(GeneratorInterface):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
+        workflow_ref: str | None = None,
     ) -> Artifact:
         """Generate an artifact based on context."""
         # Build prompt
-        if template:
-            prompt = template.render(context)
-        else:
-            prompt = self._build_basic_prompt(context)
+        prompt = template.render(context)
 
         # Call Ollama
         messages = [
@@ -104,8 +102,7 @@ class OllamaGenerator(GeneratorInterface):
             created_at=datetime.now().isoformat(),
             attempt_number=self._version_counter,
             status=ArtifactStatus.PENDING,
-            guard_result=None,
-            feedback="",
+            guard_result=None,  # Guard result set after validation
             context=ContextSnapshot(
                 workflow_id=workflow_id,
                 specification=context.specification,
@@ -113,6 +110,7 @@ class OllamaGenerator(GeneratorInterface):
                 feedback_history=(),
                 dependency_artifacts=context.dependency_artifacts,
             ),
+            workflow_ref=workflow_ref,
         )
 
     def _extract_code(self, content: str) -> str:
@@ -137,19 +135,3 @@ class OllamaGenerator(GeneratorInterface):
 
         # No code block found - return empty to trigger guard validation failure
         return ""
-
-    def _build_basic_prompt(self, context: Context) -> str:
-        """Build a basic prompt from context."""
-        parts = [context.specification]
-
-        if context.current_artifact:
-            parts.append(f"\nPrevious attempt:\n{context.current_artifact}")
-
-        if context.feedback_history:
-            feedback_text = "\n".join(
-                f"Attempt {i + 1} feedback: {f}"
-                for i, (_, f) in enumerate(context.feedback_history)
-            )
-            parts.append(f"\nFeedback history:\n{feedback_text}")
-
-        return "\n".join(parts)

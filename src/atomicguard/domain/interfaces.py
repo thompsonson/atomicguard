@@ -44,18 +44,20 @@ class GeneratorInterface(ABC):
     def generate(
         self,
         context: "Context",
-        template: Optional["PromptTemplate"] = None,
+        template: "PromptTemplate",
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
+        workflow_ref: str | None = None,
     ) -> "Artifact":
         """
         Generate an artifact based on context.
 
         Args:
             context: The generation context including specification and feedback
-            template: Optional prompt template for structured generation
+            template: Prompt template for structured generation
             action_pair_id: Identifier for the action pair requesting generation
             workflow_id: UUID of the workflow execution instance
+            workflow_ref: Content-addressed workflow hash (Extension 01, Def 11)
 
         Returns:
             A new Artifact containing the generated content
@@ -149,6 +151,19 @@ class ArtifactDAGInterface(ABC):
 
         Returns:
             The most recent artifact, or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_all(self) -> list["Artifact"]:
+        """
+        Return all artifacts in the DAG.
+
+        Used by extraction queries that need to filter across all artifacts.
+        Implementations should return artifacts in a consistent order (e.g., by created_at).
+
+        Returns:
+            List of all artifacts in the repository.
         """
         pass
 

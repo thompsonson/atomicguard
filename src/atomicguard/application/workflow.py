@@ -5,6 +5,7 @@ Owns WorkflowState and infers preconditions from step dependencies.
 """
 
 import uuid
+import warnings
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
@@ -175,10 +176,54 @@ class Workflow:
             self._workflow_state.is_satisfied(step.guard_id) for step in self._steps
         )
 
+    def get_workflow_definition(self) -> dict:
+        """Build workflow definition dict for W_ref computation.
+
+        Returns a serializable dict representing the workflow structure.
+        Used by CheckpointService for W_ref computation.
+
+        Returns:
+            Dict with steps, rmax, and constraints for hashing.
+        """
+        return {
+            "steps": [
+                {
+                    "guard_id": step.guard_id,
+                    "requires": list(step.requires),
+                    "deps": list(step.deps),
+                }
+                for step in self._steps
+            ],
+            "rmax": self._rmax,
+            "constraints": self._constraints,
+        }
+
+    def get_step(self, guard_id: str) -> WorkflowStep:
+        """Get a workflow step by guard_id.
+
+        Args:
+            guard_id: The identifier of the step to retrieve.
+
+        Returns:
+            The WorkflowStep with the given guard_id.
+
+        Raises:
+            KeyError: If no step with the given guard_id exists.
+        """
+        for step in self._steps:
+            if step.guard_id == guard_id:
+                return step
+        raise KeyError(f"Step not found: {guard_id}")
+
 
 class ResumableWorkflow(Workflow):
     """
     Workflow with checkpoint and resume support.
+
+    .. deprecated::
+        Use Workflow + CheckpointService + WorkflowResumeService instead.
+        This class is maintained for backwards compatibility but will be
+        removed in a future version.
 
     Extends Workflow with:
     - Automatic checkpoint creation on failure
@@ -202,6 +247,12 @@ class ResumableWorkflow(Workflow):
             constraints: Global constraints for the ambient environment
             auto_checkpoint: Create checkpoint on failure (default True)
         """
+        warnings.warn(
+            "ResumableWorkflow is deprecated. Use Workflow + CheckpointService + "
+            "WorkflowResumeService instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(artifact_dag, rmax, constraints)
 
         if checkpoint_dag is None:
@@ -357,7 +408,7 @@ class ResumableWorkflow(Workflow):
                 updated_artifact = replace(
                     human_artifact,
                     status=ArtifactStatus.ACCEPTED,
-                    guard_result=True,
+                    guard_result=result,  # Store full GuardResult
                 )
                 self._dag.store(updated_artifact)
                 self._artifacts[step.guard_id] = updated_artifact
@@ -546,8 +597,7 @@ class ResumableWorkflow(Workflow):
             created_at=datetime.now(UTC).isoformat(),
             attempt_number=attempt_number,
             status=ArtifactStatus.PENDING,
-            guard_result=None,
-            feedback="",
+            guard_result=None,  # Guard result set after validation
             context=context,
             source=ArtifactSource.HUMAN,
         )

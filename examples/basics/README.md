@@ -9,6 +9,10 @@ Start here to learn the fundamentals of AtomicGuard.
 | 1 | [01_mock.py](01_mock.py) | Mock | Core concepts without external dependencies |
 | 2 | [02_ollama.py](02_ollama.py) | Ollama | Real LLM with composite guards |
 | 3 | [03_huggingface.py](03_huggingface.py) | HuggingFace | Real LLM via HuggingFace Inference API |
+| 5 | [05_versioned_env.py](05_versioned_env.py) | None | Workflow versioning (Extension 01) |
+| 6 | [06_extraction.py](06_extraction.py) | None | Repository queries (Extension 02) |
+| 7 | [07_multiagent.py](07_multiagent.py) | None | Multi-agent coordination (Extension 03) |
+| 8 | [08_incremental.py](08_incremental.py) | None | Incremental execution (Extension 07) |
 
 ## 01_mock.py - Getting Started
 
@@ -94,6 +98,69 @@ Immutable records of generated content with full provenance:
 - `content`: The generated code
 - `status`: pending → accepted/rejected
 - `context`: Specification, constraints, feedback history
+
+## 05_versioned_env.py - Workflow Versioning (Extension 01)
+
+**No LLM required** - demonstrates versioned environment features (Definitions 10-16).
+
+Demonstrates:
+
+- `compute_workflow_ref()` / `resolve_workflow_ref()` - Content-addressed workflow hashing
+- `WorkflowRegistry` - Store and resolve workflow definitions by W_ref
+- `Context.amend()` - Monotonic specification amendment (⊕ operator)
+- Workflow integrity verification
+
+```bash
+python -m examples.basics.05_versioned_env
+```
+
+## 06_extraction.py - Artifact Extraction (Extension 02)
+
+**No LLM required** - demonstrates repository queries (Definitions 17-18).
+
+Demonstrates:
+
+- `Predicate` classes - StatusPredicate, WorkflowPredicate, ActionPairPredicate
+- Compound predicates - AndPredicate, OrPredicate, NotPredicate
+- `extract()` function - Read-only queries (E: ℛ × Φ → 2^ℛ)
+- Pagination and ordering - limit, offset, order_by
+
+```bash
+python -m examples.basics.06_extraction
+```
+
+## 07_multiagent.py - Multi-Agent System (Extension 03)
+
+**No LLM required** - demonstrates multi-agent coordination (Definitions 19-20).
+
+Demonstrates:
+
+- `MultiAgentSystem` - Shared repository coordination (MAS = ⟨{Ag₁, ..., Agₙ}, ℛ, G⟩)
+- `AgentState` - Derived state from repository (σᵢ: G → {⊥, ⊤})
+- Cross-workflow artifact extraction
+- Guard determinism (Theorem 6: Belief Convergence)
+
+```bash
+python -m examples.basics.07_multiagent
+```
+
+## 08_incremental.py - Incremental Execution (Extension 07)
+
+**No LLM required** - demonstrates configuration-based change detection (Definitions 33-37).
+
+Demonstrates:
+
+- `compute_config_ref()` - Configuration fingerprint (Ψ_ref)
+- Dependency graph - DAG structure for change propagation
+- Merkle propagation - Upstream changes cascade downstream
+- `unchanged()` predicate - Skip/execute decision
+- Invalidation cascade - Which action pairs need re-execution
+
+Like incremental builds in CI/CD - only changed action pairs re-execute.
+
+```bash
+python -m examples.basics.08_incremental
+```
 
 ## Next Steps
 

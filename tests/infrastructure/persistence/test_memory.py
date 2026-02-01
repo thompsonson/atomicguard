@@ -32,6 +32,8 @@ class TestInMemoryArtifactDAG:
 
     def test_provenance_chain(self, memory_dag, sample_context_snapshot):
         """Provenance follows previous_attempt_id chain."""
+        from atomicguard.domain.models import GuardResult
+
         # Create a chain of artifacts: first -> second -> third
         first = Artifact(
             artifact_id="first-001",
@@ -43,8 +45,7 @@ class TestInMemoryArtifactDAG:
             created_at="2025-01-01T00:00:00Z",
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
-            guard_result=False,
-            feedback="Incomplete",
+            guard_result=GuardResult(passed=False, feedback="Incomplete"),
             context=sample_context_snapshot,
         )
         second = Artifact(
@@ -57,8 +58,7 @@ class TestInMemoryArtifactDAG:
             created_at="2025-01-01T00:00:01Z",
             attempt_number=2,
             status=ArtifactStatus.REJECTED,
-            guard_result=False,
-            feedback="Wrong result",
+            guard_result=GuardResult(passed=False, feedback="Wrong result"),
             context=sample_context_snapshot,
         )
         third = Artifact(
@@ -71,8 +71,7 @@ class TestInMemoryArtifactDAG:
             created_at="2025-01-01T00:00:02Z",
             attempt_number=3,
             status=ArtifactStatus.ACCEPTED,
-            guard_result=True,
-            feedback="",
+            guard_result=GuardResult(passed=True, feedback=""),
             context=sample_context_snapshot,
         )
 
@@ -100,7 +99,6 @@ class TestInMemoryArtifactDAG:
                 attempt_number=1,
                 status=ArtifactStatus.PENDING,
                 guard_result=None,
-                feedback="",
                 context=sample_context_snapshot,
             )
             for i in range(5)
@@ -126,7 +124,6 @@ class TestInMemoryArtifactDAG:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         updated = Artifact(
@@ -140,7 +137,6 @@ class TestInMemoryArtifactDAG:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=True,
-            feedback="",
             context=sample_context_snapshot,
         )
 
@@ -171,7 +167,6 @@ class TestInMemoryArtifactDAG:
             attempt_number=2,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         memory_dag.store(orphan)

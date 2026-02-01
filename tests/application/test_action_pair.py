@@ -1,5 +1,7 @@
 """Tests for ActionPair - atomic generation-verification transaction."""
 
+import pytest
+
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, Context, GuardResult
@@ -8,20 +10,30 @@ from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 
 
+@pytest.fixture()
+def template() -> PromptTemplate:
+    """Minimal PromptTemplate for ActionPair construction in tests."""
+    return PromptTemplate(role="test", constraints="", task="test")
+
+
 class TestActionPairInit:
     """Tests for ActionPair initialization."""
 
     def test_init_stores_generator_and_guard(
-        self, mock_generator: MockGenerator
+        self, mock_generator: MockGenerator, template: PromptTemplate
     ) -> None:
         """ActionPair stores generator and guard references."""
         guard = SyntaxGuard()
-        pair = ActionPair(generator=mock_generator, guard=guard)
+        pair = ActionPair(
+            generator=mock_generator, guard=guard, prompt_template=template
+        )
 
         assert pair.generator is mock_generator
         assert pair.guard is guard
 
-    def test_init_with_prompt_template(self, mock_generator: MockGenerator) -> None:
+    def test_init_with_prompt_template(
+        self, mock_generator: MockGenerator, template: PromptTemplate
+    ) -> None:
         """ActionPair accepts optional prompt template."""
         guard = SyntaxGuard()
         template = PromptTemplate(
@@ -40,18 +52,24 @@ class TestActionPairProperties:
     """Tests for ActionPair property accessors."""
 
     def test_generator_property_returns_generator(
-        self, mock_generator: MockGenerator
+        self, mock_generator: MockGenerator, template: PromptTemplate
     ) -> None:
         """generator property returns the generator."""
         guard = SyntaxGuard()
-        pair = ActionPair(generator=mock_generator, guard=guard)
+        pair = ActionPair(
+            generator=mock_generator, guard=guard, prompt_template=template
+        )
 
         assert pair.generator is mock_generator
 
-    def test_guard_property_returns_guard(self, mock_generator: MockGenerator) -> None:
+    def test_guard_property_returns_guard(
+        self, mock_generator: MockGenerator, template: PromptTemplate
+    ) -> None:
         """guard property returns the guard."""
         guard = SyntaxGuard()
-        pair = ActionPair(generator=mock_generator, guard=guard)
+        pair = ActionPair(
+            generator=mock_generator, guard=guard, prompt_template=template
+        )
 
         assert pair.guard is guard
 
@@ -60,11 +78,16 @@ class TestActionPairExecute:
     """Tests for ActionPair.execute() method."""
 
     def test_execute_returns_artifact_and_guard_result(
-        self, mock_generator: MockGenerator, sample_context: Context
+        self,
+        mock_generator: MockGenerator,
+        sample_context: Context,
+        template: PromptTemplate,
     ) -> None:
         """execute() returns tuple of (Artifact, GuardResult)."""
         guard = SyntaxGuard()
-        pair = ActionPair(generator=mock_generator, guard=guard)
+        pair = ActionPair(
+            generator=mock_generator, guard=guard, prompt_template=template
+        )
 
         artifact, result = pair.execute(sample_context)
 
@@ -73,12 +96,12 @@ class TestActionPairExecute:
         assert isinstance(result, GuardResult)
 
     def test_execute_with_valid_code_passes_guard(
-        self, sample_context: Context
+        self, sample_context: Context, template: PromptTemplate
     ) -> None:
         """execute() with valid code returns passed=True."""
         generator = MockGenerator(responses=["def add(a, b):\n    return a + b"])
         guard = SyntaxGuard()
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
         artifact, result = pair.execute(sample_context)
 
@@ -86,19 +109,21 @@ class TestActionPairExecute:
         assert artifact.content == "def add(a, b):\n    return a + b"
 
     def test_execute_with_invalid_code_fails_guard(
-        self, sample_context: Context
+        self, sample_context: Context, template: PromptTemplate
     ) -> None:
         """execute() with invalid syntax returns passed=False."""
         generator = MockGenerator(responses=["def add(a, b:\n    return a + b"])
         guard = SyntaxGuard()
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
         artifact, result = pair.execute(sample_context)
 
         assert result.passed is False
         assert "Syntax error" in result.feedback or "SyntaxError" in result.feedback
 
-    def test_execute_with_dependencies(self, sample_context: Context) -> None:
+    def test_execute_with_dependencies(
+        self, sample_context: Context, template: PromptTemplate
+    ) -> None:
         """execute() passes dependencies to guard."""
         generator = MockGenerator(responses=["def add(a, b):\n    return a + b"])
 
@@ -115,7 +140,7 @@ class TestActionPairExecute:
                 return GuardResult(passed=True, feedback="")
 
         guard = DependencyCheckingGuard()
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
         # Create a mock dependency artifact
         from atomicguard.domain.models import ArtifactStatus, ContextSnapshot
@@ -131,7 +156,6 @@ class TestActionPairExecute:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=ContextSnapshot(
                 workflow_id="test-workflow-001",
                 specification="",
@@ -148,11 +172,13 @@ class TestActionPairExecute:
         assert "test" in guard.received_deps
         assert guard.received_deps["test"] is dep_artifact
 
-    def test_execute_with_none_dependencies(self, sample_context: Context) -> None:
+    def test_execute_with_none_dependencies(
+        self, sample_context: Context, template: PromptTemplate
+    ) -> None:
         """execute() handles None dependencies gracefully."""
         generator = MockGenerator(responses=["x = 1"])
         guard = SyntaxGuard()
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
         # Should not raise
         artifact, result = pair.execute(sample_context, dependencies=None)

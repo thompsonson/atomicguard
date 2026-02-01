@@ -59,3 +59,13 @@ class InMemoryArtifactDAG(ArtifactDAGInterface):
         # Sort by created_at descending and return the latest
         candidates.sort(key=lambda a: a.created_at, reverse=True)
         return candidates[0]
+
+    def get_all(self) -> list[Artifact]:
+        """Return all artifacts in the DAG.
+
+        Returns:
+            List of all artifacts, sorted by created_at.
+        """
+        artifacts = list(self._artifacts.values())
+        artifacts.sort(key=lambda a: a.created_at)
+        return artifacts

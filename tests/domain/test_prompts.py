@@ -231,6 +231,161 @@ class TestPromptTemplateRender:
         assert "[ERROR] Bad stuff [/ERROR]" in result
 
 
+class TestPromptTemplateDependencies:
+    """Tests for PromptTemplate.render() dependency content resolution."""
+
+    def test_render_includes_dependency_content(self) -> None:
+        """render() resolves dependency artifact IDs into content."""
+        dag = InMemoryArtifactDAG()
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        dep_artifact = Artifact(
+            artifact_id="dep-001",
+            workflow_id="wf-001",
+            content="The bug is in the parse_input function on line 42.",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="g_analysis",
+            created_at="2026-01-01T00:00:00Z",
+            attempt_number=1,
+            status=ArtifactStatus.ACCEPTED,
+            guard_result=None,
+            context=ContextSnapshot(
+                workflow_id="wf-001",
+                specification="test",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
+            ),
+        )
+        dag.store(dep_artifact)
+
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="Fix the bug",
+        )
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(("g_analysis", "dep-001"),),
+        )
+
+        result = template.render(context)
+
+        assert "# DEPENDENCIES" in result
+        assert "## g_analysis" in result
+        assert "The bug is in the parse_input function on line 42." in result
+
+    def test_render_excludes_dependencies_when_empty(self) -> None:
+        """render() excludes dependencies section when no dependencies."""
+        dag = InMemoryArtifactDAG()
+        template = PromptTemplate(role="dev", constraints="none", task="test")
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(),
+        )
+
+        result = template.render(context)
+
+        assert "# DEPENDENCIES" not in result
+
+    def test_render_skips_missing_dependency_artifacts(self) -> None:
+        """render() gracefully skips dependencies with missing artifact IDs."""
+        dag = InMemoryArtifactDAG()
+        template = PromptTemplate(role="dev", constraints="none", task="test")
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(("g_analysis", "nonexistent-id"),),
+        )
+
+        result = template.render(context)
+
+        assert "# DEPENDENCIES" not in result
+
+    def test_render_multiple_dependencies(self) -> None:
+        """render() resolves multiple dependency artifacts in order."""
+        dag = InMemoryArtifactDAG()
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        snapshot = ContextSnapshot(
+            workflow_id="wf-001",
+            specification="test",
+            constraints="",
+            feedback_history=(),
+            dependency_artifacts=(),
+        )
+        dag.store(
+            Artifact(
+                artifact_id="dep-analysis",
+                workflow_id="wf-001",
+                content="Root cause: off-by-one error",
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id="g_analysis",
+                created_at="2026-01-01T00:00:00Z",
+                attempt_number=1,
+                status=ArtifactStatus.ACCEPTED,
+                guard_result=None,
+                context=snapshot,
+            )
+        )
+        dag.store(
+            Artifact(
+                artifact_id="dep-test",
+                workflow_id="wf-001",
+                content="def test_boundary(): assert parse(0) == 0",
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id="g_test",
+                created_at="2026-01-01T00:00:01Z",
+                attempt_number=1,
+                status=ArtifactStatus.ACCEPTED,
+                guard_result=None,
+                context=snapshot,
+            )
+        )
+
+        template = PromptTemplate(role="dev", constraints="none", task="Fix the bug")
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(
+                ("g_analysis", "dep-analysis"),
+                ("g_test", "dep-test"),
+            ),
+        )
+
+        result = template.render(context)
+
+        assert "## g_analysis" in result
+        assert "Root cause: off-by-one error" in result
+        assert "## g_test" in result
+        assert "def test_boundary(): assert parse(0) == 0" in result
+
+
 class TestStepDefinition:
     """Tests for StepDefinition dataclass."""
 

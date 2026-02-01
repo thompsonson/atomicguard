@@ -29,6 +29,8 @@ The schemas map directly to the paper's mathematical definitions:
 | H | Feedback History | `artifact.context.feedback_history` |
 | v | Guard Result | `artifact.guard_result.passed` + `.fatal` |
 | φ | Feedback | `artifact.guard_result.feedback` |
+| W_ref | Workflow Reference | `artifact.workflow_ref` (Extension 01) |
+| Ψ_ref | Config Reference | `artifact.config_ref` (Extension 07) |
 
 ### Guard Parameters (θ)
 
@@ -110,6 +112,23 @@ Where:
 - `constraints` = Ω (from ℰ)
 - `feedback_history` = H (accumulated)
 - `dependency_artifacts` = Resolved ρ dependencies
+
+### Extension Fields
+
+The artifact schema includes fields from framework extensions:
+
+| Field | Extension | Purpose |
+|-------|-----------|---------|
+| `source` | Core | Origin of content: `generated`, `human`, `imported` |
+| `workflow_ref` | 01 (Versioned Environment) | W_ref - Content-addressed workflow hash for integrity verification |
+| `config_ref` | 07 (Incremental Execution) | Ψ_ref - Configuration fingerprint for change detection |
+| `metadata` | Core | Extensible metadata dictionary |
+
+These enable:
+
+- **Workflow integrity**: Verify workflow hasn't changed since checkpoint (W_ref)
+- **Incremental execution**: Skip unchanged action pairs based on config fingerprint (Ψ_ref)
+- **Provenance tracking**: Distinguish LLM-generated vs human-provided artifacts
 
 ## Validation
 

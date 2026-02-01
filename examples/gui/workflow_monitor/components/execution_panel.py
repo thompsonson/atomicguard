@@ -71,9 +71,9 @@ def format_step_card(
     """
 
 
-def create_execution_panel() -> (
-    tuple[gr.HTML, gr.Textbox, gr.Textbox, Callable[..., tuple[str, str, str]]]
-):
+def create_execution_panel() -> tuple[
+    gr.HTML, gr.Textbox, gr.Textbox, Callable[..., tuple[str, str, str]]
+]:
     """
     Create the execution monitoring panel.
 

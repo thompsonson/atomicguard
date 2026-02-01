@@ -33,7 +33,6 @@ def sample_fs_artifact() -> Artifact:
         attempt_number=1,
         status=ArtifactStatus.PENDING,
         guard_result=None,
-        feedback="",
         context=ContextSnapshot(
             workflow_id="test-workflow-001",
             specification="Write an add function",
@@ -241,7 +240,6 @@ class TestFilesystemArtifactDAGGetProvenance:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=context,
         )
         artifact2 = Artifact(
@@ -255,7 +253,6 @@ class TestFilesystemArtifactDAGGetProvenance:
             attempt_number=2,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=context,
         )
         artifact3 = Artifact(
@@ -269,7 +266,6 @@ class TestFilesystemArtifactDAGGetProvenance:
             attempt_number=3,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=context,
         )
 
@@ -311,7 +307,6 @@ class TestFilesystemArtifactDAGGetByActionPair:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=context,
         )
         artifact2 = Artifact(
@@ -325,7 +320,6 @@ class TestFilesystemArtifactDAGGetByActionPair:
             attempt_number=2,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=context,
         )
 
@@ -369,7 +363,6 @@ class TestFilesystemArtifactDAGGetAccepted:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=context,
         )
         accepted = Artifact(
@@ -383,7 +376,6 @@ class TestFilesystemArtifactDAGGetAccepted:
             attempt_number=2,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=context,
         )
 
@@ -419,7 +411,6 @@ class TestFilesystemArtifactDAGGetAccepted:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=context,
         )
 
@@ -479,6 +470,8 @@ class TestFilesystemArtifactDAGSerialization:
         self, fs_dag: FilesystemArtifactDAG
     ) -> None:
         """Stored artifact can be retrieved with all fields intact."""
+        from atomicguard.domain.models import GuardResult, SubGuardOutcome
+
         context = ContextSnapshot(
             workflow_id="test-workflow-001",
             specification="Test spec",
@@ -487,6 +480,22 @@ class TestFilesystemArtifactDAGSerialization:
                 FeedbackEntry(artifact_id="prev-001", feedback="Bad code"),
             ),
             dependency_artifacts=(("dep-key-1", "dep-001"), ("dep-key-2", "dep-002")),
+        )
+
+        # Create a full GuardResult with sub_results to test Extension 08 serialization
+        guard_result = GuardResult(
+            passed=True,
+            feedback="Looks good",
+            fatal=False,
+            guard_name="CompositeGuard",
+            sub_results=(
+                SubGuardOutcome(
+                    guard_name="SyntaxGuard",
+                    passed=True,
+                    feedback="",
+                    execution_time_ms=10.5,
+                ),
+            ),
         )
 
         artifact = Artifact(
@@ -499,8 +508,7 @@ class TestFilesystemArtifactDAGSerialization:
             created_at="2025-06-15T10:30:00Z",
             attempt_number=3,
             status=ArtifactStatus.ACCEPTED,
-            guard_result=True,
-            feedback="Looks good",
+            guard_result=guard_result,
             context=context,
         )
 
@@ -516,8 +524,15 @@ class TestFilesystemArtifactDAGSerialization:
         assert loaded.created_at == artifact.created_at
         assert loaded.attempt_number == artifact.attempt_number
         assert loaded.status == artifact.status
-        assert loaded.guard_result == artifact.guard_result
-        assert loaded.feedback == artifact.feedback
+        # Test full GuardResult preservation
+        assert loaded.guard_result is not None
+        assert loaded.guard_result.passed == artifact.guard_result.passed
+        assert loaded.guard_result.feedback == artifact.guard_result.feedback
+        assert loaded.guard_result.fatal == artifact.guard_result.fatal
+        assert loaded.guard_result.guard_name == artifact.guard_result.guard_name
+        assert len(loaded.guard_result.sub_results) == 1
+        assert loaded.guard_result.sub_results[0].guard_name == "SyntaxGuard"
+        assert loaded.guard_result.sub_results[0].execution_time_ms == 10.5
         assert loaded.context.specification == artifact.context.specification
         assert loaded.context.constraints == artifact.context.constraints
         assert len(loaded.context.feedback_history) == 1

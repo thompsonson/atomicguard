@@ -39,7 +39,6 @@ class TestSyntaxGuard:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         result = guard.validate(empty_artifact)
@@ -58,7 +57,6 @@ class TestSyntaxGuard:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         result = guard.validate(whitespace_artifact)
@@ -90,7 +88,6 @@ class Calculator:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         result = guard.validate(artifact)
@@ -109,7 +106,6 @@ class Calculator:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         result = guard.validate(artifact)
@@ -128,7 +124,6 @@ class Calculator:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         result = guard.validate(artifact)
@@ -152,7 +147,6 @@ def identity[T](x: T) -> T:
             attempt_number=1,
             status=ArtifactStatus.PENDING,
             guard_result=None,
-            feedback="",
             context=sample_context_snapshot,
         )
         result = guard.validate(artifact)

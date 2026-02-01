@@ -7,10 +7,46 @@ All models are immutable (frozen dataclasses) to ensure referential transparency
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from atomicguard.domain.interfaces import ArtifactDAGInterface
+
+
+# =============================================================================
+# GUARD RESULT (moved before Artifact for forward reference)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class SubGuardOutcome:
+    """Outcome from a single sub-guard within a composite (Definition 43).
+
+    Captures individual guard result for attribution in composite validations.
+    """
+
+    guard_name: str  # Class name of the sub-guard
+    passed: bool  # Whether this sub-guard passed
+    feedback: str  # Feedback from this sub-guard
+    execution_time_ms: float = 0.0  # Time spent in this sub-guard
+
+
+@dataclass(frozen=True)
+class GuardResult:
+    """Immutable guard validation outcome (Definition 6).
+
+    G(α, C) → {v, φ} where:
+    - v = passed (⊤ or ⊥)
+    - φ = feedback signal
+    - fatal = ⊥_fatal (non-recoverable, requires escalation)
+    """
+
+    passed: bool
+    feedback: str = ""
+    fatal: bool = False  # ⊥_fatal - skip retry, escalate to human
+    guard_name: str | None = None  # Name of the guard that produced this result
+    sub_results: tuple[SubGuardOutcome, ...] = ()  # For composite guards (Extension 08)
 
 
 # =============================================================================
@@ -81,24 +117,27 @@ class Artifact:
     created_at: str  # ISO timestamp
     attempt_number: int  # Attempt within this action pair context
     status: ArtifactStatus  # pending/rejected/accepted/superseded
-    guard_result: bool | None  # ⊤ or ⊥ (None if pending)
-    feedback: str  # φ - guard feedback (empty if passed)
+    guard_result: GuardResult | None  # Full guard result (None if pending)
     context: ContextSnapshot  # Full context snapshot at generation time
     source: ArtifactSource = ArtifactSource.GENERATED  # Origin of content
 
+    # Extension 01: Versioned Environment (Definition 10)
+    workflow_ref: str | None = None  # W_ref: Content-addressed workflow hash (Def 11)
 
-# =============================================================================
-# GUARD RESULT
-# =============================================================================
+    # Extension 07: Incremental Execution (Definition 33)
+    config_ref: str | None = (
+        None  # Ψ_ref: Configuration fingerprint for change detection
+    )
 
+    metadata: MappingProxyType[str, Any] = field(
+        default_factory=lambda: MappingProxyType({})
+    )  # Immutable metadata dict
 
-@dataclass(frozen=True)
-class GuardResult:
-    """Immutable guard validation outcome."""
-
-    passed: bool
-    feedback: str = ""
-    fatal: bool = False  # ⊥_fatal - skip retry, escalate to human
+    def __post_init__(self) -> None:
+        """Convert metadata dict to immutable MappingProxyType if needed."""
+        # Handle case where metadata is passed as a regular dict
+        if isinstance(object.__getattribute__(self, "metadata"), dict):
+            object.__setattr__(self, "metadata", MappingProxyType(self.metadata))
 
 
 # =============================================================================
@@ -125,6 +164,7 @@ class Context:
     dependency_artifacts: tuple[
         tuple[str, str], ...
     ] = ()  # (action_pair_id, artifact_id) - matches schema
+    workflow_id: str | None = None  # Extension 03: Agent workflow identifier (Def 19)
 
     def get_dependency(self, action_pair_id: str) -> str | None:
         """Look up artifact_id by action_pair_id."""
@@ -132,6 +172,41 @@ class Context:
             if key == action_pair_id:
                 return artifact_id
         return None
+
+    def amend(self, delta_spec: str = "", delta_constraints: str = "") -> "Context":
+        """Monotonic configuration amendment (⊕ operator, Definition 12).
+
+        Creates a new Context with appended specification and/or constraints.
+        Original Context remains unchanged (immutability preserved).
+
+        Args:
+            delta_spec: Additional specification to append to current specification.
+            delta_constraints: Additional constraints to append to ambient constraints.
+
+        Returns:
+            New Context with amended specification and constraints.
+        """
+        new_spec = self.specification
+        if delta_spec:
+            new_spec = f"{self.specification}\n{delta_spec}"
+
+        new_constraints = self.ambient.constraints
+        if delta_constraints:
+            new_constraints = f"{self.ambient.constraints}\n{delta_constraints}"
+
+        new_ambient = AmbientEnvironment(
+            repository=self.ambient.repository,
+            constraints=new_constraints,
+        )
+
+        return Context(
+            ambient=new_ambient,
+            specification=new_spec,
+            current_artifact=self.current_artifact,
+            feedback_history=self.feedback_history,
+            dependency_artifacts=self.dependency_artifacts,
+            workflow_id=self.workflow_id,
+        )
 
 
 # =============================================================================
@@ -222,6 +297,9 @@ class WorkflowCheckpoint:
     failed_artifact_id: str | None  # Last artifact before failure
     failure_feedback: str  # Error/feedback message
     provenance_ids: tuple[str, ...]  # Artifact IDs of all failed attempts
+
+    # Extension 01: Versioned Environment (Definition 11)
+    workflow_ref: str | None = None  # W_ref: Content-addressed workflow hash
 
 
 class AmendmentType(Enum):

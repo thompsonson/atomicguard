@@ -12,9 +12,12 @@ from atomicguard.domain.models import (
     ContextSnapshot,
     GuardResult,
 )
+from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
+
+_TEMPLATE = PromptTemplate(role="test", constraints="", task="test")
 
 
 class AlwaysPassGuard(GuardInterface):
@@ -64,7 +67,9 @@ class TestDualStateAgentInit:
     def test_init_stores_action_pair(self, memory_dag: InMemoryArtifactDAG) -> None:
         """DualStateAgent stores action pair reference."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         assert agent._action_pair is pair
@@ -72,7 +77,9 @@ class TestDualStateAgentInit:
     def test_init_default_rmax(self, memory_dag: InMemoryArtifactDAG) -> None:
         """Default rmax is 3."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         assert agent._rmax == 3
@@ -80,7 +87,9 @@ class TestDualStateAgentInit:
     def test_init_custom_rmax(self, memory_dag: InMemoryArtifactDAG) -> None:
         """Custom rmax is stored."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag, rmax=5)
 
         assert agent._rmax == 5
@@ -88,7 +97,9 @@ class TestDualStateAgentInit:
     def test_init_with_constraints(self, memory_dag: InMemoryArtifactDAG) -> None:
         """Constraints are stored."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(
             action_pair=pair, artifact_dag=memory_dag, constraints="No imports"
         )
@@ -104,7 +115,9 @@ class TestDualStateAgentExecute:
     ) -> None:
         """execute() returns artifact when guard passes on first try."""
         generator = MockGenerator(responses=["def foo(): pass"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         artifact = agent.execute("Write a function")
@@ -120,7 +133,9 @@ class TestDualStateAgentExecute:
                 "def foo(): pass",  # Valid syntax
             ]
         )
-        pair = ActionPair(generator=generator, guard=SyntaxGuard())
+        pair = ActionPair(
+            generator=generator, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         artifact = agent.execute("Write a function")
@@ -141,7 +156,11 @@ class TestDualStateAgentExecute:
                 "invalid 5",
             ]
         )
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard("Bad code"))
+        pair = ActionPair(
+            generator=generator,
+            guard=AlwaysFailGuard("Bad code"),
+            prompt_template=_TEMPLATE,
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag, rmax=2)
 
         with pytest.raises(RmaxExhausted) as exc_info:
@@ -162,7 +181,7 @@ class TestDualStateAgentExecute:
             ]
         )
         guard = FailThenPassGuard(fail_count=1)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         agent.execute("Write a function")
@@ -183,7 +202,7 @@ class TestDualStateAgentExecute:
 
         generator = MockGenerator(responses=["x = 1"])
         guard = DependencyTrackingGuard()
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         dep = Artifact(
@@ -197,7 +216,6 @@ class TestDualStateAgentExecute:
             attempt_number=1,
             status=ArtifactStatus.ACCEPTED,
             guard_result=None,
-            feedback="",
             context=ContextSnapshot(
                 workflow_id="test-workflow-001",
                 specification="",
@@ -218,7 +236,9 @@ class TestDualStateAgentExecute:
         """RmaxExhausted exception includes provenance chain."""
         generator = MockGenerator(responses=["bad1", "bad2"])
         pair = ActionPair(
-            generator=generator, guard=AlwaysFailGuard("Validation failed")
+            generator=generator,
+            guard=AlwaysFailGuard("Validation failed"),
+            prompt_template=_TEMPLATE,
         )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag, rmax=1)
 
@@ -235,7 +255,9 @@ class TestDualStateAgentExecute:
     ) -> None:
         """execute() raises EscalationRequired on fatal guard result."""
         generator = MockGenerator(responses=["some code"])
-        pair = ActionPair(generator=generator, guard=FatalGuard())
+        pair = ActionPair(
+            generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         with pytest.raises(EscalationRequired) as exc_info:
@@ -251,7 +273,9 @@ class TestDualStateAgentExecute:
     ) -> None:
         """execute() stores artifact in DAG before raising EscalationRequired."""
         generator = MockGenerator(responses=["fatal code"])
-        pair = ActionPair(generator=generator, guard=FatalGuard())
+        pair = ActionPair(
+            generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         with pytest.raises(EscalationRequired):
@@ -269,7 +293,9 @@ class TestDualStateAgentContextComposition:
     ) -> None:
         """_compose_context includes specification."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         context = agent._compose_context("Write a function")
@@ -281,7 +307,9 @@ class TestDualStateAgentContextComposition:
     ) -> None:
         """_compose_context includes constraints in ambient."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(
             action_pair=pair, artifact_dag=memory_dag, constraints="No imports allowed"
         )
@@ -295,7 +323,9 @@ class TestDualStateAgentContextComposition:
     ) -> None:
         """_refine_context includes feedback history."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         artifact = Artifact(
@@ -309,7 +339,6 @@ class TestDualStateAgentContextComposition:
             attempt_number=1,
             status=ArtifactStatus.REJECTED,
             guard_result=None,
-            feedback="",
             context=ContextSnapshot(
                 workflow_id="test-workflow-001",
                 specification="",
@@ -339,7 +368,7 @@ class TestArtifactMetadataTracking:
         """Verifies attempt numbers are sequential (1, 2, 3) per action pair."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         artifact = agent.execute("Write something")
@@ -356,7 +385,7 @@ class TestArtifactMetadataTracking:
         """Verifies retry chain links via previous_attempt_id."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         final = agent.execute("Write something")
@@ -375,7 +404,7 @@ class TestArtifactMetadataTracking:
         """Verifies FeedbackEntry captured for each rejection."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         final = agent.execute("Write something")
@@ -397,7 +426,7 @@ class TestArtifactMetadataTracking:
         """
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         final = agent.execute("Write something")
@@ -416,7 +445,7 @@ class TestArtifactMetadataTracking:
         """Verifies feedback_history count matches rejection count."""
         generator = MockGenerator(responses=["bad1", "bad2", "bad3", "good"])
         guard = FailThenPassGuard(fail_count=3)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         final = agent.execute("Write something")
@@ -430,7 +459,7 @@ class TestArtifactMetadataTracking:
         """Verifies DAG.get_provenance() returns full retry chain."""
         generator = MockGenerator(responses=["bad1", "bad2", "good"])
         guard = FailThenPassGuard(fail_count=2)
-        pair = ActionPair(generator=generator, guard=guard)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
         agent = DualStateAgent(action_pair=pair, artifact_dag=memory_dag)
 
         final = agent.execute("Write something")

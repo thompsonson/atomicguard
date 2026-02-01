@@ -22,6 +22,7 @@ from atomicguard import (
     DualStateAgent,
     InMemoryArtifactDAG,
     OllamaGenerator,
+    PromptTemplate,
     RmaxExhausted,
     SyntaxGuard,
     TestGuard,
@@ -38,14 +39,17 @@ def main() -> None:
     # CompositeGuard combines multiple guards
     # All guards must pass for the artifact to be accepted
     guard = CompositeGuard(
-        [
-            SyntaxGuard(),  # Validates Python syntax
-            TestGuard("assert add(2, 3) == 5\nassert add(-1, 1) == 0"),  # Runs tests
-        ]
+        SyntaxGuard(),  # Validates Python syntax
+        TestGuard("assert add(2, 3) == 5\nassert add(-1, 1) == 0"),  # Runs tests
     )
 
     # ActionPair couples generator with guard
-    action_pair = ActionPair(generator=generator, guard=guard)
+    template = PromptTemplate(
+        role="code generator",
+        constraints="write clean Python code that passes all tests",
+        task="generate a function that adds two numbers",
+    )
+    action_pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
     # DualStateAgent executes with retry logic
     # rmax=3 means up to 3 attempts before giving up
@@ -73,11 +77,11 @@ Return only the function definition, no explanations."""
 
     except RmaxExhausted as e:
         print("=== FAILED ===")
-        print(f"Could not generate valid code after {e.rmax} attempts")
+        print(f"Could not generate valid code: {e}")
         print("\nAttempt history:")
-        for i, (content, feedback) in enumerate(e.provenance, 1):
+        for i, (artifact, feedback) in enumerate(e.provenance, 1):
             print(f"\n--- Attempt {i} ---")
-            print(f"Code:\n{content}")
+            print(f"Code:\n{artifact.content}")
             print(f"Feedback: {feedback}")
 
 
