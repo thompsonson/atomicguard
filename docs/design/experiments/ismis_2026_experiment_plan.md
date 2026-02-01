@@ -215,18 +215,54 @@ compare steps executed and wall time. Uses local Ollama, no HuggingFace needed.
 - [x] Result persistence: CSV/SQLite writer (`benchmarks/simulation.py`)
 - [x] Visualization: matplotlib charts (`benchmarks/simulation.py`)
 
+### Context Enrichment Gap (critical for decomposed pipelines)
+
+The current Workflow passes dependency artifacts between steps, but **only the
+artifact IDs reach the generator** — the actual content does not flow into the
+prompt. Here is the full trace:
+
+1. `Workflow.execute()` collects full `Artifact` objects as dependencies
+2. `DualStateAgent._compose_context()` reduces them to ID pairs:
+   `dependency_artifacts=tuple((k, v.artifact_id) for k, v in dependencies.items())`
+3. `ActionPair.execute()` splits the flow:
+   - **Guard** receives full `Artifact` objects via `guard.validate(artifact, **dependencies)` ✓
+   - **Generator** receives `Context` which has only IDs, not content ✗
+4. Neither `PromptTemplate.render()` nor `HuggingFaceGenerator._build_basic_prompt()`
+   resolves dependency IDs into artifact content
+
+**Impact on experiment:** In the S1 and S1-TDD arms, the analysis artifact from
+step 1 must be visible to the generator in step 2 (and step 3). Without content
+enrichment, the decomposed pipeline steps cannot see each other's outputs.
+
+**Resolution options:**
+
+| Option | Description | Effort |
+| ------ | ----------- | ------ |
+| A. PromptTemplate resolution | Add dependency content lookup to `PromptTemplate.render()` using `context.ambient.repository.get_artifact()` | Small (~5 LOC) |
+| B. Context stores content | Change `Context.dependency_artifacts` to store `(key, artifact_id, content)` tuples | Small (model change + agent change) |
+| C. Experiment-level workaround | Experiment runner manually composes enriched specifications, bypassing Workflow | None (but doesn't test the framework) |
+
+**Option A is preferred.** It requires no model changes, the `ArtifactDAGInterface`
+is already available on `context.ambient.repository`, and it makes dependency
+content available to all generators via the standard prompt template path.
+
+Option C is the fallback if we want to run the experiment before fixing the
+framework, but it means we're testing prompt composition, not the Workflow
+infrastructure itself.
+
 ### What needs to be built
 
-| Component                          | Description                                             | Effort   |
-| ---------------------------------- | ------------------------------------------------------- | -------- |
-| SWE-PolyBench data loader          | Load dataset, filter Python, parse fields               | Small    |
-| SWE-PolyBench evaluation harness   | Docker setup, repo checkout, test execution per instance| Large    |
-| G_analysis guard                   | Validates analysis artifact structure (JSON schema)     | Small    |
-| G_test guard (syntax)              | Validates generated test parses (ast.parse)             | Exists   |
-| Pipeline prompt templates          | g_analysis, g_strategy, a_gen_test, a_gen_fix prompts   | Medium   |
-| Token tracking in HuggingFaceGenerator | Capture response.usage from HF chat_completion      | Small    |
-| Experiment runner                  | Orchestrates three arms across all instances            | Medium   |
-| Result analysis                    | Adapt simulation.py stats for this experiment format    | Small    |
+| Component                          | Description                                             | Effort   | Blocking? |
+| ---------------------------------- | ------------------------------------------------------- | -------- | --------- |
+| **Context enrichment in PromptTemplate** | Resolve dependency artifact IDs into content for generator prompt | **Small** | **Yes** |
+| SWE-PolyBench data loader          | Load dataset, filter Python, parse fields               | Small    | Yes       |
+| SWE-PolyBench evaluation harness   | Docker setup, repo checkout, test execution per instance| Large    | Yes       |
+| G_analysis guard                   | Validates analysis artifact structure (JSON schema)     | Small    | Yes       |
+| G_test guard (syntax)              | Validates generated test parses (ast.parse)             | Exists   | No        |
+| Pipeline prompt templates          | g_analysis, g_strategy, a_gen_test, a_gen_fix prompts   | Medium   | Yes       |
+| Token tracking in HuggingFaceGenerator | Capture response.usage from HF chat_completion      | Small    | No        |
+| Experiment runner                  | Orchestrates three arms across all instances            | Medium   | Yes       |
+| Result analysis                    | Adapt simulation.py stats for this experiment format    | Small    | No        |
 
 ### The evaluation harness is the bottleneck
 
@@ -252,23 +288,30 @@ Option 1 or 2 is strongly preferred over building from scratch.
 
 ### For Experiment 7.2 (Bug Fix Strategy Comparison)
 
-The experiment can be built on the **current branch** using existing Workflow,
-ActionPair, and HuggingFaceGenerator classes. No PRs are strictly required.
+The experiment **requires context enrichment** (see gap analysis above). The
+current Workflow passes dependency artifacts between steps, but only IDs reach
+the generator — not content. This must be fixed for the S1 and S1-TDD arms.
 
-However, the following PRs provide useful infrastructure:
+**Minimum viable change:** Add dependency content resolution to
+`PromptTemplate.render()` (~5 LOC). This is Option A from the gap analysis
+and can be done on the current branch without any PRs.
 
-| PR        | Content                                    | Value for 7.2                              |
-| --------- | ------------------------------------------ | ------------------------------------------ |
-| PR 2+3+4  | Domain extensions, checkpoint, incremental | Extended Workflow capabilities, richer models for artifact tracking |
-| PR 5      | GuardResult stored in Artifact             | Cleaner data collection — each artifact records its guard outcome |
-| PR 10     | G_plan benchmark core                      | Pipeline prompt templates, G_plan validation logic, benchmark runner |
-| PR 11     | Pipeline decomposition + evaluation harness| Dataset adapters, evaluation harness, pipeline guards |
+**PR dependencies:**
 
-**Minimum viable set:** Current branch + new experiment code.
+| PR        | Required? | Content                                    | Value for 7.2                              |
+| --------- | --------- | ------------------------------------------ | ------------------------------------------ |
+| None      | **Yes**   | Context enrichment fix (Option A)          | Generators must see prior step outputs     |
+| PR 2+3+4  | No        | Domain extensions, checkpoint, incremental | Extended Workflow capabilities, richer models for artifact tracking |
+| PR 5      | No        | GuardResult stored in Artifact             | Cleaner data collection — each artifact records its guard outcome |
+| PR 10     | No        | G_plan benchmark core                      | Pipeline prompt templates, G_plan validation logic, benchmark runner |
+| PR 11     | No        | Pipeline decomposition + evaluation harness| Dataset adapters, evaluation harness, pipeline guards |
+
+**Minimum viable set:** Current branch + context enrichment fix + new experiment code.
 
 **Recommended set:** Merge grouped PR 2+3+4 → PR 5 → PR 10. This provides
 the pipeline infrastructure and G_plan validation that the experiment builds on,
-avoiding reimplementation.
+avoiding reimplementation. The context enrichment fix should be included in
+PR 2+3+4 since it relates to how the Workflow passes context between steps.
 
 ### For Experiment 7.3 (Incremental Execution)
 
