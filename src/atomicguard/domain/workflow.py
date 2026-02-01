@@ -356,9 +356,9 @@ class WorkflowResumer:
         # Build dependency artifacts from completed steps
         dependency_artifacts = tuple(checkpoint.artifact_ids)
 
-        # Create ambient environment (repository may be None)
+        # Create ambient environment (repository may be None during resume)
         ambient = AmbientEnvironment(
-            repository=self._artifact_dag,
+            repository=self._artifact_dag,  # type: ignore[arg-type]
             constraints=checkpoint.constraints,
         )
 
@@ -605,7 +605,7 @@ class HumanAmendmentProcessor:
             raise ValueError(f"Checkpoint not found: {checkpoint_id}")
 
         ambient = AmbientEnvironment(
-            repository=self._artifact_dag,
+            repository=self._artifact_dag,  # type: ignore[arg-type]
             constraints=checkpoint.constraints,
         )
 
