@@ -38,10 +38,8 @@ def main() -> None:
     # CompositeGuard combines multiple guards
     # All guards must pass for the artifact to be accepted
     guard = CompositeGuard(
-        [
-            SyntaxGuard(),  # Validates Python syntax
-            TestGuard("assert add(2, 3) == 5\nassert add(-1, 1) == 0"),  # Runs tests
-        ]
+        SyntaxGuard(),  # Validates Python syntax
+        TestGuard("assert add(2, 3) == 5\nassert add(-1, 1) == 0"),  # Runs tests
     )
 
     # ActionPair couples generator with guard
@@ -73,11 +71,11 @@ Return only the function definition, no explanations."""
 
     except RmaxExhausted as e:
         print("=== FAILED ===")
-        print(f"Could not generate valid code after {e.rmax} attempts")
+        print(f"Could not generate valid code: {e}")
         print("\nAttempt history:")
-        for i, (content, feedback) in enumerate(e.provenance, 1):
+        for i, (artifact, feedback) in enumerate(e.provenance, 1):
             print(f"\n--- Attempt {i} ---")
-            print(f"Code:\n{content}")
+            print(f"Code:\n{artifact.content}")
             print(f"Feedback: {feedback}")
 
 
