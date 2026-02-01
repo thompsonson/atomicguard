@@ -34,7 +34,7 @@ class PromptTemplate:
     )
 
     def render(self, context: "Context") -> str:
-        """Render prompt with context."""
+        """Render prompt with context including dependency artifacts."""
         parts = [
             f"# ROLE\n{self.role}",
             f"# CONSTRAINTS\n{self.constraints}",
@@ -42,6 +42,17 @@ class PromptTemplate:
 
         if context.ambient.constraints:
             parts.append(f"# CONTEXT\n{context.ambient.constraints}")
+
+        if context.dependency_artifacts and context.ambient.repository:
+            dep_parts = []
+            for key, artifact_id in context.dependency_artifacts:
+                try:
+                    artifact = context.ambient.repository.get_artifact(artifact_id)
+                    dep_parts.append(f"## {key}\n{artifact.content}")
+                except (KeyError, Exception):
+                    pass
+            if dep_parts:
+                parts.append("# DEPENDENCIES\n" + "\n\n".join(dep_parts))
 
         if context.feedback_history:
             parts.append("# HISTORY (Context Refinement)")
