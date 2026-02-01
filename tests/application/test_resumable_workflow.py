@@ -19,10 +19,13 @@ from atomicguard.domain.models import (
     HumanAmendment,
     WorkflowStatus,
 )
+from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.checkpoint import InMemoryCheckpointDAG
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
+
+_TEMPLATE = PromptTemplate(role="test", constraints="", task="test")
 
 # Filter deprecation warnings from ResumableWorkflow for these tests
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -126,7 +129,9 @@ class TestResumableWorkflowCheckpointCreation:
     def test_checkpoint_created_on_rmax_exhausted(self) -> None:
         """Checkpoint created when retry budget exhausted."""
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = ResumableWorkflow(rmax=2)
         workflow.add_step("g_test", pair)
 
@@ -140,7 +145,9 @@ class TestResumableWorkflowCheckpointCreation:
     def test_checkpoint_created_on_escalation(self) -> None:
         """Checkpoint created on fatal guard failure."""
         generator = MockGenerator(responses=["code"])
-        pair = ActionPair(generator=generator, guard=FatalGuard())
+        pair = ActionPair(
+            generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
+        )
         workflow = ResumableWorkflow()
         workflow.add_step("g_test", pair)
 
@@ -154,7 +161,9 @@ class TestResumableWorkflowCheckpointCreation:
     def test_no_checkpoint_when_auto_checkpoint_false(self) -> None:
         """No checkpoint created when auto_checkpoint=False."""
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = ResumableWorkflow(auto_checkpoint=False, rmax=2)
         workflow.add_step("g_test", pair)
 
@@ -167,8 +176,12 @@ class TestResumableWorkflowCheckpointCreation:
         """Checkpoint captures partial success."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["bad"] * 5)
-        pair1 = ActionPair(generator=gen1, guard=SyntaxGuard())
-        pair2 = ActionPair(generator=gen2, guard=AlwaysFailGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(rmax=2)
         workflow.add_step("g_config", pair1)
@@ -185,8 +198,12 @@ class TestResumableWorkflowCheckpointCreation:
         """Checkpoint captures all artifact references."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["bad"] * 5)
-        pair1 = ActionPair(generator=gen1, guard=SyntaxGuard())
-        pair2 = ActionPair(generator=gen2, guard=AlwaysFailGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(rmax=2)
         workflow.add_step("g_config", pair1)
@@ -201,7 +218,9 @@ class TestResumableWorkflowCheckpointCreation:
     def test_checkpoint_captures_specification(self) -> None:
         """Checkpoint preserves original specification."""
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = ResumableWorkflow(rmax=1)
         workflow.add_step("g_test", pair)
 
@@ -213,7 +232,9 @@ class TestResumableWorkflowCheckpointCreation:
     def test_checkpoint_captures_constraints(self) -> None:
         """Checkpoint preserves original constraints."""
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = ResumableWorkflow(rmax=1, constraints="No imports")
         workflow.add_step("g_test", pair)
 
@@ -226,7 +247,9 @@ class TestResumableWorkflowCheckpointCreation:
         """Checkpoint is persisted to checkpoint DAG."""
         checkpoint_dag = InMemoryCheckpointDAG()
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = ResumableWorkflow(checkpoint_dag=checkpoint_dag, rmax=1)
         workflow.add_step("g_test", pair)
 
@@ -253,7 +276,9 @@ class TestResumableWorkflowResumeWithArtifact:
 
         # First, create a workflow that fails
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=FailUntilHumanGuard())
+        pair = ActionPair(
+            generator=generator, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -297,7 +322,9 @@ class TestResumableWorkflowResumeWithArtifact:
 
         # Create failing workflow
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -340,8 +367,12 @@ class TestResumableWorkflowResumeWithArtifact:
         # Create workflow that succeeds on step 1, fails on step 2
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["bad"] * 5)
-        pair1 = ActionPair(generator=gen1, guard=SyntaxGuard())
-        pair2 = ActionPair(generator=gen2, guard=FailUntilHumanGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -385,7 +416,9 @@ class TestResumableWorkflowResumeWithArtifact:
         checkpoint_dag = InMemoryCheckpointDAG()
 
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=FailUntilHumanGuard())
+        pair = ActionPair(
+            generator=generator, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -425,7 +458,9 @@ class TestResumableWorkflowResumeWithArtifact:
         checkpoint_dag = InMemoryCheckpointDAG()
 
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=FailUntilHumanGuard())
+        pair = ActionPair(
+            generator=generator, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -465,7 +500,9 @@ class TestResumableWorkflowResumeWithArtifact:
         checkpoint_dag = InMemoryCheckpointDAG()
 
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=FailUntilHumanGuard())
+        pair = ActionPair(
+            generator=generator, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -516,7 +553,9 @@ class TestResumableWorkflowResumeWithFeedback:
         # Use AlwaysFailGuard for first workflow (to guarantee failure)
         # Then use a guard that passes for the resumed workflow
         generator = MockGenerator(responses=["bad", "good code"])
-        fail_pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        fail_pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -543,7 +582,9 @@ class TestResumableWorkflowResumeWithFeedback:
 
         # Create second generator and guard that passes
         gen2 = MockGenerator(responses=["good code"])
-        pass_pair = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pass_pair = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow2 = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -564,7 +605,9 @@ class TestResumableWorkflowResumeWithFeedback:
         # Guard that passes after 3 calls total
         counting_guard = CountingGuard(fail_count=3)
         generator = MockGenerator(responses=["a", "b", "c", "d", "e"])
-        pair = ActionPair(generator=generator, guard=counting_guard)
+        pair = ActionPair(
+            generator=generator, guard=counting_guard, prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -594,7 +637,10 @@ class TestResumableWorkflowResumeWithFeedback:
             rmax=1,
         )
         workflow2.add_step(
-            "g_test", ActionPair(generator=generator, guard=counting_guard)
+            "g_test",
+            ActionPair(
+                generator=generator, guard=counting_guard, prompt_template=_TEMPLATE
+            ),
         )
 
         resume_result = workflow2.resume(
@@ -622,9 +668,15 @@ class TestResumableWorkflowMultiStepResume:
         gen2 = MockGenerator(responses=["bad"] * 5)
         gen3 = MockGenerator(responses=["z = 3"])
 
-        pair1 = ActionPair(generator=gen1, guard=SyntaxGuard())
-        pair2 = ActionPair(generator=gen2, guard=FailUntilHumanGuard())
-        pair3 = ActionPair(generator=gen3, guard=SyntaxGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
+        pair3 = ActionPair(
+            generator=gen3, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -677,8 +729,12 @@ class TestResumableWorkflowMultiStepResume:
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["bad"] * 5)
 
-        pair1 = ActionPair(generator=gen1, guard=SyntaxGuard())
-        pair2 = ActionPair(generator=gen2, guard=FailUntilHumanGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -730,7 +786,9 @@ class TestResumableWorkflowProvenance:
         checkpoint_dag = InMemoryCheckpointDAG()
 
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=FailUntilHumanGuard())
+        pair = ActionPair(
+            generator=generator, guard=FailUntilHumanGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,
@@ -787,7 +845,9 @@ class TestResumableWorkflowErrors:
         workflow.add_step(
             "g_test",
             ActionPair(
-                generator=MockGenerator(responses=["x"]), guard=AlwaysPassGuard()
+                generator=MockGenerator(responses=["x"]),
+                guard=AlwaysPassGuard(),
+                prompt_template=_TEMPLATE,
             ),
         )
 
@@ -809,7 +869,9 @@ class TestResumableWorkflowErrors:
         checkpoint_dag = InMemoryCheckpointDAG()
 
         generator = MockGenerator(responses=["bad"] * 5)
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow = ResumableWorkflow(
             artifact_dag=artifact_dag,

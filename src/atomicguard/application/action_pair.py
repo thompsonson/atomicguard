@@ -22,13 +22,13 @@ class ActionPair:
         self,
         generator: GeneratorInterface,
         guard: GuardInterface,
-        prompt_template: PromptTemplate | None = None,
+        prompt_template: PromptTemplate,
     ):
         """
         Args:
             generator: The artifact generator
             guard: The validator for generated artifacts
-            prompt_template: Optional structured prompt template
+            prompt_template: Structured prompt template for generation
         """
         self._generator = generator
         self._guard = guard

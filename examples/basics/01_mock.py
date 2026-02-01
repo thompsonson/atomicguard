@@ -16,6 +16,7 @@ from atomicguard import (
     DualStateAgent,
     InMemoryArtifactDAG,
     MockGenerator,
+    PromptTemplate,
     SyntaxGuard,
 )
 
@@ -38,7 +39,12 @@ def main() -> None:
     guard = SyntaxGuard()
 
     # ActionPair couples generator with guard
-    action_pair = ActionPair(generator=generator, guard=guard)
+    template = PromptTemplate(
+        role="code generator",
+        constraints="write clean Python code",
+        task="generate a function that adds two numbers",
+    )
+    action_pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
     # DualStateAgent executes with retry logic (up to rmax attempts)
     agent = DualStateAgent(

@@ -5,13 +5,14 @@ A framework for managing stochastic LLM outputs through deterministic
 control flow, implementing the formal model from Thompson (2025).
 
 Example:
-    from atomicguard import Workflow, ActionPair
+    from atomicguard import Workflow, ActionPair, PromptTemplate
     from atomicguard.guards import SyntaxGuard
     from atomicguard.infrastructure import OllamaGenerator
 
     generator = OllamaGenerator(model="qwen2.5-coder:7b")
     guard = SyntaxGuard()
-    action_pair = ActionPair(generator=generator, guard=guard)
+    template = PromptTemplate(role="code generator", constraints="write clean Python code", task="generate code")
+    action_pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
     workflow = Workflow(rmax=3)
     workflow.add_step('g_code', action_pair=action_pair)

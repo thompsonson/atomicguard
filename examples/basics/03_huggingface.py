@@ -21,6 +21,7 @@ from atomicguard import (
     CompositeGuard,
     DualStateAgent,
     InMemoryArtifactDAG,
+    PromptTemplate,
     RmaxExhausted,
     SyntaxGuard,
     TestGuard,
@@ -48,7 +49,12 @@ def main() -> None:
     )
 
     # ActionPair couples generator with guard
-    action_pair = ActionPair(generator=generator, guard=guard)
+    template = PromptTemplate(
+        role="code generator",
+        constraints="write clean Python code that passes all tests",
+        task="generate a function that adds two numbers",
+    )
+    action_pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
     # DualStateAgent executes with retry logic
     # rmax=3 means up to 3 attempts before giving up

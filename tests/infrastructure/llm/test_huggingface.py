@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from atomicguard.domain.models import Artifact, ArtifactStatus
+from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.llm.huggingface import (
     HuggingFaceGenerator,
     HuggingFaceGeneratorConfig,
@@ -252,47 +253,57 @@ class TestHuggingFaceGeneratorGenerate:
         gen._client.chat_completion.return_value = mock_response
         return gen
 
+    @pytest.fixture
+    def template(self) -> PromptTemplate:
+        """Create a minimal PromptTemplate for testing."""
+        return PromptTemplate(role="test", constraints="", task="test")
+
     def test_generate_returns_artifact(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert isinstance(artifact, Artifact)
 
     def test_generate_extracts_code_from_response(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert artifact.content == "def add(a, b):\n    return a + b"
 
     def test_generate_sets_pending_status(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert artifact.status == ArtifactStatus.PENDING
 
     def test_generate_increments_version_counter(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        generator.generate(sample_context)
+        generator.generate(sample_context, template)
         assert generator._version_counter == 1
-        generator.generate(sample_context)
+        generator.generate(sample_context, template)
         assert generator._version_counter == 2
 
     def test_generate_sets_attempt_number(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        a1 = generator.generate(sample_context)
-        a2 = generator.generate(sample_context)
+        a1 = generator.generate(sample_context, template)
+        a2 = generator.generate(sample_context, template)
         assert a1.attempt_number == 1
         assert a2.attempt_number == 2
 
@@ -300,41 +311,48 @@ class TestHuggingFaceGeneratorGenerate:
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        a1 = generator.generate(sample_context)
-        a2 = generator.generate(sample_context)
+        a1 = generator.generate(sample_context, template)
+        a2 = generator.generate(sample_context, template)
         assert a1.artifact_id != a2.artifact_id
 
     def test_generate_sets_workflow_id(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context, workflow_id="wf-123")
+        artifact = generator.generate(sample_context, template, workflow_id="wf-123")
         assert artifact.workflow_id == "wf-123"
 
     def test_generate_sets_action_pair_id(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context, action_pair_id="ap-test")
+        artifact = generator.generate(
+            sample_context, template, action_pair_id="ap-test"
+        )
         assert artifact.action_pair_id == "ap-test"
 
     def test_generate_calls_chat_completion(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        generator.generate(sample_context)
+        generator.generate(sample_context, template)
         generator._client.chat_completion.assert_called_once()
 
     def test_generate_passes_model(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        generator.generate(sample_context)
+        generator.generate(sample_context, template)
         call_kwargs = generator._client.chat_completion.call_args
         assert call_kwargs.kwargs["model"] == "Qwen/Qwen2.5-Coder-32B-Instruct"
 
@@ -342,8 +360,9 @@ class TestHuggingFaceGeneratorGenerate:
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        generator.generate(sample_context)
+        generator.generate(sample_context, template)
         call_kwargs = generator._client.chat_completion.call_args
         assert call_kwargs.kwargs["temperature"] == 0.7
 
@@ -351,8 +370,9 @@ class TestHuggingFaceGeneratorGenerate:
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        generator.generate(sample_context)
+        generator.generate(sample_context, template)
         call_kwargs = generator._client.chat_completion.call_args
         assert call_kwargs.kwargs["max_tokens"] == 4096
 
@@ -378,8 +398,9 @@ class TestHuggingFaceGeneratorGenerate:
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert artifact.context.specification == sample_context.specification
         assert artifact.context.constraints == sample_context.ambient.constraints
 
@@ -387,24 +408,27 @@ class TestHuggingFaceGeneratorGenerate:
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert artifact.guard_result is None
 
     def test_generate_handles_empty_response(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
         generator._client.chat_completion.return_value.choices[0].message.content = ""
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert artifact.content == ""
 
     def test_generate_handles_none_content(
         self,
         generator: HuggingFaceGenerator,
         sample_context,  # noqa: ANN001
+        template: PromptTemplate,
     ) -> None:
         generator._client.chat_completion.return_value.choices[0].message.content = None
-        artifact = generator.generate(sample_context)
+        artifact = generator.generate(sample_context, template)
         assert artifact.content == ""

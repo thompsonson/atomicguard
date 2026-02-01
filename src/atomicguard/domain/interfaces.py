@@ -44,7 +44,7 @@ class GeneratorInterface(ABC):
     def generate(
         self,
         context: "Context",
-        template: Optional["PromptTemplate"] = None,
+        template: "PromptTemplate",
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
         workflow_ref: str | None = None,
@@ -54,7 +54,7 @@ class GeneratorInterface(ABC):
 
         Args:
             context: The generation context including specification and feedback
-            template: Optional prompt template for structured generation
+            template: Prompt template for structured generation
             action_pair_id: Identifier for the action pair requesting generation
             workflow_id: UUID of the workflow execution instance
             workflow_ref: Content-addressed workflow hash (Extension 01, Def 11)

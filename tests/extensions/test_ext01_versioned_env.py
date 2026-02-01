@@ -13,6 +13,8 @@ TDD tests for implementing:
 
 import pytest
 
+from atomicguard.domain.prompts import PromptTemplate
+
 
 class TestWorkflowRef:
     """Tests for W_ref content-addressed workflow hashing (Def 11)."""
@@ -92,8 +94,10 @@ class TestArtifactWorkflowRef:
         expected_ref = compute_workflow_ref(workflow_def)
 
         # Generator should embed workflow_ref in artifact
+        template = PromptTemplate(role="test", constraints="", task="test")
         artifact = mock_generator.generate(
             context=sample_context,
+            template=template,
             workflow_ref=expected_ref,
             action_pair_id="ap-001",
             workflow_id="wf-001",

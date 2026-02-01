@@ -11,8 +11,11 @@ from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.workflow import Workflow
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
+from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
+
+_TEMPLATE = PromptTemplate(role="test", constraints="", task="test")
 
 
 class DependencyCapturingGuard(GuardInterface):
@@ -43,12 +46,16 @@ class TestDependencyKeyNames:
 
         # First step produces artifact
         gen1 = MockGenerator(responses=["# config"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         # Second step should receive dependency keyed by first step's guard_id
         capturing_guard = DependencyCapturingGuard()
         gen2 = MockGenerator(responses=["# impl"])
-        pair2 = ActionPair(generator=gen2, guard=capturing_guard)
+        pair2 = ActionPair(
+            generator=gen2, guard=capturing_guard, prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("g_config", pair1)
         workflow.add_step("g_impl", pair2, requires=("g_config",))
@@ -66,11 +73,15 @@ class TestDependencyKeyNames:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["# tests"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         capturing_guard = DependencyCapturingGuard()
         gen2 = MockGenerator(responses=["# impl"])
-        pair2 = ActionPair(generator=gen2, guard=capturing_guard)
+        pair2 = ActionPair(
+            generator=gen2, guard=capturing_guard, prompt_template=_TEMPLATE
+        )
 
         # Use arbitrary names without g_ prefix
         workflow.add_step("unit_tests", pair1)
@@ -91,13 +102,19 @@ class TestNonStandardActionPairNames:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["# step one"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen2 = MockGenerator(responses=["# step two"])
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen3 = MockGenerator(responses=["# step three"])
-        pair3 = ActionPair(generator=gen3, guard=AlwaysPassGuard())
+        pair3 = ActionPair(
+            generator=gen3, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("first_step", pair1)
         workflow.add_step("second_step", pair2, requires=("first_step",))
@@ -116,13 +133,19 @@ class TestNonStandardActionPairNames:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["# g_style"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen2 = MockGenerator(responses=["# snake_case"])
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen3 = MockGenerator(responses=["# camelCase"])
-        pair3 = ActionPair(generator=gen3, guard=AlwaysPassGuard())
+        pair3 = ActionPair(
+            generator=gen3, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("g_config", pair1)
         workflow.add_step("test_generator", pair2, requires=("g_config",))
@@ -142,14 +165,20 @@ class TestMultipleDependencies:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["# config"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen2 = MockGenerator(responses=["# tests"])
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         capturing_guard = DependencyCapturingGuard()
         gen3 = MockGenerator(responses=["# impl"])
-        pair3 = ActionPair(generator=gen3, guard=capturing_guard)
+        pair3 = ActionPair(
+            generator=gen3, guard=capturing_guard, prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("config", pair1)
         workflow.add_step("tests", pair2, requires=("config",))
@@ -168,14 +197,20 @@ class TestMultipleDependencies:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["CONFIG_CONTENT"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen2 = MockGenerator(responses=["TEST_CONTENT"])
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         capturing_guard = DependencyCapturingGuard()
         gen3 = MockGenerator(responses=["# impl"])
-        pair3 = ActionPair(generator=gen3, guard=capturing_guard)
+        pair3 = ActionPair(
+            generator=gen3, guard=capturing_guard, prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("config", pair1)
         workflow.add_step("tests", pair2)
@@ -197,14 +232,20 @@ class TestExplicitDepsParameter:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["# config"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         gen2 = MockGenerator(responses=["# tests"])
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         capturing_guard = DependencyCapturingGuard()
         gen3 = MockGenerator(responses=["# impl"])
-        pair3 = ActionPair(generator=gen3, guard=capturing_guard)
+        pair3 = ActionPair(
+            generator=gen3, guard=capturing_guard, prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("config", pair1)
         workflow.add_step("tests", pair2, requires=("config",))
@@ -224,11 +265,15 @@ class TestExplicitDepsParameter:
         workflow = Workflow(artifact_dag=dag, rmax=1)
 
         gen1 = MockGenerator(responses=["# config"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
 
         capturing_guard = DependencyCapturingGuard()
         gen2 = MockGenerator(responses=["# impl"])
-        pair2 = ActionPair(generator=gen2, guard=capturing_guard)
+        pair2 = ActionPair(
+            generator=gen2, guard=capturing_guard, prompt_template=_TEMPLATE
+        )
 
         workflow.add_step("config", pair1)
         # requires config for ordering, but deps=() passes nothing

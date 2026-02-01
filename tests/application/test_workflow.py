@@ -4,9 +4,12 @@ from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.workflow import Workflow
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult, WorkflowStatus
+from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
+
+_TEMPLATE = PromptTemplate(role="test", constraints="", task="test")
 
 
 class AlwaysPassGuard(GuardInterface):
@@ -79,7 +82,9 @@ class TestWorkflowAddStep:
     def test_add_step_appends_step(self) -> None:
         """add_step() adds step to workflow."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
 
         workflow.add_step("g_test", pair)
@@ -90,7 +95,9 @@ class TestWorkflowAddStep:
     def test_add_step_returns_self_for_chaining(self) -> None:
         """add_step() returns self for fluent chaining."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
 
         result = workflow.add_step("g_test", pair)
@@ -100,7 +107,9 @@ class TestWorkflowAddStep:
     def test_add_step_with_requires(self) -> None:
         """add_step() stores requires tuple."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
 
         workflow.add_step("g_impl", pair, requires=("g_test",))
@@ -110,7 +119,9 @@ class TestWorkflowAddStep:
     def test_add_step_deps_defaults_to_requires(self) -> None:
         """add_step() defaults deps to requires."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
 
         workflow.add_step("g_impl", pair, requires=("g_test",))
@@ -120,7 +131,9 @@ class TestWorkflowAddStep:
     def test_add_step_with_explicit_deps(self) -> None:
         """add_step() accepts explicit deps."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
 
         workflow.add_step("g_impl", pair, requires=("g_test",), deps=("g_other",))
@@ -131,8 +144,12 @@ class TestWorkflowAddStep:
         """Multiple steps can be chained."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["y = 2"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
 
         workflow.add_step("g_test", pair1).add_step(
@@ -150,7 +167,9 @@ class TestWorkflowExecute:
     def test_execute_single_step_success(self) -> None:
         """execute() succeeds with single passing step."""
         generator = MockGenerator(responses=["def foo(): pass"])
-        pair = ActionPair(generator=generator, guard=SyntaxGuard())
+        pair = ActionPair(
+            generator=generator, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair)
 
@@ -163,8 +182,12 @@ class TestWorkflowExecute:
         """execute() succeeds with multiple passing steps."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["y = 2"])
-        pair1 = ActionPair(generator=gen1, guard=SyntaxGuard())
-        pair2 = ActionPair(generator=gen2, guard=SyntaxGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=SyntaxGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
@@ -179,7 +202,9 @@ class TestWorkflowExecute:
     def test_execute_fails_when_step_exhausts_retries(self) -> None:
         """execute() returns failure when step exhausts retries."""
         generator = MockGenerator(responses=["bad", "bad", "bad", "bad"])
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow(rmax=2)
         workflow.add_step("g_test", pair)
 
@@ -202,8 +227,12 @@ class TestWorkflowExecute:
 
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["y = 2"])
-        pair1 = ActionPair(generator=gen1, guard=TrackingGuard("g_test"))
-        pair2 = ActionPair(generator=gen2, guard=TrackingGuard("g_impl"))
+        pair1 = ActionPair(
+            generator=gen1, guard=TrackingGuard("g_test"), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=TrackingGuard("g_impl"), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
@@ -225,7 +254,9 @@ class TestWorkflowExecute:
     def test_execute_failure_includes_provenance(self) -> None:
         """execute() includes provenance in failure result."""
         generator = MockGenerator(responses=["bad1", "bad2", "bad3"])
-        pair = ActionPair(generator=generator, guard=AlwaysFailGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow(rmax=2)
         workflow.add_step("g_test", pair)
 
@@ -238,7 +269,9 @@ class TestWorkflowExecute:
     def test_execute_returns_escalation_on_fatal_guard(self) -> None:
         """execute() returns ESCALATION status on fatal guard."""
         generator = MockGenerator(responses=["code"])
-        pair = ActionPair(generator=generator, guard=FatalGuard())
+        pair = ActionPair(
+            generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair)
 
@@ -253,7 +286,9 @@ class TestWorkflowExecute:
     def test_execute_escalation_no_retries(self) -> None:
         """execute() does not retry on fatal guard failure."""
         generator = MockGenerator(responses=["code1", "code2", "code3"])
-        pair = ActionPair(generator=generator, guard=FatalGuard())
+        pair = ActionPair(
+            generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow(rmax=5)
         workflow.add_step("g_test", pair)
 
@@ -270,7 +305,9 @@ class TestWorkflowInternalMethods:
     def test_precondition_met_no_requires(self) -> None:
         """_precondition_met returns True when no requires."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair)
 
@@ -281,8 +318,12 @@ class TestWorkflowInternalMethods:
         """_precondition_met returns True when requires satisfied."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["y = 2"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
@@ -298,8 +339,12 @@ class TestWorkflowInternalMethods:
         """_precondition_met returns False when requires not satisfied."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["y = 2"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
@@ -311,7 +356,9 @@ class TestWorkflowInternalMethods:
     def test_find_applicable_returns_first_applicable(self) -> None:
         """_find_applicable returns first step with precondition met."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair)
 
@@ -324,8 +371,12 @@ class TestWorkflowInternalMethods:
         """_find_applicable skips already satisfied steps."""
         gen1 = MockGenerator(responses=["x = 1"])
         gen2 = MockGenerator(responses=["y = 2"])
-        pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard())
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair1 = ActionPair(
+            generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
@@ -342,7 +393,9 @@ class TestWorkflowInternalMethods:
     def test_find_applicable_returns_none_when_blocked(self) -> None:
         """_find_applicable returns None when no applicable step."""
         gen2 = MockGenerator(responses=["y = 2"])
-        pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard())
+        pair2 = ActionPair(
+            generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         # Add g_impl first (depends on g_test which doesn't exist yet)
         workflow.add_step("g_impl", pair2, requires=("g_test",))
@@ -360,7 +413,9 @@ class TestWorkflowInternalMethods:
     def test_is_goal_state_all_satisfied(self) -> None:
         """_is_goal_state returns True when all steps satisfied."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair)
 
@@ -371,7 +426,9 @@ class TestWorkflowInternalMethods:
     def test_is_goal_state_not_all_satisfied(self) -> None:
         """_is_goal_state returns False when not all steps satisfied."""
         generator = MockGenerator(responses=["x = 1"])
-        pair = ActionPair(generator=generator, guard=AlwaysPassGuard())
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
         workflow = Workflow()
         workflow.add_step("g_test", pair)
 

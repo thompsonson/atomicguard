@@ -135,7 +135,12 @@ def create_workflow(
     """Create a ResumableWorkflow with the demo configuration."""
     generator = AlwaysFailGenerator()
     guard = CorrectAddGuard()
-    action_pair = ActionPair(generator=generator, guard=guard)
+    template = PromptTemplate(
+        role="code generator",
+        constraints="Must use 'return a + b'",
+        task="generate a function that adds two numbers",
+    )
+    action_pair = ActionPair(generator=generator, guard=guard, prompt_template=template)
 
     workflow = ResumableWorkflow(
         artifact_dag=artifact_dag,
