@@ -35,12 +35,12 @@ class TestGate10A_DependencyDirection:
                 source = inspect.getsource(module)
 
                 # Check for direct imports
-                assert (
-                    "from atomicguard.infrastructure" not in source
-                ), f"{module_name} imports infrastructure directly"
-                assert (
-                    "import atomicguard.infrastructure" not in source
-                ), f"{module_name} imports infrastructure directly"
+                assert "from atomicguard.infrastructure" not in source, (
+                    f"{module_name} imports infrastructure directly"
+                )
+                assert "import atomicguard.infrastructure" not in source, (
+                    f"{module_name} imports infrastructure directly"
+                )
             except ModuleNotFoundError:
                 # Module doesn't exist yet - skip
                 pytest.skip(f"Module {module_name} not found")
@@ -53,12 +53,12 @@ class TestGate10A_DependencyDirection:
             source = inspect.getsource(atomicguard.domain.extraction)
 
             # This catches the _artifacts access in extraction.py
-            assert (
-                "._artifacts" not in source
-            ), "extraction.py accesses private _artifacts - use interface method"
-            assert (
-                'hasattr(dag, "_' not in source
-            ), "extraction.py probes for private attributes"
+            assert "._artifacts" not in source, (
+                "extraction.py accesses private _artifacts - use interface method"
+            )
+            assert 'hasattr(dag, "_' not in source, (
+                "extraction.py probes for private attributes"
+            )
         except ModuleNotFoundError:
             pytest.skip("extraction module not found")
 
@@ -77,9 +77,9 @@ class TestGate10B_ContainerAbstractions:
 
             # The hint should reference the interface
             hint_str = str(checkpoint_dag_hint)
-            assert (
-                "CheckpointDAGInterface" in hint_str
-            ), f"checkpoint_dag should be typed as CheckpointDAGInterface, got {hint_str}"
+            assert "CheckpointDAGInterface" in hint_str, (
+                f"checkpoint_dag should be typed as CheckpointDAGInterface, got {hint_str}"
+            )
         except ModuleNotFoundError:
             pytest.skip("Required modules not found")
 
@@ -93,9 +93,9 @@ class TestGate10B_ContainerAbstractions:
             checkpoint_dag_hint = annotations.get("checkpoint_dag", "")
 
             hint_str = str(checkpoint_dag_hint)
-            assert (
-                "CheckpointDAGInterface" in hint_str
-            ), f"checkpoint_dag should be typed as CheckpointDAGInterface, got {hint_str}"
+            assert "CheckpointDAGInterface" in hint_str, (
+                f"checkpoint_dag should be typed as CheckpointDAGInterface, got {hint_str}"
+            )
         except ModuleNotFoundError:
             pytest.skip("Required modules not found")
 
@@ -108,14 +108,14 @@ class TestGate10C_ACLCompliance:
         from atomicguard.domain.interfaces import ArtifactDAGInterface
 
         # Check that get_all is defined on the interface
-        assert hasattr(
-            ArtifactDAGInterface, "get_all"
-        ), "ArtifactDAGInterface should have get_all() method"
+        assert hasattr(ArtifactDAGInterface, "get_all"), (
+            "ArtifactDAGInterface should have get_all() method"
+        )
 
         # Verify it's an abstract method
-        assert getattr(
-            ArtifactDAGInterface.get_all, "__isabstractmethod__", False
-        ), "get_all() should be an abstract method"
+        assert getattr(ArtifactDAGInterface.get_all, "__isabstractmethod__", False), (
+            "get_all() should be an abstract method"
+        )
 
     def test_extraction_uses_interface_methods_only(self):
         """extract() must only call methods defined on ArtifactDAGInterface."""
@@ -131,10 +131,12 @@ class TestGate10C_ACLCompliance:
             # Should not have implementation-specific access
             has_private_access = "._artifacts" in source or 'hasattr(dag, "_' in source
 
-            assert not has_private_access, "extraction.py should not access private attributes - use interface methods"
-            assert (
-                uses_get_all
-            ), "extraction.py should use dag.get_all() interface method"
+            assert not has_private_access, (
+                "extraction.py should not access private attributes - use interface methods"
+            )
+            assert uses_get_all, (
+                "extraction.py should use dag.get_all() interface method"
+            )
         except ModuleNotFoundError:
             pytest.skip("extraction module not found")
 
@@ -153,9 +155,9 @@ class TestGate10D_AbstractionNaming:
         ]
 
         for name in interface_classes:
-            assert name.endswith(
-                "Interface"
-            ), f"Abstract class {name} should end with 'Interface'"
+            assert name.endswith("Interface"), (
+                f"Abstract class {name} should end with 'Interface'"
+            )
 
 
 class TestGate10F_InfrastructureTestability:
