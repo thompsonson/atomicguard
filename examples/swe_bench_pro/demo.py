@@ -1,9 +1,9 @@
 """CLI for SWE-Bench Pro evaluation.
 
 Usage:
-    python -m examples.swe_bench_pro.demo experiment --arms singleshot --max-instances 5
-    python -m examples.swe_bench_pro.demo evaluate --predictions-dir output/swe_bench_pro/predictions
-    python -m examples.swe_bench_pro.demo visualize --results output/swe_bench_pro/results.jsonl
+    uv run python -m examples.swe_bench_pro.demo --debug experiment --arms singleshot --max-instances 5
+    uv run python -m examples.swe_bench_pro.demo evaluate --predictions-dir output/swe_bench_pro/predictions
+    uv run python -m examples.swe_bench_pro.demo visualize --results output/swe_bench_pro/results.jsonl
 """
 
 import json
@@ -14,19 +14,58 @@ import click
 
 logger = logging.getLogger("swe_bench_pro")
 
+_DEFAULT_LOGGING_CONFIG = Path(__file__).parent / "logging.json"
 
-@click.group()
-@click.option("--debug", is_flag=True, help="Enable debug logging")
-def cli(debug: bool) -> None:
-    """SWE-Bench Pro evaluation CLI."""
+
+def _configure_logging(debug: bool) -> None:
+    """Set up logging, suppressing noisy third-party loggers.
+
+    The suppression list is loaded from ``logging.json`` next to this
+    file.  The file should contain a JSON object with a
+    ``"suppress_loggers"`` key listing logger names to set to WARNING::
+
+        {
+            "suppress_loggers": ["urllib3", "httpx", ...]
+        }
+
+    If the file is missing, a built-in default list is used.
+    """
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("openai").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    suppress: list[str] = []
+    if _DEFAULT_LOGGING_CONFIG.exists():
+        try:
+            data = json.loads(_DEFAULT_LOGGING_CONFIG.read_text())
+            suppress = data.get("suppress_loggers", [])
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Failed to parse %s: %s", _DEFAULT_LOGGING_CONFIG, e)
+
+    if not suppress:
+        # Built-in fallback — only used if config file is missing.
+        suppress = [
+            "httpx",
+            "httpcore",
+            "openai",
+            "urllib3",
+            "filelock",
+            "datasets",
+            "huggingface_hub",
+            "fsspec",
+        ]
+
+    for name in suppress:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+@click.group()
+@click.option("--debug", is_flag=True, help="Enable debug logging")
+def cli(debug: bool) -> None:
+    """SWE-Bench Pro evaluation CLI."""
+    _configure_logging(debug)
 
 
 # =========================================================================

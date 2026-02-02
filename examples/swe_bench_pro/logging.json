@@ -1,0 +1,17 @@
+{
+    "suppress_loggers": [
+        "httpx",
+        "httpcore",
+        "openai",
+        "urllib3",
+        "urllib3.connectionpool",
+        "filelock",
+        "datasets",
+        "datasets.builder",
+        "datasets.info",
+        "huggingface_hub",
+        "huggingface_hub.utils",
+        "fsspec",
+        "fsspec.implementations"
+    ]
+}

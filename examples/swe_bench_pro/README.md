@@ -34,11 +34,11 @@ docker --version
 ### Run experiments
 
 ```bash
-# Single arm, 5 instances, Python only
-uv run python -m examples.swe_bench_pro.demo experiment \
+# Single arm, 2 instances, Python only (good for a first trial)
+uv run python -m examples.swe_bench_pro.demo --debug experiment \
     --arms singleshot \
     --language python \
-    --max-instances 5
+    --max-instances 2
 
 # All arms, all languages, parallel execution
 uv run python -m examples.swe_bench_pro.demo experiment \
@@ -55,6 +55,8 @@ uv run python -m examples.swe_bench_pro.demo experiment \
     --model Qwen/Qwen2.5-Coder-32B-Instruct \
     --arms singleshot
 ```
+
+> **Note:** `--debug` is a top-level flag and must appear *before* the subcommand name.
 
 ### Evaluate patches
 
@@ -139,4 +141,5 @@ The multi-language subclasses (`MultiLang*`) override `_build_prompt` to inject 
 ## Configuration
 
 - [`prompts.json`](prompts.json) -- Language-neutral prompt templates (uses "VALID CODE" instead of "VALID PYTHON")
+- [`logging.json`](logging.json) -- Third-party logger suppression list. Edit `suppress_loggers` to control which libraries are silenced at WARNING level during `--debug` runs
 - Workflow configs are loaded from `examples/swe_bench_ablation/workflows/`
