@@ -7,7 +7,7 @@ evaluation helpers.  No network, Docker, or HuggingFace access required.
 import json
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -516,3 +516,145 @@ class TestExtractCode:
             result = gen._extract_code(content)
         assert "Could not extract" in result
         assert "No code fences or test patterns found" in caplog.text
+
+
+# =========================================================================
+# experiment_runner.py – run_all parallel execution
+# =========================================================================
+
+
+class TestRunAllParallel:
+    """Tests for parallel execution in ``SWEBenchProRunner.run_all``."""
+
+    def _make_instances(self, n: int = 3):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return [
+            SWEBenchProInstance(
+                instance_id=f"org__repo__{i}",
+                repo="org/repo",
+                base_commit="abc123",
+                problem_statement=f"bug {i}",
+                patch="diff",
+                test_patch="diff",
+                repo_language="python",
+            )
+            for i in range(n)
+        ]
+
+    def test_max_workers_zero_raises(self, tmp_path):
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        runner = SWEBenchProRunner(output_dir=str(tmp_path / "out"))
+        with pytest.raises(ValueError, match="max_workers must be >= 1"):
+            runner.run_all(arms=["02_singleshot"], max_workers=0)
+
+    @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
+    def test_sequential_execution(self, mock_load, tmp_path):
+        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        instances = self._make_instances(2)
+        mock_load.return_value = instances
+
+        runner = SWEBenchProRunner(output_dir=str(tmp_path / "out"))
+        call_order = []
+
+        def fake_run_instance(instance, arm):
+            call_order.append(instance.instance_id)
+            return ArmResult(
+                instance_id=instance.instance_id,
+                arm=arm,
+                workflow_status="success",
+                patch_content="diff",
+            )
+
+        runner.run_instance = fake_run_instance
+
+        results = runner.run_all(arms=["02_singleshot"], max_workers=1)
+
+        assert len(results) == 2
+        assert call_order == ["org__repo__0", "org__repo__1"]
+        # Verify JSONL was written
+        results_path = tmp_path / "out" / "results.jsonl"
+        assert results_path.exists()
+        lines = results_path.read_text().strip().split("\n")
+        assert len(lines) == 2
+
+    @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
+    def test_parallel_execution(self, mock_load, tmp_path):
+        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        instances = self._make_instances(4)
+        mock_load.return_value = instances
+
+        runner = SWEBenchProRunner(output_dir=str(tmp_path / "out"))
+
+        def fake_run_instance(instance, arm):
+            return ArmResult(
+                instance_id=instance.instance_id,
+                arm=arm,
+                workflow_status="success",
+                patch_content="diff",
+            )
+
+        runner.run_instance = fake_run_instance
+
+        results = runner.run_all(arms=["02_singleshot"], max_workers=3)
+
+        assert len(results) == 4
+        # All instances should have results
+        result_ids = {r.instance_id for r in results}
+        assert result_ids == {f"org__repo__{i}" for i in range(4)}
+        # JSONL should have 4 lines
+        lines = (tmp_path / "out" / "results.jsonl").read_text().strip().split("\n")
+        assert len(lines) == 4
+
+    @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
+    def test_parallel_with_resume(self, mock_load, tmp_path):
+        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        instances = self._make_instances(3)
+        mock_load.return_value = instances
+
+        # Pre-populate results for first instance
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        existing = ArmResult(
+            instance_id="org__repo__0",
+            arm="02_singleshot",
+            workflow_status="success",
+            patch_content="existing",
+        )
+        from dataclasses import asdict
+
+        (out_dir / "results.jsonl").write_text(
+            json.dumps(asdict(existing)) + "\n"
+        )
+
+        runner = SWEBenchProRunner(output_dir=str(out_dir))
+
+        def fake_run_instance(instance, arm):
+            return ArmResult(
+                instance_id=instance.instance_id,
+                arm=arm,
+                workflow_status="success",
+                patch_content="new",
+            )
+
+        runner.run_instance = fake_run_instance
+
+        results = runner.run_all(
+            arms=["02_singleshot"],
+            max_workers=2,
+            resume_from=str(out_dir),
+        )
+
+        # Should have 3 results: 1 existing + 2 new
+        assert len(results) == 3
+        # The existing one should still be there
+        existing_results = [r for r in results if r.instance_id == "org__repo__0"]
+        assert len(existing_results) == 1
+        assert existing_results[0].patch_content == "existing"

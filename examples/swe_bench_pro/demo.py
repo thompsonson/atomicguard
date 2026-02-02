@@ -63,6 +63,7 @@ _ARM_MAP = {
 )
 @click.option("--split", default="test", help="Dataset split")
 @click.option("--max-instances", default=0, type=int, help="Max instances (0=all)")
+@click.option("--max-workers", default=1, type=int, help="Parallel workers (1=sequential)")
 @click.option("--resume", is_flag=True, help="Resume from existing results")
 def experiment(
     model: str,
@@ -71,6 +72,7 @@ def experiment(
     output_dir: str,
     split: str,
     max_instances: int,
+    max_workers: int,
     resume: bool,
 ) -> None:
     """Run workflow arms across SWE-Bench Pro instances."""
@@ -96,6 +98,8 @@ def experiment(
     if language:
         click.echo(f"Language: {language}")
     click.echo(f"Output: {output_dir}")
+    if max_workers > 1:
+        click.echo(f"Parallel workers: {max_workers}")
 
     runner = SWEBenchProRunner(model=model, output_dir=output_dir)
     runner.run_all(
@@ -104,6 +108,7 @@ def experiment(
         language=language,
         max_instances=max_instances if max_instances > 0 else None,
         resume_from=output_dir if resume else None,
+        max_workers=max_workers,
     )
 
 

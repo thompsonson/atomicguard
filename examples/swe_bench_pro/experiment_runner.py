@@ -9,8 +9,10 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -332,6 +334,7 @@ class SWEBenchProRunner:
         language: str | None = None,
         max_instances: int | None = None,
         resume_from: str | None = None,
+        max_workers: int = 1,
     ) -> list[ArmResult]:
         """Run all arms across all matching instances.
 
@@ -341,23 +344,22 @@ class SWEBenchProRunner:
             language: Optional language filter (``None`` = all).
             max_instances: Cap on instances.
             resume_from: Path to existing results dir for resume.
+            max_workers: Number of parallel workers.  ``1`` (default)
+                runs sequentially.  Values > 1 use a thread pool.
 
         Returns:
             List of :class:`ArmResult` objects.
         """
+        if max_workers < 1:
+            raise ValueError(f"max_workers must be >= 1, got {max_workers}")
+
         instances = load_swe_bench_pro(
             split=split,
             language=language,
             max_instances=max_instances,
         )
 
-        logger.info(
-            "Running %d arms x %d instances = %d total runs",
-            len(arms),
-            len(instances),
-            len(arms) * len(instances),
-        )
-
+        # Build the work items list, filtering out already-completed runs.
         completed: set[tuple[str, str]] = set()
         results: list[ArmResult] = []
 
@@ -365,9 +367,7 @@ class SWEBenchProRunner:
             results, completed = self._load_existing_results(resume_from)
             logger.info("Resuming: %d runs already completed", len(completed))
 
-        self._output_dir.mkdir(parents=True, exist_ok=True)
-        results_path = self._output_dir / "results.jsonl"
-
+        work_items: list[tuple[int, SWEBenchProInstance, str]] = []
         for i, instance in enumerate(instances):
             for arm in arms:
                 key = (instance.instance_id, arm)
@@ -378,21 +378,93 @@ class SWEBenchProRunner:
                         arm,
                     )
                     continue
+                work_items.append((i, instance, arm))
 
-                logger.info(
-                    "Progress: %d/%d instances, arm=%s, instance=%s, lang=%s",
-                    i + 1,
-                    len(instances),
-                    arm,
-                    instance.instance_id,
-                    instance.repo_language,
-                )
+        total_runs = len(work_items)
+        logger.info(
+            "Running %d work items (%d arms x %d instances, %d already done) "
+            "with max_workers=%d",
+            total_runs,
+            len(arms),
+            len(instances),
+            len(completed),
+            max_workers,
+        )
 
-                arm_result = self.run_instance(instance, arm)
-                results.append(arm_result)
+        if total_runs == 0:
+            logger.info("Nothing to run — all items already completed")
+            return results
 
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        results_path = self._output_dir / "results.jsonl"
+        write_lock = threading.Lock()
+        finished_count = 0
+        finished_lock = threading.Lock()
+
+        def _execute_and_record(
+            idx: int,
+            instance: SWEBenchProInstance,
+            arm: str,
+        ) -> ArmResult:
+            nonlocal finished_count
+            logger.info(
+                "Starting: instance=%s, arm=%s, lang=%s (%d/%d instances)",
+                instance.instance_id,
+                arm,
+                instance.repo_language,
+                idx + 1,
+                len(instances),
+            )
+            arm_result = self.run_instance(instance, arm)
+
+            with write_lock:
                 with open(results_path, "a") as f:
                     f.write(json.dumps(asdict(arm_result)) + "\n")
+
+            with finished_lock:
+                finished_count += 1
+                logger.info(
+                    "Finished %d/%d: instance=%s, arm=%s, status=%s (%.1fs)",
+                    finished_count,
+                    total_runs,
+                    instance.instance_id,
+                    arm,
+                    arm_result.workflow_status,
+                    arm_result.wall_time_seconds,
+                )
+
+            return arm_result
+
+        if max_workers == 1:
+            # Sequential execution — no thread overhead.
+            for idx, instance, arm in work_items:
+                results.append(_execute_and_record(idx, instance, arm))
+        else:
+            # Parallel execution with thread pool.
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(_execute_and_record, idx, instance, arm): (
+                        instance.instance_id,
+                        arm,
+                    )
+                    for idx, instance, arm in work_items
+                }
+                for future in as_completed(futures):
+                    iid, arm = futures[future]
+                    try:
+                        arm_result = future.result()
+                        results.append(arm_result)
+                    except Exception:
+                        # run_instance already catches exceptions and returns
+                        # an error ArmResult, so this should not happen.
+                        # Log it defensively.
+                        tb = traceback.format_exc()
+                        logger.error(
+                            "Unexpected error in worker for %s / %s:\n%s",
+                            iid,
+                            arm,
+                            tb,
+                        )
 
         logger.info(
             "Experiment complete. %d results written to %s",
