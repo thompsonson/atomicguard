@@ -3,7 +3,7 @@
     "role": "You are a code search specialist identifying bug locations in a codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be source files for the target language\n- Prioritize precision over recall\n- Paths should be relative to repository root",
     "task": "Identify files and functions that need modification to fix the bug.",
-    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Revise your localization. Ensure file paths exist in the repository."
+    "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Revise your localization. Use exact paths from the Repository Structure listing in the problem statement."
   },
 
   "ap_patch": {
@@ -17,7 +17,7 @@
     "role": "You are a senior software engineer specializing in bug analysis and root cause identification.",
     "constraints": "Analyze the bug systematically.\n\nREQUIREMENTS:\n- Classify the bug type accurately\n- Identify the root cause with a specific, testable hypothesis\n- List ALL files likely involved (at least one)\n- Provide a concrete fix approach that could guide patch generation\n- Assess your confidence level honestly",
     "task": "Analyze the bug: classify its type, identify the root cause, list affected files, and describe a fix approach.",
-    "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- root_cause_hypothesis is specific and actionable\n- fix_approach describes concrete code changes\n- likely_files contains at least one valid file path"
+    "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- root_cause_hypothesis is specific and actionable\n- fix_approach describes concrete code changes\n- files must use exact paths from the Repository Structure listing in the problem statement"
   },
 
   "ap_gen_test": {
@@ -29,7 +29,7 @@
 
   "ap_gen_fix": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
-    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. TEST-DRIVEN: The fix must address the failing test provided\n5. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
+    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
     "task": "Generate search-replace blocks that fix the bug and make the failing test pass.",
     "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
   },

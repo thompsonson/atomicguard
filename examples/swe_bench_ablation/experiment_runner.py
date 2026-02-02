@@ -40,8 +40,8 @@ class ExperimentRunner:
 
     def __init__(
         self,
-        model: str = "Qwen/Qwen2.5-Coder-32B-Instruct",
-        base_url: str = "https://router.huggingface.co/v1",
+        model: str = "moonshotai/Kimi-K2-Instruct",
+        base_url: str = "",
         api_key: str | None = None,
         output_dir: str = "output/experiment_7_2",
         clone_dir: str | None = None,

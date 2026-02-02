@@ -33,7 +33,6 @@ class MultiLangPatchGenerator(PatchGenerator):
         self,
         context: Context,
         template: PromptTemplate | None,
-        repo_root: str | None,
     ) -> str:
         """Build a language-aware prompt for patch generation.
 
@@ -42,6 +41,7 @@ class MultiLangPatchGenerator(PatchGenerator):
         * ``VALID PYTHON`` → ``self._lang.valid_code_label``
         * File extension filtering for context snippets
         """
+        repo_root = self._resolve_repo_root(context)
         parts: list[str] = []
 
         # Task from template
@@ -57,13 +57,13 @@ class MultiLangPatchGenerator(PatchGenerator):
             parts.append("\n\n## Bug Analysis")
             parts.append(f"Bug type: {analysis.bug_type.value}")
             parts.append(f"Root cause: {analysis.root_cause_hypothesis}")
-            parts.append(f"Likely files: {', '.join(analysis.likely_files)}")
+            parts.append(f"Files: {', '.join(analysis.files)}")
             parts.append(f"Fix approach: {analysis.fix_approach}")
 
             if self._include_file_content and repo_root:
                 parts.append("\n\n## Current File Content")
                 tag = self._lang.code_block_tag
-                for file_path in analysis.likely_files[:3]:
+                for file_path in analysis.files[:3]:
                     content = self._read_file(repo_root, file_path)
                     if content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
@@ -87,11 +87,31 @@ class MultiLangPatchGenerator(PatchGenerator):
                     if content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
+        # Singleshot fallback: include content of files referenced in the problem
+        if not analysis and not localization and self._include_file_content and repo_root:
+            repo_files = self._list_repo_files(
+                repo_root, extensions=self._lang.file_extensions
+            )
+            referenced = [f for f in repo_files if f in context.specification]
+            if referenced:
+                parts.append("\n\n## Current File Content")
+                tag = self._lang.code_block_tag
+                for file_path in referenced[:5]:
+                    content = self._read_file(repo_root, file_path)
+                    if content:
+                        parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
+
         # Test code dependency
         test_code = self._get_test_code(context)
         if test_code:
             tag = self._lang.code_block_tag
-            parts.append(f"\n\n## Failing Test\n```{tag}\n{test_code}\n```")
+            parts.append(
+                f"\n\n## Failing Test (for guidance only — do NOT patch this)\n"
+                f"The following test demonstrates the expected behavior. "
+                f"Your patch should fix the SOURCE files so this test would pass. "
+                f"Do NOT create or modify test files.\n"
+                f"```{tag}\n{test_code}\n```"
+            )
 
         # Constraints
         if template and template.constraints:
@@ -108,7 +128,7 @@ Return a JSON object with search-replace edits:
 {{
   "edits": [
     {{
-      "file": "path/to/file",
+      "file": "src/module/file",
       "search": "exact code to find\\nincluding multiple lines",
       "replace": "new code to replace with\\nincluding multiple lines"
     }}
@@ -116,6 +136,8 @@ Return a JSON object with search-replace edits:
   "reasoning": "Brief explanation of the fix"
 }}
 ```
+
+NOTE: Use exact file paths from the Repository Structure listing.
 
 CRITICAL REQUIREMENTS:
 1. EXACT MATCH: The 'search' string must match the file content EXACTLY (including whitespace/indentation)

@@ -126,6 +126,30 @@ output/swe_bench_pro/
 | `--max-workers` | 1 | Parallel workers (1 = sequential) |
 | `--resume` | off | Resume from existing results |
 
+## Design Decisions
+
+### Repository file listing in the problem statement
+
+The runner appends a `## Repository Structure` section (listing source file paths) to the problem statement before passing it to `workflow.execute()`. This means **all** workflow arms and **all** generators/guards see the real file paths from the checked-out repo. This is intentional: file paths are environment context (like the problem description itself), not a localization result. The localization step's job is to identify *which* of these files contain the bug, not to discover that they exist.
+
+The listing is filtered by language-specific extensions (e.g. `.py` for Python, `.go` for Go) and capped at 80 files to keep prompt size manageable.
+
+### Test files in the listing
+
+The file listing includes all files matching the language extensions, including test files. This helps the test generator place new tests in the correct location and follow existing naming conventions. An alternative would be to split the listing into production and test files, or exclude tests entirely to keep the patch generator focused — but the current approach keeps things simple and lets each arm decide what to pay attention to.
+
+### Max files cap
+
+Large repositories will be silently truncated to 80 files. The LLM has no indication that the listing is incomplete. A future improvement could append a note like `(showing 80 of 342 files)` so the LLM knows the listing is partial and avoids assuming a file doesn't exist just because it's not listed. The cap itself is a tradeoff between prompt budget and coverage — 80 is a reasonable default but could be made configurable per-arm or per-language.
+
+### Flat listing vs. directory tree
+
+File paths are presented as a flat sorted list (e.g. `src/utils/helpers.py`). A tree-style representation would be more compact for deeply nested repos and easier for the LLM to parse for structural understanding, but flat paths are directly copy-pasteable into edits — which is the primary use case. Flat listing is the current choice.
+
+### File metadata
+
+The listing contains only paths, no line counts or other metadata. Adding hints like `src/utils.py (45 lines)` could help the LLM prioritise which files to examine, but increases token usage and adds complexity. This is left as a potential enhancement if patch accuracy on large repos is a problem.
+
 ## Relationship to swe_bench_ablation
 
 This example reuses several components from `examples/swe_bench_ablation`:

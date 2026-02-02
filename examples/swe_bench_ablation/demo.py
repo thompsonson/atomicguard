@@ -152,6 +152,9 @@ def build_workflow(
             "base_url": base_url,
             "api_key": api_key,
         }
+        # Patch generators need repo_root to produce unified diffs.
+        if repo_root and issubclass(gen_cls, PatchGenerator):
+            gen_kwargs["repo_root"] = repo_root
         generator = gen_cls(**gen_kwargs)
 
         # Build guard with config

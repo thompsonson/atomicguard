@@ -1,8 +1,8 @@
 {
   "name": "Single-shot",
-  "description": "Experiment 7.2 Arm 1: Direct problem-to-patch (1 action pair, rmax=0).",
-  "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
-  "rmax": 0,
+  "description": "Experiment 7.2 Arm 1: Direct problem-to-patch (1 action pair, rmax=1).",
+  "model": "moonshotai/Kimi-K2-Instruct",
+  "rmax": 1,
   "action_pairs": {
     "ap_singleshot": {
       "generator": "PatchGenerator",

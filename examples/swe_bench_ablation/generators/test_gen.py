@@ -172,7 +172,7 @@ class TestGenerator(GeneratorInterface):
             parts.append(
                 f"Affected components: {', '.join(analysis.affected_components)}"
             )
-            parts.append(f"Likely files: {', '.join(analysis.likely_files)}")
+            parts.append(f"Files: {', '.join(analysis.files)}")
             parts.append(f"Fix approach: {analysis.fix_approach}")
 
         if template and template.constraints:

@@ -35,7 +35,7 @@ class Analysis(BaseModel):
     bug_type: BugType
     root_cause_hypothesis: str
     affected_components: list[str] = Field(default_factory=list)
-    likely_files: list[str] = Field(default_factory=list, min_length=1)
+    files: list[str] = Field(default_factory=list, min_length=1)
     fix_approach: str
     confidence: Literal["low", "medium", "high"] = "medium"
 
@@ -98,7 +98,7 @@ class Hypothesis(BaseModel):
 
     root_cause: str
     fix_approach: str
-    likely_files: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
     likely_functions: list[str] = Field(default_factory=list)
     confidence: Literal["low", "medium", "high"] = "medium"
 

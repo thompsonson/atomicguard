@@ -6,6 +6,7 @@ with non-empty required fields and at least one likely file.
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from atomicguard.domain.interfaces import GuardInterface
@@ -22,14 +23,20 @@ class AnalysisGuard(GuardInterface):
     Checks:
     - Valid JSON matching Analysis schema
     - Non-empty root_cause_hypothesis and fix_approach
-    - At least one likely_files entry
+    - At least one files entry
     """
 
     def __init__(
         self,
+        repo_root: str | None = None,
         **kwargs: Any,  # noqa: ARG002
     ):
-        """Initialize the guard."""
+        """Initialize the guard.
+
+        Args:
+            repo_root: Repository root for file existence validation
+        """
+        self._repo_root = repo_root
 
     def validate(
         self,
@@ -82,10 +89,27 @@ class AnalysisGuard(GuardInterface):
         if not analysis.fix_approach.strip():
             errors.append("fix_approach is empty")
 
-        if not analysis.likely_files:
+        if not analysis.files:
             errors.append(
-                "No likely_files identified. Must identify at least one file."
+                "No files identified. Must identify at least one file."
             )
+
+        # Validate files exist in repository
+        if analysis.files and self._repo_root:
+            repo_path = Path(self._repo_root)
+            missing_files = []
+            for f in analysis.files:
+                if not (repo_path / f).exists():
+                    missing_files.append(f)
+            if missing_files:
+                errors.append(
+                    f"Files not found in repository: {', '.join(missing_files[:3])}"
+                    + (
+                        f" (and {len(missing_files) - 3} more)"
+                        if len(missing_files) > 3
+                        else ""
+                    )
+                )
 
         if errors:
             feedback = "Analysis validation failed:\n- " + "\n- ".join(errors)
@@ -98,7 +122,7 @@ class AnalysisGuard(GuardInterface):
 
         feedback = (
             f"Analysis valid: bug_type={analysis.bug_type.value}, "
-            f"{len(analysis.likely_files)} files, "
+            f"{len(analysis.files)} files, "
             f"confidence={analysis.confidence}"
         )
         logger.info("[AnalysisGuard] PASSED: %s", feedback)

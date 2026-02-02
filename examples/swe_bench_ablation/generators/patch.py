@@ -1,182 +1,69 @@
 """PatchGenerator: Generates patches using search-replace format.
 
-Uses an LLM to generate code changes as search-replace blocks,
-which are then converted to unified diff format programmatically.
-This approach is more reliable than asking LLMs to generate diff format directly.
+Uses PydanticAI structured output to generate code changes as
+search-replace blocks, which are then converted to unified diff
+format programmatically. This approach is more reliable than asking
+LLMs to generate diff format directly.
 """
 
 import difflib
 import json
 import logging
-import re
-from datetime import UTC, datetime
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any
-from uuid import uuid4
 
-from atomicguard.domain.interfaces import GeneratorInterface
-from atomicguard.domain.models import (
-    Artifact,
-    ArtifactStatus,
-    Context,
-    ContextSnapshot,
-    FeedbackEntry,
-)
+from atomicguard.domain.models import Context
 from atomicguard.domain.prompts import PromptTemplate
+from examples.base.generators import PydanticAIGenerator
 
 from ..models import Analysis, Localization, Patch, SearchReplaceEdit
 
 logger = logging.getLogger("swe_bench_ablation.generators")
 
 
-class PatchGenerator(GeneratorInterface):
+class PatchGenerator(PydanticAIGenerator[Patch]):
     """Generator that produces patches via search-replace blocks.
 
     The LLM specifies exact code blocks to find and replace.
     This is converted to unified diff format programmatically using difflib.
     """
 
+    output_type = Patch
+
     def __init__(
         self,
-        model: str = "qwen2.5-coder:14b",
-        base_url: str = "http://localhost:11434/v1",
-        api_key: str = "ollama",
-        timeout: float = 180.0,
+        *,
         include_file_content: bool = True,
         max_context_lines: int = 100,
-        **kwargs: Any,  # noqa: ARG002
+        repo_root: str | None = None,
+        code_block_tag: str = "python",
+        valid_code_label: str = "VALID PYTHON",
+        **kwargs: Any,
     ):
-        """Initialize the patch generator.
-
-        Args:
-            model: LLM model to use
-            base_url: API base URL (Ollama or HuggingFace Inference API)
-            api_key: API key (use HF_TOKEN for HuggingFace)
-            timeout: Request timeout in seconds
-            include_file_content: Whether to include file content in prompt
-            max_context_lines: Maximum lines of context per file
-        """
-        try:
-            from openai import OpenAI
-        except ImportError as err:
-            raise ImportError("openai library required: pip install openai") from err
-
-        self._model = model
-        self._client = OpenAI(
-            base_url=base_url,
-            api_key=api_key,
-            timeout=timeout,
-        )
+        kwargs.setdefault("temperature", 0.3)
+        super().__init__(**kwargs)
         self._include_file_content = include_file_content
         self._max_context_lines = max_context_lines
-        self._attempt_counter = 0
+        self._repo_root = repo_root
+        self._code_block_tag = code_block_tag
+        self._valid_code_label = valid_code_label
 
-    def generate(
-        self,
-        context: Context,
-        template: PromptTemplate | None = None,
-        action_pair_id: str = "ap_patch",
-        workflow_id: str = "unknown",
-        workflow_ref: str | None = None,
-    ) -> Artifact:
-        """Generate a patch to fix the identified bug.
-
-        Args:
-            context: Execution context with localization and specification
-            template: Prompt template from prompts.json
-            action_pair_id: Identifier for this action pair
-            workflow_id: UUID of the workflow execution
-            workflow_ref: Content-addressed workflow hash
-
-        Returns:
-            Artifact containing unified diff patch
-        """
-        logger.info("[PatchGenerator] Generating patch...")
-
-        # Get repo_root from context metadata if available
-        repo_root = (
-            context.ambient.repository.metadata.get("repo_root")
-            if hasattr(context.ambient.repository, "metadata")
-            else None
-        )
-
-        # Build prompt
-        prompt = self._build_prompt(context, template, repo_root)
-
-        # Get system prompt from template or use default
-        system_prompt = (
-            template.role
-            if template
-            else "You are a senior software engineer writing minimal, correct bug fixes."
-        )
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-
-        metadata: dict[str, Any] = {}
-        try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,  # type: ignore
-                temperature=0.3,
-            )
-            content = response.choices[0].message.content or ""
-            logger.debug(f"[PatchGenerator] Response: {content[:200]}...")
-
-            if hasattr(response, "usage") and response.usage:
-                metadata = {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens,
-                }
-
-            # Parse search-replace blocks and convert to patch
-            result = self._process_response(content, repo_root)
-
-        except Exception as e:
-            logger.warning(f"[PatchGenerator] LLM call failed: {e}")
-            result = json.dumps({"error": str(e)})
-
-        self._attempt_counter += 1
-
-        # Build context snapshot
-        context_snapshot = ContextSnapshot(
-            workflow_id=workflow_id,
-            specification=context.specification,
-            constraints=context.ambient.constraints,
-            feedback_history=tuple(
-                FeedbackEntry(artifact_id=aid, feedback=fb)
-                for aid, fb in context.feedback_history
-            ),
-            dependency_artifacts=context.dependency_artifacts,
-        )
-
-        return Artifact(
-            artifact_id=str(uuid4()),
-            workflow_id=workflow_id,
-            content=result,
-            previous_attempt_id=None,
-            parent_action_pair_id=None,
-            action_pair_id=action_pair_id,
-            created_at=datetime.now(UTC).isoformat(),
-            attempt_number=self._attempt_counter,
-            status=ArtifactStatus.PENDING,
-            guard_result=None,
-            context=context_snapshot,
-            workflow_ref=workflow_ref,
-            metadata=MappingProxyType(metadata),
-        )
+    def _resolve_repo_root(self, context: Context) -> str | None:
+        """Resolve repo_root from context metadata or constructor fallback."""
+        repo_root = None
+        if hasattr(context.ambient.repository, "metadata"):
+            repo_root = context.ambient.repository.metadata.get("repo_root")
+        if not repo_root:
+            repo_root = self._repo_root
+        return repo_root
 
     def _build_prompt(
         self,
         context: Context,
         template: PromptTemplate | None,
-        repo_root: str | None,
     ) -> str:
         """Build the prompt for patch generation."""
+        repo_root = self._resolve_repo_root(context)
         parts = []
 
         # Task from template
@@ -192,16 +79,17 @@ class PatchGenerator(GeneratorInterface):
             parts.append("\n\n## Bug Analysis")
             parts.append(f"Bug type: {analysis.bug_type.value}")
             parts.append(f"Root cause: {analysis.root_cause_hypothesis}")
-            parts.append(f"Likely files: {', '.join(analysis.likely_files)}")
+            parts.append(f"Files: {', '.join(analysis.files)}")
             parts.append(f"Fix approach: {analysis.fix_approach}")
 
             # Include file content from analysis
             if self._include_file_content and repo_root:
                 parts.append("\n\n## Current File Content")
-                for file_path in analysis.likely_files[:3]:
+                tag = self._code_block_tag
+                for file_path in analysis.files[:3]:
                     content = self._read_file(repo_root, file_path)
                     if content:
-                        parts.append(f"\n### {file_path}\n```python\n{content}\n```")
+                        parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         # Get localization from dependencies (baseline arm)
         localization = self._get_localization(context)
@@ -217,42 +105,65 @@ class PatchGenerator(GeneratorInterface):
             # Include file content
             if self._include_file_content and repo_root:
                 parts.append("\n\n## Current File Content")
+                tag = self._code_block_tag
                 for file_path in localization.files[:3]:  # Limit to 3 files
                     content = self._read_file(repo_root, file_path)
                     if content:
-                        parts.append(f"\n### {file_path}\n```python\n{content}\n```")
+                        parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
+
+        # Singleshot fallback: include content of files referenced in the problem
+        if not analysis and not localization and self._include_file_content and repo_root:
+            repo_files = self._list_repo_files(repo_root)
+            referenced = [f for f in repo_files if f in context.specification]
+            if referenced:
+                parts.append("\n\n## Current File Content")
+                tag = self._code_block_tag
+                for file_path in referenced[:5]:
+                    content = self._read_file(repo_root, file_path)
+                    if content:
+                        parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         # Get test code from dependencies (S1-TDD arm)
         test_code = self._get_test_code(context)
         if test_code:
-            parts.append(f"\n\n## Failing Test\n```python\n{test_code}\n```")
+            tag = self._code_block_tag
+            parts.append(
+                f"\n\n## Failing Test (for guidance only — do NOT patch this)\n"
+                f"The following test demonstrates the expected behavior. "
+                f"Your patch should fix the SOURCE files so this test would pass. "
+                f"Do NOT create or modify test files.\n"
+                f"```{tag}\n{test_code}\n```"
+            )
 
         # Constraints from template
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
 
         # Output format instruction
+        lang_label = self._valid_code_label
         parts.append(
-            """
+            f"""
 
 ## Output Format
 Return a JSON object with search-replace edits:
 ```json
-{
+{{
   "edits": [
-    {
-      "file": "path/to/file.py",
+    {{
+      "file": "src/module/file.py",
       "search": "exact code to find\\nincluding multiple lines",
       "replace": "new code to replace with\\nincluding multiple lines"
-    }
+    }}
   ],
   "reasoning": "Brief explanation of the fix"
-}
+}}
 ```
+
+NOTE: Use exact file paths from the Repository Structure listing.
 
 CRITICAL REQUIREMENTS:
 1. EXACT MATCH: The 'search' string must match the file content EXACTLY (including whitespace/indentation)
-2. VALID PYTHON: The 'replace' code must be syntactically valid
+2. {lang_label}: The 'replace' code must be syntactically valid
 3. MINIMAL CHANGE: Only change what's necessary to fix the bug
 4. PRESERVE STYLE: Match existing code style
 
@@ -271,6 +182,22 @@ TIPS:
             )
 
         return "\n".join(parts)
+
+    def _process_output(self, output: Patch, context: Context) -> str:
+        """Convert validated Patch to JSON, generating unified diff if possible."""
+        repo_root = self._resolve_repo_root(context)
+
+        if repo_root and output.edits:
+            unified_diff = self._create_unified_diff(output.edits, repo_root)
+            return json.dumps(
+                {
+                    "patch": unified_diff,
+                    "edits": [e.model_dump() for e in output.edits],
+                    "reasoning": output.reasoning,
+                }
+            )
+
+        return output.model_dump_json(indent=2)
 
     def _get_analysis(self, context: Context) -> Analysis | None:
         """Extract analysis from dependency artifacts."""
@@ -307,6 +234,32 @@ TIPS:
                     return artifact.content
         return None
 
+    def _list_repo_files(
+        self,
+        repo_root: str,
+        extensions: tuple[str, ...] = (".py",),
+        max_files: int = 80,
+    ) -> list[str]:
+        """Return source file paths relative to *repo_root*.
+
+        Walks the repository tree, filtering by *extensions* and skipping
+        common non-source directories (``__pycache__``, ``.git``, ``node_modules``,
+        ``vendor``, ``venv``).  Returns at most *max_files* entries sorted
+        alphabetically.
+        """
+        skip_dirs = {"__pycache__", ".git", "node_modules", "vendor", "venv", ".venv", ".tox"}
+        root = Path(repo_root)
+        found: list[str] = []
+        for dirpath, dirnames, filenames in root.walk():
+            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+            for fname in sorted(filenames):
+                if any(fname.endswith(ext) for ext in extensions):
+                    rel = (dirpath / fname).relative_to(root)
+                    found.append(str(rel))
+                    if len(found) >= max_files:
+                        return found
+        return found
+
     def _read_file(self, repo_root: str, file_path: str) -> str | None:
         """Read file content from repository."""
         full_path = Path(repo_root) / file_path
@@ -335,44 +288,6 @@ TIPS:
         except Exception as e:
             logger.warning(f"Could not read {file_path}: {e}")
             return None
-
-    def _process_response(self, content: str, repo_root: str | None) -> str:
-        """Parse response and convert to unified diff."""
-        # Extract JSON from response
-        json_match = re.search(r"```json?\s*([\s\S]*?)```", content)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            obj_match = re.search(r"\{[\s\S]*\}", content)
-            if obj_match:
-                json_str = obj_match.group(0)
-            else:
-                return json.dumps({"error": "No JSON found in response"})
-
-        try:
-            data = json.loads(json_str)
-
-            # Validate with Pydantic
-            patch = Patch.model_validate(data)
-
-            # Convert to unified diff if repo_root available
-            if repo_root and patch.edits:
-                unified_diff = self._create_unified_diff(patch.edits, repo_root)
-                return json.dumps(
-                    {
-                        "patch": unified_diff,
-                        "edits": [e.model_dump() for e in patch.edits],
-                        "reasoning": patch.reasoning,
-                    }
-                )
-
-            # Return raw edits if can't create diff
-            return patch.model_dump_json(indent=2)
-
-        except json.JSONDecodeError as e:
-            return json.dumps({"error": f"Invalid JSON: {e}"})
-        except Exception as e:
-            return json.dumps({"error": f"Processing failed: {e}"})
 
     def _create_unified_diff(
         self,

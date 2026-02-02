@@ -17,8 +17,11 @@ logger = logging.getLogger("swe_bench_pro")
 _DEFAULT_LOGGING_CONFIG = Path(__file__).parent / "logging.json"
 
 
-def _configure_logging(debug: bool) -> None:
+def _configure_logging(debug: bool, log_file: str | None = None) -> None:
     """Set up logging, suppressing noisy third-party loggers.
+
+    When *log_file* is set, detailed logs go to the file **and** a
+    concise summary stream is kept on stderr so the user sees progress.
 
     The suppression list is loaded from ``logging.json`` next to this
     file.  The file should contain a JSON object with a
@@ -31,10 +34,31 @@ def _configure_logging(debug: bool) -> None:
     If the file is missing, a built-in default list is used.
     """
     level = logging.DEBUG if debug else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    fmt_detailed = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
+    fmt_concise = logging.Formatter("%(levelname)s - %(message)s")
+
+    if log_file:
+        # File gets everything.
+        fh = logging.FileHandler(log_file, mode="a")
+        fh.setLevel(level)
+        fh.setFormatter(fmt_detailed)
+        root.addHandler(fh)
+        # Terminal gets INFO+ with a shorter format.
+        sh = logging.StreamHandler()
+        sh.setLevel(logging.INFO)
+        sh.setFormatter(fmt_concise)
+        root.addHandler(sh)
+    else:
+        # No file — detailed format to stderr.
+        sh = logging.StreamHandler()
+        sh.setLevel(level)
+        sh.setFormatter(fmt_detailed)
+        root.addHandler(sh)
 
     suppress: list[str] = []
     if _DEFAULT_LOGGING_CONFIG.exists():
@@ -61,11 +85,26 @@ def _configure_logging(debug: bool) -> None:
         logging.getLogger(name).setLevel(logging.WARNING)
 
 
+def _report(msg: str, *, warn: bool = False, fg: str | None = None) -> None:
+    """Log a message and echo it to the terminal.
+
+    Use for key user-facing messages that should always appear on the
+    terminal (with optional colour) *and* be recorded in the log file.
+    """
+    if warn:
+        logger.warning(msg)
+    else:
+        logger.info(msg)
+    styled = click.style(msg, fg=fg) if fg else msg
+    click.echo(styled)
+
+
 @click.group()
 @click.option("--debug", is_flag=True, help="Enable debug logging")
-def cli(debug: bool) -> None:
+@click.option("--log-file", default=None, type=click.Path(), help="Write logs to file instead of stderr")
+def cli(debug: bool, log_file: str | None) -> None:
     """SWE-Bench Pro evaluation CLI."""
-    _configure_logging(debug)
+    _configure_logging(debug, log_file=log_file)
 
 
 # =========================================================================
@@ -82,7 +121,7 @@ _ARM_MAP = {
 @cli.command()
 @click.option(
     "--model",
-    default="Qwen/Qwen2.5-Coder-32B-Instruct",
+    default="moonshotai/Kimi-K2-Instruct",
     help="HuggingFace model ID",
 )
 @click.option(
@@ -141,7 +180,7 @@ def experiment(
         click.echo(f"Parallel workers: {max_workers}")
 
     runner = SWEBenchProRunner(model=model, output_dir=output_dir)
-    runner.run_all(
+    results = runner.run_all(
         arms=arm_list,
         split=split,
         language=language,
@@ -149,6 +188,38 @@ def experiment(
         resume_from=output_dir if resume else None,
         max_workers=max_workers,
     )
+
+    # --- Summary & predictions ---
+    from .evaluation import prepare_predictions
+
+    total = len(results)
+    with_patch = sum(1 for r in results if r.patch_content)
+    errors = sum(1 for r in results if r.workflow_status == "error")
+
+    _report(
+        f"Done: {total} runs, {with_patch} with patches, "
+        f"{total - with_patch - errors} empty, {errors} errors",
+        fg="green" if with_patch > 0 else "yellow",
+    )
+
+    pred_files = prepare_predictions(results, output_dir)
+
+    if with_patch > 0 and pred_files:
+        pred_dir = Path(output_dir) / "predictions"
+        _report(f"Predictions written to {pred_dir}/")
+        for arm, path in pred_files.items():
+            click.echo(f"  {arm}: {path}")
+        eval_cmd = (
+            "uv run python -m examples.swe_bench_pro.demo evaluate "
+            f"--predictions-dir {pred_dir}"
+        )
+        _report(f"To evaluate, run:\n  {eval_cmd}")
+    else:
+        _report(
+            "No predictions to evaluate (all patches empty or errored).",
+            warn=True,
+            fg="yellow",
+        )
 
 
 # =========================================================================

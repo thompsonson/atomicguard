@@ -46,6 +46,32 @@ logger = logging.getLogger("swe_bench_pro.experiment")
 _ABLATION_DIR = Path(__file__).parent.parent / "swe_bench_ablation"
 _WORKFLOW_DIR = _ABLATION_DIR / "workflows"
 
+_SKIP_DIRS = {"__pycache__", ".git", "node_modules", "vendor", "venv", ".venv", ".tox"}
+
+
+def _list_repo_files(
+    repo_root: str,
+    extensions: tuple[str, ...] = (".py",),
+    max_files: int = 80,
+) -> list[str]:
+    """Return source file paths relative to *repo_root*.
+
+    Walks the repository tree, filtering by *extensions* and skipping
+    common non-source directories.  Returns at most *max_files* entries
+    sorted alphabetically.
+    """
+    root = Path(repo_root)
+    found: list[str] = []
+    for dirpath, dirnames, filenames in root.walk():
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        for fname in sorted(filenames):
+            if any(fname.endswith(ext) for ext in extensions):
+                rel = (dirpath / fname).relative_to(root)
+                found.append(str(rel))
+                if len(found) >= max_files:
+                    return found
+    return found
+
 
 # =========================================================================
 # Workflow construction helpers
@@ -165,6 +191,11 @@ def build_workflow(
             "base_url": base_url,
             "api_key": api_key,
         }
+        # Patch generators need repo_root to produce unified diffs.
+        if repo_root and issubclass(gen_cls, PatchGenerator):
+            gen_kwargs["repo_root"] = repo_root
+            gen_kwargs["code_block_tag"] = lang_config.code_block_tag
+            gen_kwargs["valid_code_label"] = lang_config.valid_code_label
         # Multi-language subclasses need the language config.
         if gen_cls in (MultiLangPatchGenerator, MultiLangTestGenerator):
             gen_kwargs["language_config"] = lang_config
@@ -210,8 +241,8 @@ class SWEBenchProRunner:
 
     def __init__(
         self,
-        model: str = "Qwen/Qwen2.5-Coder-32B-Instruct",
-        base_url: str = "https://router.huggingface.co/v1",
+        model: str = "moonshotai/Kimi-K2-Instruct",
+        base_url: str = "",
         api_key: str | None = None,
         output_dir: str = "output/swe_bench_pro",
         clone_dir: str | None = None,
@@ -262,7 +293,19 @@ class SWEBenchProRunner:
                 api_key=self._api_key,
             )
 
-            result = workflow.execute(instance.problem_statement)
+            repo_files = _list_repo_files(
+                repo_root, extensions=lang_config.file_extensions
+            )
+            specification = instance.problem_statement
+            if repo_files:
+                listing = "\n".join(repo_files)
+                specification += (
+                    f"\n\n## Repository Structure\n"
+                    f"Source files in the repository (use these exact paths):\n"
+                    f"```\n{listing}\n```"
+                )
+
+            result = workflow.execute(specification)
             wall_time = time.time() - start_time
 
             patch_content = ""
@@ -279,9 +322,19 @@ class SWEBenchProRunner:
                     try:
                         data = json.loads(artifact.content)
                         patch_content = data.get("patch", "")
-                        if not patch_content:
+                        if "patch" not in data:
                             logger.warning(
-                                "Artifact %s for %s parsed as JSON but has no 'patch' key",
+                                "Artifact %s for %s has no 'patch' key "
+                                "(keys: %s)",
+                                step_id,
+                                instance.instance_id,
+                                ", ".join(data.keys()),
+                            )
+                        elif not patch_content:
+                            logger.warning(
+                                "Artifact %s for %s has empty 'patch' "
+                                "(files not found in repo — LLM likely used "
+                                "wrong file paths in edits)",
                                 step_id,
                                 instance.instance_id,
                             )
