@@ -61,9 +61,26 @@ def load_swe_bench_pro(
 
     ds = load_dataset("ScaleAI/SWE-bench_Pro", split=split)
 
+    _REQUIRED_FIELDS = ("instance_id", "repo", "base_commit", "problem_statement")
+
     instances: list[SWEBenchProInstance] = []
+    skipped = 0
     for row in ds:
-        row_lang = row.get("repo_language", "")
+        # Validate required fields are present and non-empty.
+        missing = [f for f in _REQUIRED_FIELDS if not row.get(f)]
+        if missing:
+            row_id = row.get("instance_id", "<unknown>")
+            logger.warning(
+                "Skipping instance %s: missing required fields %s", row_id, missing
+            )
+            skipped += 1
+            continue
+
+        row_lang = row.get("repo_language") or ""
+        if not row_lang:
+            logger.warning(
+                "Instance %s has no repo_language field", row["instance_id"]
+            )
 
         if language and row_lang.lower() != language.lower():
             continue
@@ -74,21 +91,23 @@ def load_swe_bench_pro(
         instances.append(
             SWEBenchProInstance(
                 instance_id=row["instance_id"],
-                repo=row.get("repo", ""),
-                base_commit=row.get("base_commit", ""),
-                problem_statement=row.get("problem_statement", ""),
-                patch=row.get("patch", ""),
-                test_patch=row.get("test_patch", ""),
+                repo=row["repo"],
+                base_commit=row["base_commit"],
+                problem_statement=row["problem_statement"],
+                patch=row.get("patch") or "",
+                test_patch=row.get("test_patch") or "",
                 fail_to_pass=fail_to_pass,
                 pass_to_pass=pass_to_pass,
                 repo_language=row_lang,
-                requirements=row.get("requirements", "") or "",
-                interface=row.get("interface", "") or "",
+                requirements=row.get("requirements") or "",
+                interface=row.get("interface") or "",
             )
         )
 
         if max_instances and len(instances) >= max_instances:
             break
 
+    if skipped:
+        logger.warning("Skipped %d instances due to missing required fields", skipped)
     logger.info("Loaded %d instances", len(instances))
     return instances

@@ -32,9 +32,9 @@ class TestLanguageConfigs:
     def test_python_has_syntax_checker(self):
         assert LANGUAGE_CONFIGS["python"].syntax_check_fn is not None
 
-    def test_get_unknown_falls_back_to_python(self):
-        cfg = get_language_config("rust")
-        assert cfg.name == "python"
+    def test_get_unknown_raises_value_error(self):
+        with pytest.raises(ValueError, match="Unsupported language"):
+            get_language_config("rust")
 
     @pytest.mark.parametrize("lang", ["python", "go", "javascript", "typescript"])
     def test_get_known_language(self, lang):

@@ -81,10 +81,12 @@ class MultiLangTestGenerator(TestGenerator):
 
         # Output format – language-adapted
         tag = self._lang.code_block_tag
-        fw_instructions = _FRAMEWORK_INSTRUCTIONS.get(
-            self._lang.name,
-            _FRAMEWORK_INSTRUCTIONS["python"],
-        )
+        if self._lang.name not in _FRAMEWORK_INSTRUCTIONS:
+            raise ValueError(
+                f"No test framework instructions for language {self._lang.name!r}. "
+                f"Supported: {', '.join(sorted(_FRAMEWORK_INSTRUCTIONS))}"
+            )
+        fw_instructions = _FRAMEWORK_INSTRUCTIONS[self._lang.name]
 
         parts.append(
             f"""

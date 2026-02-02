@@ -88,12 +88,16 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
 def get_language_config(language: str) -> LanguageConfig:
     """Look up a language configuration by name.
 
-    Falls back to Python if the language is unknown.
+    Raises:
+        ValueError: If *language* is not one of the supported languages.
     """
     config = LANGUAGE_CONFIGS.get(language.lower())
     if config is None:
-        logger.warning("Unknown language %r, falling back to Python config", language)
-        config = LANGUAGE_CONFIGS["python"]
+        supported = ", ".join(sorted(LANGUAGE_CONFIGS))
+        raise ValueError(
+            f"Unsupported language {language!r}. "
+            f"Supported languages: {supported}"
+        )
     return config
 
 

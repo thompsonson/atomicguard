@@ -139,7 +139,9 @@ def build_workflow(
     rmax = config.get("rmax", 3)
     workflow = Workflow(artifact_dag=artifact_dag, rmax=rmax)
 
-    action_pairs = config.get("action_pairs", {})
+    action_pairs = config.get("action_pairs")
+    if not action_pairs:
+        raise ValueError("Workflow config has no 'action_pairs' section")
     sorted_pairs = _topological_sort(action_pairs)
 
     for ap_id in sorted_pairs:
@@ -269,8 +271,21 @@ class SWEBenchProRunner:
                 if "patch" in step_id or "fix" in step_id or "singleshot" in step_id:
                     try:
                         data = json.loads(artifact.content)
-                        patch_content = data.get("patch", artifact.content)
-                    except (json.JSONDecodeError, TypeError):
+                        patch_content = data.get("patch", "")
+                        if not patch_content:
+                            logger.warning(
+                                "Artifact %s for %s parsed as JSON but has no 'patch' key",
+                                step_id,
+                                instance.instance_id,
+                            )
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(
+                            "Artifact %s for %s is not valid JSON (%s), "
+                            "using raw content as patch",
+                            step_id,
+                            instance.instance_id,
+                            e,
+                        )
                         patch_content = artifact.content
 
             return ArmResult(

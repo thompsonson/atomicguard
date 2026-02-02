@@ -112,8 +112,10 @@ def prepare_predictions(
 
     for arm, arm_results in by_arm.items():
         predictions = []
+        skipped: list[str] = []
         for r in arm_results:
             if r.workflow_status != "success" or not r.patch_content:
+                skipped.append(r.instance_id)
                 continue
             predictions.append(
                 {
@@ -123,13 +125,22 @@ def prepare_predictions(
                 }
             )
 
+        if skipped:
+            logger.warning(
+                "arm=%s: skipped %d instances with no successful patch: %s",
+                arm,
+                len(skipped),
+                ", ".join(skipped),
+            )
+
         pred_file = out_path / f"{arm}.json"
         pred_file.write_text(json.dumps(predictions, indent=2))
         prediction_files[arm] = pred_file
 
         logger.info(
-            "Wrote %d predictions for arm=%s to %s",
+            "Wrote %d/%d predictions for arm=%s to %s",
             len(predictions),
+            len(arm_results),
             arm,
             pred_file,
         )
