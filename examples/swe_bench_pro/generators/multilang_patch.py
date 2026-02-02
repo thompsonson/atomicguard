@@ -38,7 +38,6 @@ class MultiLangPatchGenerator(PatchGenerator):
 
         The structure mirrors the parent class but substitutes:
         * ``python`` code fences → ``self._lang.code_block_tag``
-        * ``VALID PYTHON`` → ``self._lang.valid_code_label``
         * File extension filtering for context snippets
         """
         repo_root = self._resolve_repo_root(context)
@@ -116,41 +115,6 @@ class MultiLangPatchGenerator(PatchGenerator):
         # Constraints
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
-
-        # Output format – language-adapted
-        lang_label = self._lang.valid_code_label
-        parts.append(
-            f"""
-
-## Output Format
-Return a JSON object with search-replace edits:
-```json
-{{
-  "edits": [
-    {{
-      "file": "src/module/file",
-      "search": "exact code to find\\nincluding multiple lines",
-      "replace": "new code to replace with\\nincluding multiple lines"
-    }}
-  ],
-  "reasoning": "Brief explanation of the fix"
-}}
-```
-
-NOTE: Use exact file paths from the Repository Structure listing.
-
-CRITICAL REQUIREMENTS:
-1. EXACT MATCH: The 'search' string must match the file content EXACTLY (including whitespace/indentation)
-2. {lang_label}: The 'replace' code must be syntactically valid
-3. MINIMAL CHANGE: Only change what's necessary to fix the bug
-4. PRESERVE STYLE: Match existing code style
-
-TIPS:
-- Include enough surrounding context in 'search' to ensure uniqueness
-- Copy the exact indentation from the file
-- Include 1-2 lines before/after your target if the match is ambiguous
-"""
-        )
 
         # Feedback on retry
         if context.feedback_history and template:

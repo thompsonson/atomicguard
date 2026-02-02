@@ -22,7 +22,6 @@ class LanguageConfig:
     code_block_tag: str
     file_extensions: tuple[str, ...]
     test_framework: str
-    valid_code_label: str
     test_function_pattern: str
     syntax_check_fn: Callable[[str], tuple[bool, str]] | None = None
 
@@ -51,7 +50,6 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         code_block_tag="python",
         file_extensions=(".py",),
         test_framework="pytest",
-        valid_code_label="VALID PYTHON",
         test_function_pattern=r"(def test_|class Test)",
         syntax_check_fn=_check_python_syntax,
     ),
@@ -60,7 +58,6 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         code_block_tag="go",
         file_extensions=(".go",),
         test_framework="go test",
-        valid_code_label="VALID GO",
         test_function_pattern=r"func Test\w+",
         syntax_check_fn=_check_basic_braces,
     ),
@@ -69,7 +66,6 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         code_block_tag="javascript",
         file_extensions=(".js", ".jsx", ".mjs"),
         test_framework="jest/mocha",
-        valid_code_label="VALID JAVASCRIPT",
         test_function_pattern=r"(describe\(|it\(|test\()",
         syntax_check_fn=_check_basic_braces,
     ),
@@ -78,7 +74,6 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
         code_block_tag="typescript",
         file_extensions=(".ts", ".tsx"),
         test_framework="jest/mocha",
-        valid_code_label="VALID TYPESCRIPT",
         test_function_pattern=r"(describe\(|it\(|test\()",
         syntax_check_fn=_check_basic_braces,
     ),

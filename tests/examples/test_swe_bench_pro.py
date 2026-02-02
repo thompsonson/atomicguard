@@ -1200,12 +1200,12 @@ class TestPatchGuardEmptyDiff:
 
 
 # =========================================================================
-# PatchGenerator – code_block_tag / valid_code_label params
+# PatchGenerator – code_block_tag param
 # =========================================================================
 
 
 class TestPatchGeneratorLanguageParams:
-    """Verify configurable code_block_tag and valid_code_label."""
+    """Verify configurable code_block_tag."""
 
     def _make_gen(self, **kwargs):
         from examples.swe_bench_ablation.generators import PatchGenerator
@@ -1223,25 +1223,10 @@ class TestPatchGeneratorLanguageParams:
     def test_default_code_block_tag_is_python(self):
         gen = self._make_gen()
         assert gen._code_block_tag == "python"
-        assert gen._valid_code_label == "VALID PYTHON"
 
     def test_custom_code_block_tag(self):
         gen = self._make_gen(code_block_tag="go")
-        ctx = self._make_context()
-        prompt = gen._build_prompt(ctx, None)
-        # The output format section should not contain ```python
-        assert "```go" not in prompt or "```python" not in prompt
-        # Verify the tag is used (in the output format JSON example, the
-        # code fence is ```json, not the language tag — but if we had file
-        # content it would use the tag).  At minimum, verify it's stored.
         assert gen._code_block_tag == "go"
-
-    def test_custom_valid_code_label(self):
-        gen = self._make_gen(valid_code_label="VALID GO")
-        ctx = self._make_context()
-        prompt = gen._build_prompt(ctx, None)
-        assert "VALID GO" in prompt
-        assert "VALID PYTHON" not in prompt
 
 
 # =========================================================================

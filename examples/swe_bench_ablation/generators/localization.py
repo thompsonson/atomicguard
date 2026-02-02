@@ -48,29 +48,6 @@ class LocalizationGenerator(PydanticAIGenerator[Localization]):
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
 
-        # Output format instruction
-        parts.append(
-            """
-
-## Output Format
-Return a JSON object with this structure:
-```json
-{
-  "files": ["path/to/file1.py", "path/to/file2.py"],
-  "functions": [
-    {"name": "function_name", "file": "path/to/file.py", "line": null}
-  ],
-  "reasoning": "Brief explanation of why these locations were identified"
-}
-```
-
-IMPORTANT:
-- Maximum 5 files
-- File paths should be relative to repository root
-- Function line numbers can be null if unknown
-"""
-        )
-
         # Add feedback if retry
         if context.feedback_history and template:
             latest_feedback = context.feedback_history[-1][1]

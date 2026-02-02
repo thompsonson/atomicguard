@@ -46,29 +46,6 @@ class AnalysisGenerator(PydanticAIGenerator[Analysis]):
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
 
-        parts.append(
-            """
-
-## Output Format
-Return a JSON object with this structure:
-```json
-{
-  "bug_type": "logic|type_error|off_by_one|null_reference|api_misuse|missing_check|wrong_return|concurrency|performance|other",
-  "root_cause_hypothesis": "Detailed explanation of the likely root cause",
-  "affected_components": ["module.submodule", "class.method"],
-  "files": ["path/to/file1.py", "path/to/file2.py"],
-  "fix_approach": "Detailed description of how to fix the bug",
-  "confidence": "low|medium|high"
-}
-```
-
-IMPORTANT:
-- Identify at least one likely file
-- Provide a specific, actionable root cause hypothesis
-- The fix approach should be concrete enough to guide patch generation
-"""
-        )
-
         if context.feedback_history and template:
             latest_feedback = context.feedback_history[-1][1]
             parts.append(

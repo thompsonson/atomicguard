@@ -195,7 +195,6 @@ def build_workflow(
         if repo_root and issubclass(gen_cls, PatchGenerator):
             gen_kwargs["repo_root"] = repo_root
             gen_kwargs["code_block_tag"] = lang_config.code_block_tag
-            gen_kwargs["valid_code_label"] = lang_config.valid_code_label
         # Multi-language subclasses need the language config.
         if gen_cls in (MultiLangPatchGenerator, MultiLangTestGenerator):
             gen_kwargs["language_config"] = lang_config

@@ -37,7 +37,6 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         max_context_lines: int = 100,
         repo_root: str | None = None,
         code_block_tag: str = "python",
-        valid_code_label: str = "VALID PYTHON",
         **kwargs: Any,
     ):
         kwargs.setdefault("temperature", 0.3)
@@ -46,7 +45,6 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         self._max_context_lines = max_context_lines
         self._repo_root = repo_root
         self._code_block_tag = code_block_tag
-        self._valid_code_label = valid_code_label
 
     def _resolve_repo_root(self, context: Context) -> str | None:
         """Resolve repo_root from context metadata or constructor fallback."""
@@ -138,41 +136,6 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         # Constraints from template
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
-
-        # Output format instruction
-        lang_label = self._valid_code_label
-        parts.append(
-            f"""
-
-## Output Format
-Return a JSON object with search-replace edits:
-```json
-{{
-  "edits": [
-    {{
-      "file": "src/module/file.py",
-      "search": "exact code to find\\nincluding multiple lines",
-      "replace": "new code to replace with\\nincluding multiple lines"
-    }}
-  ],
-  "reasoning": "Brief explanation of the fix"
-}}
-```
-
-NOTE: Use exact file paths from the Repository Structure listing.
-
-CRITICAL REQUIREMENTS:
-1. EXACT MATCH: The 'search' string must match the file content EXACTLY (including whitespace/indentation)
-2. {lang_label}: The 'replace' code must be syntactically valid
-3. MINIMAL CHANGE: Only change what's necessary to fix the bug
-4. PRESERVE STYLE: Match existing code style
-
-TIPS:
-- Include enough surrounding context in 'search' to ensure uniqueness
-- Copy the exact indentation from the file
-- Include 1-2 lines before/after your target if the match is ambiguous
-"""
-        )
 
         # Add feedback if retry
         if context.feedback_history and template:
