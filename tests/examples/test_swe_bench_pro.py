@@ -5,6 +5,7 @@ evaluation helpers.  No network, Docker, or HuggingFace access required.
 """
 
 import json
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -301,6 +302,69 @@ class TestLoadEvalResults:
         resolved = load_evaluation_results(str(tmp_path), write_logs=False)
         assert resolved == {}
 
+    def test_dict_value_with_resolved_key(self, tmp_path):
+        from examples.swe_bench_pro.evaluation import load_evaluation_results
+
+        out = tmp_path / "eval_output"
+        out.mkdir()
+        data = {"repo__1": {"resolved": True, "extra": "info"}}
+        (out / "eval_results.json").write_text(json.dumps(data))
+
+        resolved = load_evaluation_results(str(tmp_path), write_logs=False)
+        assert resolved == {"repo__1": True}
+
+    def test_dict_value_missing_resolved_key_raises(self, tmp_path):
+        from examples.swe_bench_pro.evaluation import load_evaluation_results
+
+        out = tmp_path / "eval_output"
+        out.mkdir()
+        data = {"repo__1": {"status": "ok"}}
+        (out / "eval_results.json").write_text(json.dumps(data))
+
+        with pytest.raises(KeyError, match="resolved"):
+            load_evaluation_results(str(tmp_path), write_logs=False)
+
+    def test_unexpected_value_type_raises(self, tmp_path):
+        from examples.swe_bench_pro.evaluation import load_evaluation_results
+
+        out = tmp_path / "eval_output"
+        out.mkdir()
+        data = {"repo__1": 42}
+        (out / "eval_results.json").write_text(json.dumps(data))
+
+        with pytest.raises(TypeError, match="Unexpected value type"):
+            load_evaluation_results(str(tmp_path), write_logs=False)
+
+    def test_non_dict_top_level_raises(self, tmp_path):
+        from examples.swe_bench_pro.evaluation import load_evaluation_results
+
+        out = tmp_path / "eval_output"
+        out.mkdir()
+        (out / "eval_results.json").write_text(json.dumps([1, 2, 3]))
+
+        with pytest.raises(ValueError, match="Expected dict"):
+            load_evaluation_results(str(tmp_path), write_logs=False)
+
+
+# =========================================================================
+# evaluation.py – ensure_eval_repo
+# =========================================================================
+
+
+class TestEnsureEvalRepo:
+    def test_update_path_raises_on_git_failure(self, tmp_path):
+        """When the repo dir exists but git commands fail, RuntimeError is raised."""
+        import subprocess
+
+        from examples.swe_bench_pro.evaluation import ensure_eval_repo
+
+        # Create a fake repo dir (not a real git repo)
+        repo_dir = tmp_path / "SWE-bench_Pro-os"
+        repo_dir.mkdir()
+
+        with pytest.raises(RuntimeError, match="Failed to update eval repo"):
+            ensure_eval_repo(cache_dir=str(tmp_path), commit="main")
+
 
 # =========================================================================
 # experiment_runner.py – build helpers
@@ -314,7 +378,13 @@ class TestWorkflowBuildHelpers:
         config = load_workflow_config("02_singleshot")
         assert "action_pairs" in config
 
-    def test_load_prompts(self):
+    def test_load_workflow_config_missing_raises(self):
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        with pytest.raises(FileNotFoundError, match="Workflow not found"):
+            load_workflow_config("nonexistent_workflow_99")
+
+    def test_load_prompts_exists(self):
         from examples.swe_bench_pro.experiment_runner import load_prompts
 
         prompts = load_prompts()
@@ -399,3 +469,50 @@ class TestSWEBenchProInstance:
         assert inst.interface == ""
         assert inst.fail_to_pass == []
         assert inst.pass_to_pass == []
+
+
+# =========================================================================
+# generators/multilang_test.py – _extract_code
+# =========================================================================
+
+
+class TestExtractCode:
+    def _make_generator(self, lang: str = "go"):
+        from examples.swe_bench_pro.generators.multilang_test import (
+            MultiLangTestGenerator,
+        )
+
+        return MultiLangTestGenerator(
+            language_config=get_language_config(lang),
+            model="test",
+            base_url="http://localhost",
+            api_key="test",
+        )
+
+    def test_extracts_language_specific_code_fence(self):
+        gen = self._make_generator("go")
+        content = 'Some text\n```go\nfunc TestFoo(t *testing.T) {}\n```\nMore text'
+        result = gen._extract_code(content)
+        assert "func TestFoo" in result
+
+    def test_extracts_generic_code_fence(self):
+        gen = self._make_generator("go")
+        content = 'Some text\n```\nfunc TestFoo(t *testing.T) {}\n```\nMore text'
+        result = gen._extract_code(content)
+        assert "func TestFoo" in result
+
+    def test_logs_warning_on_raw_pattern_match(self, caplog):
+        gen = self._make_generator("go")
+        content = 'func TestFoo(t *testing.T) { t.Log("hi") }'
+        with caplog.at_level(logging.WARNING, logger="swe_bench_pro.generators"):
+            result = gen._extract_code(content)
+        assert "func TestFoo" in result
+        assert "No code fence" in caplog.text
+
+    def test_logs_warning_on_no_extraction(self, caplog):
+        gen = self._make_generator("go")
+        content = "This is just some random text with no code."
+        with caplog.at_level(logging.WARNING, logger="swe_bench_pro.generators"):
+            result = gen._extract_code(content)
+        assert "Could not extract" in result
+        assert "No code fences or test patterns found" in caplog.text

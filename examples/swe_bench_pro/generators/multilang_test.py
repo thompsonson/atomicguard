@@ -4,8 +4,11 @@ Subclasses :class:`TestGenerator` from the ablation example to replace
 pytest-specific prompt text with language-appropriate alternatives.
 """
 
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger("swe_bench_pro.generators")
 
 from atomicguard.domain.models import Context
 from atomicguard.domain.prompts import PromptTemplate
@@ -133,8 +136,19 @@ REQUIREMENTS:
         # If content looks like test code, return as-is
         pattern = self._lang.test_function_pattern
         if re.search(pattern, content):
+            logger.warning(
+                "No code fence found in LLM response for %s; "
+                "using raw content that matched test pattern",
+                self._lang.name,
+            )
             return content.strip()
 
+        logger.warning(
+            "Could not extract %s test code from LLM response (%d chars). "
+            "No code fences or test patterns found.",
+            self._lang.name,
+            len(content),
+        )
         return (
             f"// Could not extract test code from response\n"
             f"// Raw: {content[:500]}"

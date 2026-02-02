@@ -46,18 +46,25 @@ def ensure_eval_repo(
 
     if repo_dir.exists():
         logger.info("Updating eval repo at %s", repo_dir)
-        subprocess.run(
-            ["git", "fetch", "origin"],
-            cwd=str(repo_dir),
-            capture_output=True,
-            timeout=120,
-        )
-        subprocess.run(
-            ["git", "checkout", commit],
-            cwd=str(repo_dir),
-            capture_output=True,
-            timeout=30,
-        )
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin"],
+                cwd=str(repo_dir),
+                capture_output=True,
+                timeout=120,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "checkout", commit],
+                cwd=str(repo_dir),
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"Failed to update eval repo at {repo_dir}: {e.stderr}"
+            ) from e
     else:
         cache_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Cloning eval repo to %s", repo_dir)
@@ -264,19 +271,41 @@ def load_evaluation_results(
     resolved: dict[str, bool] = {}
 
     # The eval script writes to eval_output/eval_results.json
-    for candidate in [
+    candidates = [
         results_dir / "eval_output" / "eval_results.json",
         results_dir / "eval_results.json",
-    ]:
+    ]
+    found = False
+    for candidate in candidates:
         if candidate.exists():
+            found = True
             data = json.loads(candidate.read_text())
-            if isinstance(data, dict):
-                for iid, val in data.items():
-                    if isinstance(val, bool):
-                        resolved[iid] = val
-                    elif isinstance(val, dict):
-                        resolved[iid] = val.get("resolved", False)
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"Expected dict in {candidate}, got {type(data).__name__}"
+                )
+            for iid, val in data.items():
+                if isinstance(val, bool):
+                    resolved[iid] = val
+                elif isinstance(val, dict):
+                    if "resolved" not in val:
+                        raise KeyError(
+                            f"Instance {iid!r} in {candidate} has no 'resolved' key. "
+                            f"Available keys: {sorted(val)}"
+                        )
+                    resolved[iid] = val["resolved"]
+                else:
+                    raise TypeError(
+                        f"Unexpected value type for {iid!r}: {type(val).__name__}"
+                    )
             break
+
+    if not found:
+        logger.warning(
+            "No eval_results.json found in %s (searched: %s)",
+            results_dir,
+            ", ".join(str(c) for c in candidates),
+        )
 
     logger.info("Loaded %d evaluation results", len(resolved))
 

@@ -76,14 +76,20 @@ def experiment(
     """Run workflow arms across SWE-Bench Pro instances."""
     from .experiment_runner import SWEBenchProRunner
 
-    arm_list = [
-        _ARM_MAP[a.strip()]
-        for a in arms.split(",")
-        if a.strip() in _ARM_MAP
-    ]
-    if not arm_list:
-        click.echo(click.style("No valid arms specified", fg="red"))
-        return
+    raw_arms = [a.strip() for a in arms.split(",") if a.strip()]
+    invalid = [a for a in raw_arms if a not in _ARM_MAP]
+    if invalid:
+        click.echo(
+            click.style(
+                f"Unknown arm name(s): {', '.join(invalid)}. "
+                f"Valid arms: {', '.join(sorted(_ARM_MAP))}",
+                fg="red",
+            ),
+            err=True,
+        )
+        raise SystemExit(1)
+
+    arm_list = [_ARM_MAP[a] for a in raw_arms]
 
     click.echo(f"Running SWE-Bench Pro experiment with model={model}")
     click.echo(f"Arms: {arm_list}")
@@ -141,8 +147,11 @@ def evaluate(
 
     pred_dir = Path(predictions_dir)
     if not pred_dir.exists():
-        click.echo(click.style(f"Predictions dir not found: {pred_dir}", fg="red"))
-        return
+        click.echo(
+            click.style(f"Predictions dir not found: {pred_dir}", fg="red"),
+            err=True,
+        )
+        raise SystemExit(1)
 
     # Ensure eval repo is available
     if eval_repo:
@@ -213,21 +222,22 @@ def visualize(results: str, resolved: str | None, output_dir: str) -> None:
     arm_results = load_results(results)
 
     if not arm_results:
-        click.echo(click.style("No results found", fg="red"))
-        return
+        click.echo(click.style("No results found", fg="red"), err=True)
+        raise SystemExit(1)
 
     click.echo(f"Loaded {len(arm_results)} results")
 
     resolved_map: dict[str, bool] | None = None
     if resolved:
         resolved_path = Path(resolved)
-        if resolved_path.exists():
-            resolved_map = json.loads(resolved_path.read_text())
-            click.echo(f"Loaded {len(resolved_map or {})} resolved entries")
-        else:
+        if not resolved_path.exists():
             click.echo(
-                click.style(f"Resolved file not found: {resolved}", fg="yellow")
+                click.style(f"Resolved file not found: {resolved}", fg="red"),
+                err=True,
             )
+            raise SystemExit(1)
+        resolved_map = json.loads(resolved_path.read_text())
+        click.echo(f"Loaded {len(resolved_map or {})} resolved entries")
 
     paths = generate_visualizations(arm_results, resolved_map, output_dir)
 

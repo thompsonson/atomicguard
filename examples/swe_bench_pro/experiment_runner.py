@@ -10,6 +10,7 @@ import os
 import subprocess
 import tempfile
 import time
+import traceback
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -58,10 +59,14 @@ def load_workflow_config(variant: str) -> dict[str, Any]:
 
 
 def load_prompts() -> dict[str, PromptTemplate]:
-    """Load prompt templates from this example's ``prompts.json``."""
+    """Load prompt templates from this example's ``prompts.json``.
+
+    Raises:
+        FileNotFoundError: If ``prompts.json`` is missing.
+    """
     prompts_file = Path(__file__).parent / "prompts.json"
     if not prompts_file.exists():
-        return {}
+        raise FileNotFoundError(f"Prompts file not found: {prompts_file}")
     data = json.loads(prompts_file.read_text())
     return {
         key: PromptTemplate(
@@ -300,18 +305,20 @@ class SWEBenchProRunner:
 
         except Exception as e:
             wall_time = time.time() - start_time
+            tb = traceback.format_exc()
             logger.error(
-                "Error running arm=%s on instance=%s: %s",
+                "Error running arm=%s on instance=%s: %s\n%s",
                 arm,
                 instance.instance_id,
                 e,
+                tb,
             )
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
                 workflow_status="error",
                 wall_time_seconds=round(wall_time, 2),
-                error=str(e),
+                error=f"{e}\n{tb}",
             )
 
     # -----------------------------------------------------------------
@@ -399,7 +406,12 @@ class SWEBenchProRunner:
     # -----------------------------------------------------------------
 
     def _prepare_repo(self, instance: SWEBenchProInstance) -> str:
-        """Clone the repository and check out ``base_commit``."""
+        """Clone the repository and check out ``base_commit``.
+
+        Raises:
+            RuntimeError: If any git operation fails, with details about
+                the repo, commit, and stderr from the failed command.
+        """
         if self._clone_dir:
             base_dir = self._clone_dir
             base_dir.mkdir(parents=True, exist_ok=True)
@@ -407,46 +419,46 @@ class SWEBenchProRunner:
             base_dir = Path(tempfile.mkdtemp(prefix="swe_pro_"))
 
         repo_dir = base_dir / instance.instance_id.replace("/", "__")
+        repo_url = f"https://github.com/{instance.repo}.git"
+
+        def _run_git(args: list[str], *, timeout: int = 60) -> None:
+            """Run a git command, raising *RuntimeError* on failure."""
+            try:
+                subprocess.run(
+                    args,
+                    cwd=str(repo_dir) if repo_dir.exists() else None,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    check=True,
+                )
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(
+                    f"Git command failed for {instance.instance_id} "
+                    f"(repo={instance.repo}, commit={instance.base_commit}): "
+                    f"{' '.join(args)}\nstderr: {e.stderr}"
+                ) from e
+            except subprocess.TimeoutExpired as e:
+                raise RuntimeError(
+                    f"Git command timed out after {timeout}s for "
+                    f"{instance.instance_id}: {' '.join(args)}"
+                ) from e
 
         if repo_dir.exists():
             logger.info("Resetting existing repo: %s", repo_dir)
-            subprocess.run(
-                ["git", "checkout", "-f", instance.base_commit],
-                cwd=str(repo_dir),
-                capture_output=True,
-                timeout=60,
-                check=True,
-            )
-            subprocess.run(
-                ["git", "clean", "-fdx"],
-                cwd=str(repo_dir),
-                capture_output=True,
-                timeout=60,
-                check=True,
-            )
+            _run_git(["git", "checkout", "-f", instance.base_commit])
+            _run_git(["git", "clean", "-fdx"])
         else:
-            repo_url = f"https://github.com/{instance.repo}.git"
             logger.info("Cloning %s to %s", repo_url, repo_dir)
-            subprocess.run(
+            _run_git(
                 ["git", "clone", "--depth=1", repo_url, str(repo_dir)],
-                capture_output=True,
                 timeout=300,
-                check=True,
             )
-            subprocess.run(
+            _run_git(
                 ["git", "fetch", "--depth=1", "origin", instance.base_commit],
-                cwd=str(repo_dir),
-                capture_output=True,
                 timeout=120,
-                check=True,
             )
-            subprocess.run(
-                ["git", "checkout", instance.base_commit],
-                cwd=str(repo_dir),
-                capture_output=True,
-                timeout=60,
-                check=True,
-            )
+            _run_git(["git", "checkout", instance.base_commit])
 
         return str(repo_dir)
 
