@@ -19,8 +19,8 @@ For Python instances, the standard ablation generators and guards are used direc
 ## Prerequisites
 
 ```bash
-# Core dependencies
-pip install datasets click
+# Install the project with experiment and examples dependency groups
+uv sync --group examples --extra experiment
 
 # Set your HuggingFace token (for model inference)
 export HF_TOKEN="hf_your_token_here"
@@ -35,23 +35,23 @@ docker --version
 
 ```bash
 # Single arm, 5 instances, Python only
-python -m examples.swe_bench_pro.demo experiment \
+uv run python -m examples.swe_bench_pro.demo experiment \
     --arms singleshot \
     --language python \
     --max-instances 5
 
 # All arms, all languages, parallel execution
-python -m examples.swe_bench_pro.demo experiment \
+uv run python -m examples.swe_bench_pro.demo experiment \
     --arms singleshot,s1_direct,s1_tdd \
     --max-workers 4
 
 # Resume a previous run
-python -m examples.swe_bench_pro.demo experiment \
+uv run python -m examples.swe_bench_pro.demo experiment \
     --arms singleshot \
     --resume
 
 # Custom model
-python -m examples.swe_bench_pro.demo experiment \
+uv run python -m examples.swe_bench_pro.demo experiment \
     --model Qwen/Qwen2.5-Coder-32B-Instruct \
     --arms singleshot
 ```
@@ -60,11 +60,11 @@ python -m examples.swe_bench_pro.demo experiment \
 
 ```bash
 # Evaluate predictions from a previous experiment run
-python -m examples.swe_bench_pro.demo evaluate \
+uv run python -m examples.swe_bench_pro.demo evaluate \
     --predictions-dir output/swe_bench_pro/predictions
 
 # Use a pre-cloned eval repo
-python -m examples.swe_bench_pro.demo evaluate \
+uv run python -m examples.swe_bench_pro.demo evaluate \
     --predictions-dir output/swe_bench_pro/predictions \
     --eval-repo /path/to/SWE-bench_Pro-os
 ```
@@ -72,7 +72,7 @@ python -m examples.swe_bench_pro.demo evaluate \
 ### Visualize results
 
 ```bash
-python -m examples.swe_bench_pro.demo visualize \
+uv run python -m examples.swe_bench_pro.demo visualize \
     --results output/swe_bench_pro/results.jsonl \
     --resolved output/swe_bench_pro/predictions/eval_output/eval_results.json
 ```
@@ -80,7 +80,7 @@ python -m examples.swe_bench_pro.demo visualize \
 ### List dataset instances
 
 ```bash
-python -m examples.swe_bench_pro.demo list-instances
+uv run python -m examples.swe_bench_pro.demo list-instances
 ```
 
 ## Output
