@@ -6,6 +6,8 @@ evaluation helpers.  No network, Docker, or HuggingFace access required.
 
 import json
 import logging
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -658,3 +660,125 @@ class TestRunAllParallel:
         existing_results = [r for r in results if r.instance_id == "org__repo__0"]
         assert len(existing_results) == 1
         assert existing_results[0].patch_content == "existing"
+
+    @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
+    def test_concurrent_jsonl_writes_are_valid(self, mock_load, tmp_path):
+        """Force overlapping writes and verify every JSONL line is valid JSON."""
+        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        n_instances = 20
+        instances = self._make_instances(n_instances)
+        mock_load.return_value = instances
+
+        runner = SWEBenchProRunner(output_dir=str(tmp_path / "out"))
+        barrier = threading.Barrier(min(4, n_instances), timeout=5)
+
+        def slow_run_instance(instance, arm):
+            # Force threads to pile up, then release together.
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                pass
+            return ArmResult(
+                instance_id=instance.instance_id,
+                arm=arm,
+                workflow_status="success",
+                patch_content=f"diff for {instance.instance_id}",
+            )
+
+        runner.run_instance = slow_run_instance
+
+        results = runner.run_all(arms=["02_singleshot"], max_workers=4)
+
+        assert len(results) == n_instances
+
+        # Every line in the JSONL must be independently parseable JSON.
+        jsonl_path = tmp_path / "out" / "results.jsonl"
+        lines = jsonl_path.read_text().strip().split("\n")
+        assert len(lines) == n_instances
+        parsed_ids = set()
+        for i, line in enumerate(lines):
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                pytest.fail(f"JSONL line {i} is not valid JSON: {line!r}")
+            parsed_ids.add(obj["instance_id"])
+        # No duplicates, no missing.
+        assert parsed_ids == {f"org__repo__{i}" for i in range(n_instances)}
+
+    @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
+    def test_concurrent_results_no_duplicates(self, mock_load, tmp_path):
+        """With many workers, results list must have no duplicates or drops."""
+        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        n_instances = 15
+        arms = ["02_singleshot", "03_s1_direct"]
+        instances = self._make_instances(n_instances)
+        mock_load.return_value = instances
+
+        runner = SWEBenchProRunner(output_dir=str(tmp_path / "out"))
+
+        def fake_run_instance(instance, arm):
+            # Small jitter to provoke interleaving.
+            time.sleep(0.001)
+            return ArmResult(
+                instance_id=instance.instance_id,
+                arm=arm,
+                workflow_status="success",
+                patch_content="diff",
+            )
+
+        runner.run_instance = fake_run_instance
+
+        results = runner.run_all(arms=arms, max_workers=6)
+
+        expected_keys = {
+            (f"org__repo__{i}", arm) for i in range(n_instances) for arm in arms
+        }
+        actual_keys = {(r.instance_id, r.arm) for r in results}
+        assert actual_keys == expected_keys, (
+            f"Missing: {expected_keys - actual_keys}, "
+            f"Extra: {actual_keys - expected_keys}"
+        )
+
+    @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
+    def test_concurrent_progress_counter(self, mock_load, tmp_path, caplog):
+        """finished_count in log messages must reach total_runs exactly."""
+        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
+
+        n_instances = 8
+        instances = self._make_instances(n_instances)
+        mock_load.return_value = instances
+
+        runner = SWEBenchProRunner(output_dir=str(tmp_path / "out"))
+
+        def fake_run_instance(instance, arm):
+            time.sleep(0.001)
+            return ArmResult(
+                instance_id=instance.instance_id,
+                arm=arm,
+                workflow_status="success",
+                patch_content="diff",
+            )
+
+        runner.run_instance = fake_run_instance
+
+        with caplog.at_level(logging.INFO, logger="swe_bench_pro"):
+            results = runner.run_all(arms=["02_singleshot"], max_workers=4)
+
+        assert len(results) == n_instances
+
+        # Extract "Finished N/M" from log messages.
+        import re
+
+        finished_nums = []
+        for record in caplog.records:
+            m = re.search(r"Finished (\d+)/(\d+):", record.getMessage())
+            if m:
+                finished_nums.append(int(m.group(1)))
+                assert int(m.group(2)) == n_instances
+        # Must see all counts from 1..n_instances (order may vary).
+        assert sorted(finished_nums) == list(range(1, n_instances + 1))
