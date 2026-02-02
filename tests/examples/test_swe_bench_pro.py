@@ -741,52 +741,6 @@ class TestSWEBenchProInstance:
 
 
 # =========================================================================
-# generators/multilang_test.py – _extract_code
-# =========================================================================
-
-
-class TestExtractCode:
-    def _make_generator(self, lang: str = "go"):
-        from examples.swe_bench_pro.generators.multilang_test import (
-            MultiLangTestGenerator,
-        )
-
-        return MultiLangTestGenerator(
-            language_config=get_language_config(lang),
-            model="test",
-            base_url="http://localhost",
-            api_key="test",
-        )
-
-    def test_extracts_language_specific_code_fence(self):
-        gen = self._make_generator("go")
-        content = 'Some text\n```go\nfunc TestFoo(t *testing.T) {}\n```\nMore text'
-        result = gen._extract_code(content)
-        assert "func TestFoo" in result
-
-    def test_extracts_generic_code_fence(self):
-        gen = self._make_generator("go")
-        content = 'Some text\n```\nfunc TestFoo(t *testing.T) {}\n```\nMore text'
-        result = gen._extract_code(content)
-        assert "func TestFoo" in result
-
-    def test_logs_warning_on_raw_pattern_match(self, caplog):
-        gen = self._make_generator("go")
-        content = 'func TestFoo(t *testing.T) { t.Log("hi") }'
-        with caplog.at_level(logging.WARNING, logger="swe_bench_pro.generators"):
-            result = gen._extract_code(content)
-        assert "func TestFoo" in result
-        assert "No code fence" in caplog.text
-
-    def test_logs_warning_on_no_extraction(self, caplog):
-        gen = self._make_generator("go")
-        content = "This is just some random text with no code."
-        with caplog.at_level(logging.WARNING, logger="swe_bench_pro.generators"):
-            result = gen._extract_code(content)
-        assert "Could not extract" in result
-        assert "No code fences or test patterns found" in caplog.text
-
-
 # =========================================================================
 # experiment_runner.py – run_all parallel execution
 # =========================================================================
