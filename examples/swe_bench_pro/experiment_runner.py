@@ -17,10 +17,11 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from examples.swe_bench_ablation.experiment_runner import ArmResult
+
 from atomicguard import ActionPair, Workflow
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
-from examples.swe_bench_ablation.experiment_runner import ArmResult
 
 from .dataset import SWEBenchProInstance, load_swe_bench_pro
 from .generators import (
@@ -160,6 +161,7 @@ def build_workflow(
     artifact_dag: FilesystemArtifactDAG,
     repo_root: str | None = None,
     api_key: str = "ollama",
+    provider: str = "ollama",
 ) -> Workflow:
     """Build a :class:`Workflow` with language-aware registries.
 
@@ -190,6 +192,7 @@ def build_workflow(
             "model": model,
             "base_url": base_url,
             "api_key": api_key,
+            "provider": provider,
         }
         # Patch generators need repo_root to produce unified diffs.
         if repo_root and issubclass(gen_cls, PatchGenerator):
@@ -240,20 +243,22 @@ class SWEBenchProRunner:
 
     def __init__(
         self,
-        model: str = "moonshotai/Kimi-K2-Instruct",
+        model: str = "moonshotai/kimi-k2-0905",
+        provider: str = "ollama",
         base_url: str = "",
         api_key: str | None = None,
         output_dir: str = "output/swe_bench_pro",
         clone_dir: str | None = None,
     ):
         self._model = model
+        self._provider = provider
         self._base_url = base_url
-        self._api_key = api_key or os.environ.get("HF_TOKEN", "")
+        self._api_key = api_key or os.environ.get("LLM_API_KEY", "")
         self._output_dir = Path(output_dir)
         self._clone_dir = Path(clone_dir) if clone_dir else None
 
         if not self._api_key:
-            logger.warning("HF_TOKEN not set. API calls will fail.")
+            logger.warning("LLM_API_KEY not set. API calls will fail.")
 
     # -----------------------------------------------------------------
     # Single instance
@@ -275,9 +280,7 @@ class SWEBenchProRunner:
             config = load_workflow_config(arm)
             prompts = load_prompts()
 
-            dag_dir = (
-                self._output_dir / "artifact_dags" / instance.instance_id / arm
-            )
+            dag_dir = self._output_dir / "artifact_dags" / instance.instance_id / arm
             dag_dir.mkdir(parents=True, exist_ok=True)
             artifact_dag = FilesystemArtifactDAG(str(dag_dir))
 
@@ -290,6 +293,7 @@ class SWEBenchProRunner:
                 artifact_dag=artifact_dag,
                 repo_root=repo_root,
                 api_key=self._api_key,
+                provider=self._provider,
             )
 
             repo_files = _list_repo_files(
@@ -323,8 +327,7 @@ class SWEBenchProRunner:
                         patch_content = data.get("patch", "")
                         if "patch" not in data:
                             logger.warning(
-                                "Artifact %s for %s has no 'patch' key "
-                                "(keys: %s)",
+                                "Artifact %s for %s has no 'patch' key (keys: %s)",
                                 step_id,
                                 instance.instance_id,
                                 ", ".join(data.keys()),
@@ -469,9 +472,8 @@ class SWEBenchProRunner:
             )
             arm_result = self.run_instance(instance, arm)
 
-            with write_lock:
-                with open(results_path, "a") as f:
-                    f.write(json.dumps(asdict(arm_result)) + "\n")
+            with write_lock, open(results_path, "a") as f:
+                f.write(json.dumps(asdict(arm_result)) + "\n")
 
             with finished_lock:
                 finished_count += 1

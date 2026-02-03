@@ -12,16 +12,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from examples.swe_bench_pro.language import (
     LANGUAGE_CONFIGS,
-    LanguageConfig,
     _check_basic_braces,
     _check_python_syntax,
     detect_test_functions,
     get_language_config,
 )
-
 
 # =========================================================================
 # language.py
@@ -356,7 +353,6 @@ class TestLoadEvalResults:
 class TestEnsureEvalRepo:
     def test_update_path_raises_on_git_failure(self, tmp_path):
         """When the repo dir exists but git commands fail, RuntimeError is raised."""
-        import subprocess
 
         from examples.swe_bench_pro.evaluation import ensure_eval_repo
 
@@ -435,14 +431,14 @@ class TestWorkflowBuildHelpers:
 
     def test_build_workflow_passes_repo_root_to_patch_generator(self, tmp_path):
         """``build_workflow`` must inject ``repo_root`` into PatchGenerator instances."""
-        from atomicguard.infrastructure.persistence.filesystem import (
-            FilesystemArtifactDAG,
-        )
-
         from examples.swe_bench_pro.experiment_runner import (
             build_workflow,
             load_prompts,
             load_workflow_config,
+        )
+
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
         )
 
         config = load_workflow_config("02_singleshot")
@@ -512,10 +508,10 @@ class TestPatchGeneratorRepoRoot:
 
     def test_process_output_produces_patch_key_with_repo_root(self, tmp_path):
         """_process_output produces a 'patch' key when given a valid repo_root."""
-        from atomicguard.domain.models import AmbientEnvironment, Context
-
         from examples.swe_bench_ablation.generators import PatchGenerator
         from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+
+        from atomicguard.domain.models import AmbientEnvironment, Context
 
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -553,10 +549,10 @@ class TestPatchGeneratorRepoRoot:
 
     def test_process_output_without_repo_root_has_no_patch(self):
         """Without repo_root, _process_output returns raw edits (no 'patch' key)."""
-        from atomicguard.domain.models import AmbientEnvironment, Context
-
         from examples.swe_bench_ablation.generators import PatchGenerator
         from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+
+        from atomicguard.domain.models import AmbientEnvironment, Context
 
         gen = PatchGenerator(
             model="test",
@@ -598,7 +594,9 @@ class TestListRepoFiles:
         from examples.swe_bench_ablation.generators import PatchGenerator
 
         return PatchGenerator(
-            model="test", base_url="http://localhost", api_key="test",
+            model="test",
+            base_url="http://localhost",
+            api_key="test",
         )
 
     def test_finds_python_files(self, tmp_path):
@@ -853,9 +851,7 @@ class TestRunAllParallel:
         )
         from dataclasses import asdict
 
-        (out_dir / "results.jsonl").write_text(
-            json.dumps(asdict(existing)) + "\n"
-        )
+        (out_dir / "results.jsonl").write_text(json.dumps(asdict(existing)) + "\n")
 
         runner = SWEBenchProRunner(output_dir=str(out_dir))
 
@@ -1046,13 +1042,15 @@ class TestAnalysisGuardFileValidation:
         return _factory
 
     def _analysis_json(self, files: list[str]) -> str:
-        return json.dumps({
-            "bug_type": "logic",
-            "root_cause_hypothesis": "Something is wrong",
-            "fix_approach": "Fix it",
-            "files": files,
-            "confidence": "medium",
-        })
+        return json.dumps(
+            {
+                "bug_type": "logic",
+                "root_cause_hypothesis": "Something is wrong",
+                "fix_approach": "Fix it",
+                "files": files,
+                "confidence": "medium",
+            }
+        )
 
     def test_valid_files_with_repo_root(self, tmp_path, _make_artifact):
         from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
@@ -1166,12 +1164,7 @@ class TestPatchGuardEmptyDiff:
         from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
 
         patch = (
-            "--- a/file.py\n"
-            "+++ b/file.py\n"
-            "@@ -1,3 +1,3 @@\n"
-            " x = 1\n"
-            " y = 2\n"
-            " z = 4\n"
+            "--- a/file.py\n+++ b/file.py\n@@ -1,3 +1,3 @@\n x = 1\n y = 2\n z = 4\n"
         )
         guard = PatchGuard(require_git_apply=False, require_syntax_valid=False)
         art = _make_artifact(json.dumps({"patch": patch}))
@@ -1410,8 +1403,7 @@ class TestPatchGuardFileExistence:
         from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
 
         edits = [
-            {"file": f"missing_{i}.py", "search": "x", "replace": "y"}
-            for i in range(5)
+            {"file": f"missing_{i}.py", "search": "x", "replace": "y"} for i in range(5)
         ]
         guard = PatchGuard(
             require_git_apply=False,
@@ -1555,28 +1547,40 @@ class TestPydanticAIGeneratorBase:
     """Verify PydanticAIGenerator base class behaviour."""
 
     def test_ollama_provider_detection(self):
-        """Ollama URLs create an OllamaProvider."""
+        """Ollama provider creates an OllamaProvider-backed model."""
         from examples.swe_bench_ablation.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
             base_url="http://localhost:11434/v1",
             api_key="ollama",
+            provider="ollama",
         )
-        assert gen._model_name == "test"
-        assert gen._base_url == "http://localhost:11434/v1"
+        assert gen._agent.model.system == "ollama"
 
     def test_openai_provider_detection(self):
-        """Non-Ollama URLs create an OpenAIProvider."""
+        """OpenAI provider creates an OpenAIProvider-backed model."""
         from examples.swe_bench_ablation.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
             base_url="http://example.com/v1",
             api_key="sk-test",
+            provider="openai",
         )
-        assert gen._model_name == "test"
-        assert gen._base_url == "http://example.com/v1"
+        assert gen._agent.model.system == "openai"
+
+    def test_openrouter_provider_detection(self):
+        """OpenRouter provider creates an OpenRouterProvider-backed model."""
+        from examples.swe_bench_ablation.generators import AnalysisGenerator
+
+        gen = AnalysisGenerator(
+            model="test",
+            base_url="",
+            api_key="sk-or-test",
+            provider="openrouter",
+        )
+        assert gen._agent.model.system == "openrouter"
 
     def test_temperature_passthrough(self):
         """Temperature is stored and can be customised."""
@@ -1586,6 +1590,7 @@ class TestPydanticAIGeneratorBase:
             model="test",
             base_url="http://localhost:11434/v1",
             api_key="ollama",
+            provider="ollama",
             temperature=0.7,
         )
         assert gen._temperature == 0.7
@@ -1598,6 +1603,7 @@ class TestPydanticAIGeneratorBase:
             model="test",
             base_url="http://localhost:11434/v1",
             api_key="ollama",
+            provider="ollama",
         )
         assert gen._temperature == 0.2
 
@@ -1609,35 +1615,34 @@ class TestPydanticAIGeneratorBase:
             model="test",
             base_url="http://localhost",
             api_key="test",
+            provider="ollama",
         )
         assert gen._temperature == 0.3
 
     def test_huggingface_provider_detection(self):
-        """API keys starting with 'hf_' create a HuggingFaceModel."""
-        from pydantic_ai.models.huggingface import HuggingFaceModel
-
+        """Explicit huggingface provider creates a HuggingFaceModel."""
         from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from pydantic_ai.models.huggingface import HuggingFaceModel
 
         gen = AnalysisGenerator(
             model="Qwen/Qwen2.5-Coder-32B-Instruct",
             base_url="",
             api_key="hf_test123",
+            provider="huggingface",
         )
-        assert gen._model_name == "Qwen/Qwen2.5-Coder-32B-Instruct"
         assert isinstance(gen._agent.model, HuggingFaceModel)
 
-    def test_huggingface_base_url_detection(self):
-        """base_url containing 'huggingface' triggers HF provider path."""
-        from pydantic_ai.models.huggingface import HuggingFaceModel
-
+    def test_unknown_provider_raises(self):
+        """An unknown provider value raises ValueError."""
         from examples.swe_bench_ablation.generators import AnalysisGenerator
 
-        gen = AnalysisGenerator(
-            model="Qwen/Qwen2.5-Coder-32B-Instruct",
-            base_url="https://router.huggingface.co/v1",
-            api_key="hf_test456",
-        )
-        assert isinstance(gen._agent.model, HuggingFaceModel)
+        with pytest.raises(ValueError, match="Unknown provider"):
+            AnalysisGenerator(
+                model="test",
+                base_url="",
+                api_key="test",
+                provider="bedrock",
+            )
 
 
 # =========================================================================
@@ -1682,9 +1687,9 @@ class TestPatchGeneratorResolveRepoRoot:
     """Verify _resolve_repo_root resolves from context then constructor."""
 
     def test_context_metadata_takes_priority(self, tmp_path):
-        from atomicguard.domain.models import AmbientEnvironment, Context
-
         from examples.swe_bench_ablation.generators import PatchGenerator
+
+        from atomicguard.domain.models import AmbientEnvironment, Context
 
         gen = PatchGenerator(
             model="test",
@@ -1701,9 +1706,9 @@ class TestPatchGeneratorResolveRepoRoot:
         assert gen._resolve_repo_root(ctx) == str(tmp_path)
 
     def test_falls_back_to_constructor(self):
-        from atomicguard.domain.models import AmbientEnvironment, Context
-
         from examples.swe_bench_ablation.generators import PatchGenerator
+
+        from atomicguard.domain.models import AmbientEnvironment, Context
 
         gen = PatchGenerator(
             model="test",
@@ -1727,7 +1732,10 @@ class TestGenerateMethodHappyPath:
     """Verify the generate() method produces correct artifacts on success."""
 
     def _make_gen(self, cls_name="AnalysisGenerator", **kwargs):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator, PatchGenerator
+        from examples.swe_bench_ablation.generators import (
+            AnalysisGenerator,
+            PatchGenerator,
+        )
 
         cls = AnalysisGenerator if cls_name == "AnalysisGenerator" else PatchGenerator
         defaults = {
@@ -1756,8 +1764,9 @@ class TestGenerateMethodHappyPath:
         return mock_agent
 
     def test_generate_returns_artifact_on_success(self):
-        from atomicguard.domain.models import ArtifactStatus
         from examples.swe_bench_ablation.models import Analysis
+
+        from atomicguard.domain.models import ArtifactStatus
 
         gen = self._make_gen()
         gen._agent = self._mock_agent(
@@ -1778,9 +1787,9 @@ class TestGenerateMethodHappyPath:
         assert data["root_cause_hypothesis"] == "wrong branch"
 
     def test_generate_passes_prompt_and_system_to_agent(self):
-        from atomicguard.domain.models import ArtifactStatus
-        from atomicguard.domain.prompts import PromptTemplate
         from examples.swe_bench_ablation.models import Analysis
+
+        from atomicguard.domain.prompts import PromptTemplate
 
         gen = self._make_gen()
         mock_agent = self._mock_agent(
@@ -2051,7 +2060,9 @@ class TestFormatValidationError:
         gen = self._make_gen()
         # Build a mock ToolRetryError with a tool_retry that has content
         retry_part = MagicMock()
-        retry_part.content = [{"type": "missing", "loc": ["bug_type"], "msg": "Field required"}]
+        retry_part.content = [
+            {"type": "missing", "loc": ["bug_type"], "msg": "Field required"}
+        ]
         cause = ToolRetryError(retry_part)
         error = UnexpectedModelBehavior(
             "Exceeded maximum retries (0) for output validation"
@@ -2122,7 +2133,9 @@ class TestDependencyExtraction:
         from examples.swe_bench_ablation.generators import PatchGenerator
 
         return PatchGenerator(
-            model="test", base_url="http://localhost", api_key="test",
+            model="test",
+            base_url="http://localhost",
+            api_key="test",
         )
 
     def _make_context(self, deps, artifact_map):
@@ -2155,12 +2168,14 @@ class TestDependencyExtraction:
         from examples.swe_bench_ablation.models import Analysis
 
         gen = self._make_gen()
-        analysis_json = json.dumps({
-            "bug_type": "logic",
-            "root_cause_hypothesis": "wrong branch",
-            "files": ["f.py"],
-            "fix_approach": "fix branch",
-        })
+        analysis_json = json.dumps(
+            {
+                "bug_type": "logic",
+                "root_cause_hypothesis": "wrong branch",
+                "files": ["f.py"],
+                "fix_approach": "fix branch",
+            }
+        )
         ctx = self._make_context(
             deps=(("analysis", "a1"),),
             artifact_map={"a1": analysis_json},
@@ -2191,11 +2206,13 @@ class TestDependencyExtraction:
         from examples.swe_bench_ablation.models import Localization
 
         gen = self._make_gen()
-        loc_json = json.dumps({
-            "files": ["src/main.py"],
-            "functions": [{"name": "foo", "file": "src/main.py"}],
-            "reasoning": "because",
-        })
+        loc_json = json.dumps(
+            {
+                "files": ["src/main.py"],
+                "functions": [{"name": "foo", "file": "src/main.py"}],
+                "reasoning": "because",
+            }
+        )
         ctx = self._make_context(
             deps=(("localize", "l1"),),
             artifact_map={"l1": loc_json},
@@ -2259,7 +2276,9 @@ class TestCreateUnifiedDiffEdgeCases:
         from examples.swe_bench_ablation.generators import PatchGenerator
 
         return PatchGenerator(
-            model="test", base_url="http://localhost", api_key="test",
+            model="test",
+            base_url="http://localhost",
+            api_key="test",
         )
 
     def test_file_not_found_skipped(self, tmp_path):
@@ -2357,7 +2376,9 @@ class TestDefaultProcessOutput:
         from examples.swe_bench_ablation.models import Analysis
 
         gen = AnalysisGenerator(
-            model="test", base_url="http://localhost:11434/v1", api_key="ollama",
+            model="test",
+            base_url="http://localhost:11434/v1",
+            api_key="ollama",
         )
         output = Analysis(
             bug_type="logic",
@@ -2375,7 +2396,9 @@ class TestDefaultProcessOutput:
         from examples.swe_bench_ablation.models import Localization
 
         gen = LocalizationGenerator(
-            model="test", base_url="http://localhost:11434/v1", api_key="ollama",
+            model="test",
+            base_url="http://localhost:11434/v1",
+            api_key="ollama",
         )
         output = Localization(
             files=["src/main.py"],
@@ -2391,7 +2414,9 @@ class TestDefaultProcessOutput:
         from examples.swe_bench_ablation.models import Analysis
 
         gen = AnalysisGenerator(
-            model="test", base_url="http://localhost:11434/v1", api_key="ollama",
+            model="test",
+            base_url="http://localhost:11434/v1",
+            api_key="ollama",
         )
         output = Analysis(
             bug_type="logic",
@@ -2452,10 +2477,12 @@ class TestActionPairGeneratorErrorSkip:
         from atomicguard.domain.prompts import PromptTemplate
 
         error_msg = "Output validation failed: bad format"
-        artifact = self._make_artifact(metadata={
-            "generator_error": error_msg,
-            "generator_error_kind": "validation",
-        })
+        artifact = self._make_artifact(
+            metadata={
+                "generator_error": error_msg,
+                "generator_error_kind": "validation",
+            }
+        )
 
         mock_generator = MagicMock()
         mock_generator.generate.return_value = artifact
@@ -2512,10 +2539,12 @@ class TestActionPairGeneratorErrorSkip:
             "You must use the provided tool to structure your output.\n"
             "Raw response preview: Here is my analysis..."
         )
-        artifact = self._make_artifact(metadata={
-            "generator_error": error_msg,
-            "generator_error_kind": "validation",
-        })
+        artifact = self._make_artifact(
+            metadata={
+                "generator_error": error_msg,
+                "generator_error_kind": "validation",
+            }
+        )
 
         mock_generator = MagicMock()
         mock_generator.generate.return_value = artifact

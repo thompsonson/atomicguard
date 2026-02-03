@@ -40,7 +40,8 @@ class ExperimentRunner:
 
     def __init__(
         self,
-        model: str = "moonshotai/Kimi-K2-Instruct",
+        model: str = "moonshotai/kimi-k2-0905",
+        provider: str = "ollama",
         base_url: str = "",
         api_key: str | None = None,
         output_dir: str = "output/experiment_7_2",
@@ -49,20 +50,22 @@ class ExperimentRunner:
         """Initialize the experiment runner.
 
         Args:
-            model: HuggingFace model ID
-            base_url: HuggingFace Inference API URL
-            api_key: HuggingFace API token (defaults to HF_TOKEN env var)
+            model: Model ID
+            provider: LLM provider (ollama, openrouter, huggingface, openai)
+            base_url: API base URL
+            api_key: API key (defaults to LLM_API_KEY env var)
             output_dir: Directory for results output
             clone_dir: Directory for cloning repos (defaults to temp dir)
         """
         self._model = model
+        self._provider = provider
         self._base_url = base_url
-        self._api_key = api_key or os.environ.get("HF_TOKEN", "")
+        self._api_key = api_key or os.environ.get("LLM_API_KEY", "")
         self._output_dir = Path(output_dir)
         self._clone_dir = Path(clone_dir) if clone_dir else None
 
         if not self._api_key:
-            logger.warning("HF_TOKEN not set. API calls will fail.")
+            logger.warning("LLM_API_KEY not set. API calls will fail.")
 
     def run_instance(
         self,
@@ -103,6 +106,7 @@ class ExperimentRunner:
                 artifact_dag=artifact_dag,
                 repo_root=repo_root,
                 api_key=self._api_key,
+                provider=self._provider,
             )
 
             # Execute workflow with problem statement

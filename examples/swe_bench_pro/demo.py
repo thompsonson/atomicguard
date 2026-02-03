@@ -101,7 +101,12 @@ def _report(msg: str, *, warn: bool = False, fg: str | None = None) -> None:
 
 @click.group()
 @click.option("--debug", is_flag=True, help="Enable debug logging")
-@click.option("--log-file", default=None, type=click.Path(), help="Write logs to file instead of stderr")
+@click.option(
+    "--log-file",
+    default=None,
+    type=click.Path(),
+    help="Write logs to file instead of stderr",
+)
 def cli(debug: bool, log_file: str | None) -> None:
     """SWE-Bench Pro evaluation CLI."""
     _configure_logging(debug, log_file=log_file)
@@ -121,8 +126,23 @@ _ARM_MAP = {
 @cli.command()
 @click.option(
     "--model",
-    default="moonshotai/Kimi-K2-Instruct",
-    help="HuggingFace model ID",
+    default="moonshotai/kimi-k2-0905",
+    help="Model ID",
+)
+@click.option(
+    "--provider",
+    required=True,
+    help="LLM provider (ollama, openrouter, huggingface, openai)",
+)
+@click.option(
+    "--base-url",
+    default="",
+    help="API base URL (e.g. https://openrouter.ai/api/v1)",
+)
+@click.option(
+    "--api-key",
+    default=None,
+    help="API key (default: from LLM_API_KEY env var)",
 )
 @click.option(
     "--arms",
@@ -141,10 +161,15 @@ _ARM_MAP = {
 )
 @click.option("--split", default="test", help="Dataset split")
 @click.option("--max-instances", default=0, type=int, help="Max instances (0=all)")
-@click.option("--max-workers", default=1, type=int, help="Parallel workers (1=sequential)")
+@click.option(
+    "--max-workers", default=1, type=int, help="Parallel workers (1=sequential)"
+)
 @click.option("--resume", is_flag=True, help="Resume from existing results")
 def experiment(
     model: str,
+    provider: str,
+    base_url: str,
+    api_key: str | None,
     arms: str,
     language: str | None,
     output_dir: str,
@@ -179,7 +204,13 @@ def experiment(
     if max_workers > 1:
         click.echo(f"Parallel workers: {max_workers}")
 
-    runner = SWEBenchProRunner(model=model, output_dir=output_dir)
+    runner = SWEBenchProRunner(
+        model=model,
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        output_dir=output_dir,
+    )
     results = runner.run_all(
         arms=arm_list,
         split=split,
@@ -303,9 +334,7 @@ def evaluate(
                 )
             )
         else:
-            click.echo(
-                click.style(f"  {arm}: evaluation {result['status']}", fg="red")
-            )
+            click.echo(click.style(f"  {arm}: evaluation {result['status']}", fg="red"))
 
 
 # =========================================================================
@@ -331,7 +360,10 @@ def evaluate(
 )
 def visualize(results: str, resolved: str | None, output_dir: str) -> None:
     """Generate visualizations from experiment results."""
-    from examples.swe_bench_ablation.analysis import generate_visualizations, load_results
+    from examples.swe_bench_ablation.analysis import (
+        generate_visualizations,
+        load_results,
+    )
 
     click.echo(f"Loading results from {results}")
     arm_results = load_results(results)

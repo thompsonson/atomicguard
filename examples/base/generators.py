@@ -10,7 +10,6 @@ Design Decision (from docs/design/decisions/decisions.md):
 
 from __future__ import annotations
 
-import json
 import logging
 from abc import abstractmethod
 from datetime import UTC, datetime
@@ -63,6 +62,7 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
         model: str = "qwen2.5-coder:14b",
         base_url: str = "http://localhost:11434/v1",
         api_key: str = "ollama",
+        provider: str = "ollama",
         timeout: float = 180.0,
         temperature: float = 0.2,
         **kwargs: Any,
@@ -73,9 +73,11 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
             model: Model name (e.g., "qwen2.5-coder:14b" for Ollama,
                 "Qwen/Qwen2.5-Coder-32B-Instruct" for HuggingFace)
             base_url: API base URL (Ollama or OpenAI-compatible).
-                Ignored for HuggingFace — the provider handles routing.
-            api_key: API key (use "ollama" for local Ollama, "hf_..."
-                for HuggingFace Inference Providers)
+                Ignored for HuggingFace and OpenRouter — the provider
+                handles routing.
+            api_key: API key (use "ollama" for local Ollama)
+            provider: LLM provider identifier. One of "ollama",
+                "huggingface", "openrouter", "openai".
             timeout: Request timeout in seconds
             temperature: Sampling temperature for generation
             **kwargs: Additional config passed to subclasses
@@ -92,37 +94,8 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
         self._timeout = timeout
         self._temperature = temperature
 
-        # Create the PydanticAI model
-        # Determine provider: Ollama, HuggingFace, or generic OpenAI-compatible
-        if "ollama" in base_url.lower() or api_key == "ollama":
-            from pydantic_ai.models.openai import OpenAIChatModel
-            from pydantic_ai.providers.ollama import OllamaProvider
-
-            provider = OllamaProvider(base_url=base_url)
-            ai_model = OpenAIChatModel(
-                model_name=model,
-                provider=provider,
-            )
-        elif api_key.startswith("hf_") or "huggingface" in base_url.lower():
-            # HuggingFace Inference Providers — uses native AsyncInferenceClient
-            # which properly supports structured output with tool calling.
-            from pydantic_ai.models.huggingface import HuggingFaceModel
-            from pydantic_ai.providers.huggingface import HuggingFaceProvider
-
-            ai_model = HuggingFaceModel(
-                model,
-                provider=HuggingFaceProvider(api_key=api_key),
-            )
-        else:
-            # Generic OpenAI-compatible APIs
-            from pydantic_ai.models.openai import OpenAIChatModel
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-            ai_model = OpenAIChatModel(
-                model_name=model,
-                provider=provider,
-            )
+        # Create the PydanticAI model based on explicit provider selection
+        ai_model = self._create_model(provider, model, base_url, api_key)
 
         # Create Agent with retries=0 - AtomicGuard handles retries
         self._agent: Agent[None, OutputT] = Agent(
@@ -132,6 +105,68 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
         )
 
         self._attempt_counter = 0
+
+    @staticmethod
+    def _create_model(
+        provider: str,
+        model: str,
+        base_url: str,
+        api_key: str,
+    ) -> Any:
+        """Create a PydanticAI model for the given provider.
+
+        Args:
+            provider: One of "ollama", "huggingface", "openrouter", "openai".
+            model: Model name / identifier.
+            base_url: API base URL (used by ollama and openai).
+            api_key: API key.
+
+        Returns:
+            A PydanticAI model instance.
+
+        Raises:
+            ValueError: If *provider* is not recognised.
+        """
+        if provider == "ollama":
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.ollama import OllamaProvider
+
+            return OpenAIChatModel(
+                model_name=model,
+                provider=OllamaProvider(base_url=base_url),
+            )
+
+        if provider == "huggingface":
+            from pydantic_ai.models.huggingface import HuggingFaceModel
+            from pydantic_ai.providers.huggingface import HuggingFaceProvider
+
+            return HuggingFaceModel(
+                model,
+                provider=HuggingFaceProvider(api_key=api_key),
+            )
+
+        if provider == "openrouter":
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openrouter import OpenRouterProvider
+
+            return OpenAIChatModel(
+                model_name=model,
+                provider=OpenRouterProvider(api_key=api_key),
+            )
+
+        if provider == "openai":
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            return OpenAIChatModel(
+                model_name=model,
+                provider=OpenAIProvider(base_url=base_url, api_key=api_key),
+            )
+
+        raise ValueError(
+            f"Unknown provider: {provider!r}. "
+            f"Supported: ollama, huggingface, openrouter, openai"
+        )
 
     def generate(
         self,

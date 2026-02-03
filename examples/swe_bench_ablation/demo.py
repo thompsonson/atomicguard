@@ -106,6 +106,7 @@ def build_workflow(
     artifact_dag: FilesystemArtifactDAG,
     repo_root: str | None = None,
     api_key: str = "ollama",
+    provider: str = "ollama",
 ) -> Workflow:
     """Build a Workflow from configuration.
 
@@ -116,6 +117,7 @@ def build_workflow(
         base_url: Ollama API base URL
         artifact_dag: Persistent artifact storage
         repo_root: Repository root for file validation
+        provider: LLM provider identifier
 
     Returns:
         Configured Workflow instance
@@ -151,6 +153,7 @@ def build_workflow(
             "model": model,
             "base_url": base_url,
             "api_key": api_key,
+            "provider": provider,
         }
         # Patch generators need repo_root to produce unified diffs.
         if repo_root and issubclass(gen_cls, PatchGenerator):
@@ -230,12 +233,18 @@ def cli(debug: bool) -> None:
     "--problem", required=True, help="Problem ID (e.g., astropy__astropy-12907)"
 )
 @click.option("--model", default="qwen2.5-coder:14b", help="LLM model")
+@click.option(
+    "--provider",
+    default="ollama",
+    help="LLM provider (ollama, openrouter, huggingface, openai)",
+)
 @click.option("--host", default="http://localhost:11434/v1", help="Ollama API URL")
 @click.option("--repo-root", default=None, help="Repository root path")
 def run(
     variant: str,
     problem: str,
     model: str,
+    provider: str,
     host: str,
     repo_root: str | None,
 ) -> None:
@@ -252,7 +261,9 @@ def run(
     click.echo(f"Artifact storage: {ARTIFACT_DAG_DIR}")
 
     # Build workflow
-    workflow = build_workflow(config, prompts, model, host, artifact_dag, repo_root)
+    workflow = build_workflow(
+        config, prompts, model, host, artifact_dag, repo_root, provider=provider
+    )
 
     # For now, use a simple problem statement
     # In a real implementation, this would load from SWE-bench dataset
@@ -294,6 +305,11 @@ def list_workflows() -> None:
     help="HuggingFace model ID",
 )
 @click.option(
+    "--provider",
+    default="ollama",
+    help="LLM provider (ollama, openrouter, huggingface, openai)",
+)
+@click.option(
     "--arms",
     default="singleshot,s1_direct,s1_tdd",
     help="Comma-separated arm names to run",
@@ -308,6 +324,7 @@ def list_workflows() -> None:
 @click.option("--resume", is_flag=True, help="Resume from existing results")
 def experiment(
     model: str,
+    provider: str,
     arms: str,
     output_dir: str,
     split: str,
@@ -334,6 +351,7 @@ def experiment(
 
     runner = ExperimentRunner(
         model=model,
+        provider=provider,
         output_dir=output_dir,
     )
     runner.run_all(
