@@ -4,6 +4,7 @@ Ollama LLM generator implementation.
 Connects to Ollama instances via the OpenAI-compatible API.
 """
 
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from atomicguard.domain.models import (
 from atomicguard.domain.prompts import PromptTemplate
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434/v1"
+OLLAMA_CLOUD_URL = "https://ollama.com/v1"
 
 
 @dataclass
@@ -32,6 +34,7 @@ class OllamaGeneratorConfig:
     model: str = "qwen2.5-coder:7b"
     base_url: str = DEFAULT_OLLAMA_URL
     timeout: float = 120.0
+    api_key: str | None = None  # For Ollama Cloud; auto-detects from OLLAMA_API_KEY
 
 
 class OllamaGenerator(GeneratorInterface):
@@ -54,10 +57,24 @@ class OllamaGenerator(GeneratorInterface):
         except ImportError as err:
             raise ImportError("openai library required: pip install openai") from err
 
+        # Determine API key: explicit config > env var (for cloud) > placeholder (local)
+        api_key = config.api_key
+        if api_key is None:
+            if "ollama.com" in config.base_url:
+                # Cloud URL detected - require API key
+                api_key = os.environ.get("OLLAMA_API_KEY")
+                if not api_key:
+                    raise ValueError(
+                        "OLLAMA_API_KEY environment variable required for Ollama Cloud"
+                    )
+            else:
+                # Local instance - placeholder is fine
+                api_key = "ollama"
+
         self._model = config.model
         self._client = OpenAI(
             base_url=config.base_url,
-            api_key="ollama",  # required but unused
+            api_key=api_key,
             timeout=config.timeout,
         )
         self._version_counter = 0
