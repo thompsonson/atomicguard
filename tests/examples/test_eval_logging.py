@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from examples.swe_bench_ablation.evaluation import (
     EvalResult,
     _sanitize_instance_id,
@@ -11,7 +9,6 @@ from examples.swe_bench_ablation.evaluation import (
     write_eval_logs,
     write_instance_log,
 )
-
 
 # ---------------------------------------------------------------------------
 # _sanitize_instance_id

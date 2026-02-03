@@ -4,6 +4,7 @@ Covers language config, guards, generators (prompt construction), and
 evaluation helpers.  No network, Docker, or HuggingFace access required.
 """
 
+import contextlib
 import json
 import logging
 import threading
@@ -893,10 +894,8 @@ class TestRunAllParallel:
 
         def slow_run_instance(instance, arm):
             # Force threads to pile up, then release together.
-            try:
+            with contextlib.suppress(threading.BrokenBarrierError):
                 barrier.wait()
-            except threading.BrokenBarrierError:
-                pass
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
