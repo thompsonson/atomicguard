@@ -67,5 +67,17 @@ class ActionPair:
         artifact = self._generator.generate(
             context, self._prompt_template, action_pair_id, workflow_id
         )
+
+        # If the generator flagged an error (e.g. PydanticAI validation failure),
+        # skip the domain guard — the generator error IS the rejection.
+        generator_error = artifact.metadata.get("generator_error")
+        if generator_error:
+            result = GuardResult(
+                passed=False,
+                feedback=generator_error,
+                guard_name="GeneratorValidation",
+            )
+            return artifact, result
+
         result = self._guard.validate(artifact, **dependencies)
         return artifact, result

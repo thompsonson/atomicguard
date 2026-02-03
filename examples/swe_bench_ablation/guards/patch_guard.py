@@ -94,6 +94,35 @@ class PatchGuard(GuardInterface):
                 guard_name="PatchGuard",
             )
 
+        # Check for identical search/replace edits (no-op)
+        if edits and not patch_content:
+            if all(
+                edit.get("search", "") == edit.get("replace", "")
+                for edit in edits
+            ):
+                errors.append(
+                    "All edits have identical search and replace strings (no actual changes)"
+                )
+
+        # Check that all edited files exist in the repo
+        if edits and self._repo_root:
+            missing_files = []
+            for edit in edits:
+                file_path = edit.get("file", "")
+                full_path = Path(self._repo_root) / file_path
+                if not full_path.exists():
+                    missing_files.append(file_path)
+            if missing_files:
+                if len(missing_files) <= 3:
+                    errors.append(
+                        f"Files not found in repository: {', '.join(missing_files)}"
+                    )
+                else:
+                    errors.append(
+                        f"Files not found in repository: {', '.join(missing_files[:3])} "
+                        f"and {len(missing_files) - 3} more"
+                    )
+
         # Validate unified diff format if present
         if patch_content:
             format_errors = self._validate_diff_format(patch_content)
@@ -150,6 +179,15 @@ class PatchGuard(GuardInterface):
             errors.append("Missing '+++' file marker in diff")
         if not has_hunk_header:
             errors.append("Missing '@@ ... @@' hunk header in diff")
+
+        # Check for actual changes (not just headers)
+        has_changes = any(
+            (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+            for line in lines
+        )
+        if not has_changes and not errors:
+            errors.append("Patch has no actual changes (no added or removed lines)")
 
         return errors
 
@@ -213,7 +251,10 @@ class PatchGuard(GuardInterface):
 
                 # Apply the edit
                 if search not in original:
-                    errors.append(f"Search string not found in {file_path}")
+                    preview = search[:200].replace('\n', '\\n')
+                    errors.append(
+                        f"Search string not found in {file_path}: {preview!r}"
+                    )
                     continue
 
                 modified = original.replace(search, replace, 1)

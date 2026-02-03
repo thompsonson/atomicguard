@@ -1,8 +1,9 @@
 {
   "name": "S1 Direct",
-  "description": "Experiment 7.2 Arm 2: Analysis then patch (2 action pairs, rmax=0).",
-  "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
-  "rmax": 0,
+  "description": "Experiment 7.2 Arm 2: Analysis then patch (2 action pairs, rmax=3).",
+  "model": "moonshotai/kimi-k2-0905",
+  "provider": "openrouter",
+  "rmax": 3,
   "action_pairs": {
     "ap_analysis": {
       "generator": "AnalysisGenerator",

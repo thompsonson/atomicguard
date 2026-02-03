@@ -27,6 +27,12 @@
       "description": "Default LLM model identifier for generators",
       "default": "qwen2.5-coder:7b"
     },
+    "provider": {
+      "type": "string",
+      "description": "LLM provider identifier for PydanticAI model selection",
+      "enum": ["ollama", "huggingface", "openrouter", "openai"],
+      "default": "ollama"
+    },
     "rmax": {
       "type": "integer",
       "minimum": 1,
