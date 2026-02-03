@@ -2,6 +2,8 @@
 
 Multi-language bug-fix evaluation using [SWE-Bench Pro](https://huggingface.co/datasets/ScaleAI/SWE-bench_Pro) (ScaleAI). Runs AtomicGuard workflow arms across 731 instances in Python, Go, JavaScript, and TypeScript, then evaluates patches using the official Docker-based harness.
 
+For a walkthrough of a complete run with annotated artifacts, see [EXAMPLE_RUN.md](EXAMPLE_RUN.md).
+
 ## Architecture
 
 ```
