@@ -271,7 +271,10 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
 
                 # Apply the search-replace
                 if edit.search not in original:
-                    logger.warning(f"Search string not found in {edit.file}")
+                    preview = edit.search[:200].replace('\n', '\\n')
+                    logger.warning(
+                        "Search string not found in %s: %r", edit.file, preview
+                    )
                     continue
 
                 modified = original.replace(edit.search, edit.replace, 1)

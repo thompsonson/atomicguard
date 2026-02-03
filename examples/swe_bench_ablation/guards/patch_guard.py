@@ -251,7 +251,10 @@ class PatchGuard(GuardInterface):
 
                 # Apply the edit
                 if search not in original:
-                    errors.append(f"Search string not found in {file_path}")
+                    preview = search[:200].replace('\n', '\\n')
+                    errors.append(
+                        f"Search string not found in {file_path}: {preview!r}"
+                    )
                     continue
 
                 modified = original.replace(search, replace, 1)

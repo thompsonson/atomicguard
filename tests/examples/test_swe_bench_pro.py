@@ -1901,29 +1901,66 @@ class TestGenerateMethodErrorPaths:
         gen = self._make_gen()
         mock_agent = MagicMock()
         mock_agent.run_sync.side_effect = UnexpectedModelBehavior(
-            "1 validation error for Analysis"
+            "1 validation error for Analysis", body='{"bad": "data"}'
         )
         gen._agent = mock_agent
 
         art = gen.generate(self._make_context())
-        data = json.loads(art.content)
-        assert "error" in data
-        assert "Output validation failed:" in data["error"]
+        # Content is now the raw body from the LLM (may be re-formatted by PydanticAI)
+        assert "bad" in art.content
+        assert "data" in art.content
+        # Error metadata is set
+        assert "generator_error" in art.metadata
+        assert "Output validation failed:" in art.metadata["generator_error"]
+        assert art.metadata["generator_error_kind"] == "validation"
 
-    def test_generate_json_error_returns_error_with_escape_hint(self):
+    def test_generate_validation_error_stores_raw_body(self):
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+        gen = self._make_gen()
+        mock_agent = MagicMock()
+        raw_body = "Here is my analysis: the bug is in line 42"
+        mock_agent.run_sync.side_effect = UnexpectedModelBehavior(
+            "Exceeded maximum retries (0) for output validation", body=raw_body
+        )
+        gen._agent = mock_agent
+
+        art = gen.generate(self._make_context())
+        assert art.content == raw_body
+        assert "generator_error" in art.metadata
+        assert "tool call" in art.metadata["generator_error"]
+        assert "Raw response preview:" in art.metadata["generator_error"]
+
+    def test_generate_validation_error_without_body(self):
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 
         gen = self._make_gen()
         mock_agent = MagicMock()
         mock_agent.run_sync.side_effect = UnexpectedModelBehavior(
-            "invalid json in response"
+            "1 validation error for Analysis"
         )
         gen._agent = mock_agent
 
         art = gen.generate(self._make_context())
-        data = json.loads(art.content)
-        assert "Invalid JSON" in data["error"]
-        assert "escaped" in data["error"]
+        # Without a body, content falls back to str(e) which is just the message
+        assert "1 validation error for Analysis" in art.content
+        assert art.metadata["generator_error_kind"] == "validation"
+        # No body means no "Raw response preview" in the error
+        assert "Raw response preview:" not in art.metadata["generator_error"]
+
+    def test_generate_json_error_returns_error_with_body(self):
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+        gen = self._make_gen()
+        mock_agent = MagicMock()
+        mock_agent.run_sync.side_effect = UnexpectedModelBehavior(
+            "invalid json in response", body="not valid json {"
+        )
+        gen._agent = mock_agent
+
+        art = gen.generate(self._make_context())
+        assert art.content == "not valid json {"
+        assert art.metadata["generator_error_kind"] == "validation"
 
     def test_generate_generic_error_returns_error_artifact(self):
         gen = self._make_gen()
@@ -1932,8 +1969,9 @@ class TestGenerateMethodErrorPaths:
         gen._agent = mock_agent
 
         art = gen.generate(self._make_context())
-        data = json.loads(art.content)
-        assert data["error"] == "Generation failed: network timeout"
+        assert art.content == "network timeout"
+        assert art.metadata["generator_error"] == "Generation failed: network timeout"
+        assert art.metadata["generator_error_kind"] == "infrastructure"
 
     def test_generate_error_still_increments_counter(self):
         gen = self._make_gen()
@@ -1955,7 +1993,7 @@ class TestGenerateMethodErrorPaths:
 
 
 class TestFormatValidationError:
-    """Verify _format_validation_error routes to the correct branch."""
+    """Verify _format_validation_error uses error.message and error.body."""
 
     def _make_gen(self):
         from examples.swe_bench_ablation.generators import AnalysisGenerator
@@ -1966,27 +2004,81 @@ class TestFormatValidationError:
             api_key="ollama",
         )
 
-    def test_validation_error_branch(self):
+    def test_with_body_includes_preview_and_tool_hint(self):
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+
         gen = self._make_gen()
-        result = gen._format_validation_error(
-            Exception("1 Validation error for Analysis")
+        error = UnexpectedModelBehavior(
+            "Exceeded maximum retries (0) for output validation",
+            body="Here is my analysis...",
         )
+        result = gen._format_validation_error(error)
         assert result.startswith("Output validation failed:")
+        assert "tool call" in result
+        assert "Raw response preview:" in result
+        assert "Here is my analysis..." in result
 
-    def test_json_error_branch(self):
-        gen = self._make_gen()
-        result = gen._format_validation_error(
-            Exception("Invalid JSON response")
-        )
-        assert result.startswith("Invalid JSON in response:")
-        assert "escaped" in result
+    def test_without_body_returns_simple_message(self):
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
 
-    def test_fallback_branch(self):
         gen = self._make_gen()
-        result = gen._format_validation_error(
-            Exception("something unexpected")
+        error = UnexpectedModelBehavior("1 Validation error for Analysis")
+        result = gen._format_validation_error(error)
+        assert result.startswith("Output validation failed:")
+        assert "1 Validation error for Analysis" in result
+        assert "Raw response preview:" not in result
+
+    def test_without_body_with_cause_chain(self):
+        """When body is None, validation details are extracted from __cause__."""
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+        gen = self._make_gen()
+        # Simulate the real chain: UnexpectedModelBehavior → cause
+        cause = ValueError("field 'bug_type' is required")
+        error = UnexpectedModelBehavior(
+            "Exceeded maximum retries (0) for output validation"
         )
-        assert result.startswith("Unexpected output format:")
+        error.__cause__ = cause
+        result = gen._format_validation_error(error)
+        assert "Validation details:" in result
+        assert "bug_type" in result
+        assert "tool" in result
+
+    def test_without_body_with_tool_retry_cause(self):
+        """ToolRetryError cause — extracts .tool_retry.content."""
+        from pydantic_ai.exceptions import ToolRetryError, UnexpectedModelBehavior
+
+        gen = self._make_gen()
+        # Build a mock ToolRetryError with a tool_retry that has content
+        retry_part = MagicMock()
+        retry_part.content = [{"type": "missing", "loc": ["bug_type"], "msg": "Field required"}]
+        cause = ToolRetryError(retry_part)
+        error = UnexpectedModelBehavior(
+            "Exceeded maximum retries (0) for output validation"
+        )
+        error.__cause__ = cause
+        result = gen._format_validation_error(error)
+        assert "Validation details:" in result
+        assert "bug_type" in result
+
+    def test_body_truncated_at_500_chars(self):
+        from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+        gen = self._make_gen()
+        long_body = "x" * 1000
+        error = UnexpectedModelBehavior("validation failed", body=long_body)
+        result = gen._format_validation_error(error)
+        # The preview should contain exactly 500 chars of body
+        assert "x" * 500 in result
+        assert "x" * 501 not in result
+
+    def test_fallback_for_plain_exception(self):
+        gen = self._make_gen()
+        # Plain Exception has no .message or .body attributes;
+        # method falls back to str(error) via getattr
+        result = gen._format_validation_error(Exception("something unexpected"))
+        assert result.startswith("Output validation failed:")
+        assert "something unexpected" in result
 
 
 # =========================================================================
@@ -2316,3 +2408,129 @@ class TestDefaultProcessOutput:
         assert data["bug_type"] == "logic"
         assert data["root_cause_hypothesis"] == "wrong branch"
         assert data["fix_approach"] == "fix it"
+
+
+# =========================================================================
+# ActionPair – generator_error guard skip
+# =========================================================================
+
+
+class TestActionPairGeneratorErrorSkip:
+    """Verify ActionPair skips the domain guard when generator_error is set."""
+
+    def _make_artifact(self, metadata=None):
+        from types import MappingProxyType
+
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        return Artifact(
+            artifact_id="art-1",
+            workflow_id="wf-1",
+            content="some content",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="ap-1",
+            created_at="2025-01-01T00:00:00",
+            attempt_number=1,
+            status=ArtifactStatus.PENDING,
+            guard_result=None,
+            context=ContextSnapshot(
+                workflow_id="wf-1",
+                specification="spec",
+                constraints="",
+                feedback_history=(),
+            ),
+            metadata=MappingProxyType(metadata or {}),
+        )
+
+    def test_action_pair_skips_guard_on_generator_error(self):
+        from atomicguard.application.action_pair import ActionPair
+        from atomicguard.domain.prompts import PromptTemplate
+
+        error_msg = "Output validation failed: bad format"
+        artifact = self._make_artifact(metadata={
+            "generator_error": error_msg,
+            "generator_error_kind": "validation",
+        })
+
+        mock_generator = MagicMock()
+        mock_generator.generate.return_value = artifact
+
+        mock_guard = MagicMock()
+
+        template = PromptTemplate(role="", constraints="", task="")
+        ap = ActionPair(mock_generator, mock_guard, template)
+
+        ctx = MagicMock()
+        _, result = ap.execute(ctx, action_pair_id="ap-1", workflow_id="wf-1")
+
+        # Guard should NOT have been called
+        mock_guard.validate.assert_not_called()
+
+        # Result should be a synthetic rejection with the generator error
+        assert result.passed is False
+        assert result.feedback == error_msg
+        assert result.guard_name == "GeneratorValidation"
+
+    def test_action_pair_calls_guard_on_normal_artifact(self):
+        from atomicguard.application.action_pair import ActionPair
+        from atomicguard.domain.models import GuardResult
+        from atomicguard.domain.prompts import PromptTemplate
+
+        artifact = self._make_artifact(metadata={})
+
+        mock_generator = MagicMock()
+        mock_generator.generate.return_value = artifact
+
+        mock_guard = MagicMock()
+        mock_guard.validate.return_value = GuardResult(
+            passed=True, feedback="", guard_name="TestGuard"
+        )
+
+        template = PromptTemplate(role="", constraints="", task="")
+        ap = ActionPair(mock_generator, mock_guard, template)
+
+        ctx = MagicMock()
+        _, result = ap.execute(ctx, action_pair_id="ap-1", workflow_id="wf-1")
+
+        # Guard SHOULD have been called
+        mock_guard.validate.assert_called_once()
+        assert result.passed is True
+
+    def test_action_pair_generator_error_feedback_flows_to_retry(self):
+        """End-to-end: the PydanticAI error reaches feedback_history."""
+        from atomicguard.application.action_pair import ActionPair
+        from atomicguard.domain.prompts import PromptTemplate
+
+        error_msg = (
+            "Output validation failed: Exceeded maximum retries (0)\n"
+            "Your response could not be parsed as a tool call. "
+            "You must use the provided tool to structure your output.\n"
+            "Raw response preview: Here is my analysis..."
+        )
+        artifact = self._make_artifact(metadata={
+            "generator_error": error_msg,
+            "generator_error_kind": "validation",
+        })
+
+        mock_generator = MagicMock()
+        mock_generator.generate.return_value = artifact
+
+        mock_guard = MagicMock()
+
+        template = PromptTemplate(role="", constraints="", task="")
+        ap = ActionPair(mock_generator, mock_guard, template)
+
+        ctx = MagicMock()
+        art, result = ap.execute(ctx, action_pair_id="ap-1", workflow_id="wf-1")
+
+        # The feedback that would go into feedback_history for retry
+        assert not result.passed
+        assert "tool call" in result.feedback
+        assert "Raw response preview:" in result.feedback
+        # Guard was bypassed
+        mock_guard.validate.assert_not_called()

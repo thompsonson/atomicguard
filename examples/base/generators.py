@@ -194,9 +194,15 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
             )
 
         except UnexpectedModelBehavior as e:
-            # Validation failed - return constructive error for retry
+            # Validation failed - store raw response and error metadata
+            # so ActionPair can skip the domain guard and feed the
+            # structural error back to the LLM directly.
             error_msg = self._format_validation_error(e)
-            content = json.dumps({"error": error_msg})
+            content = e.body if e.body else str(e)
+            metadata = {
+                "generator_error": error_msg,
+                "generator_error_kind": "validation",
+            }
             logger.warning(
                 "[%s] Validation failed: %s",
                 self.__class__.__name__,
@@ -205,7 +211,12 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
 
         except Exception as e:
             # Other errors (network, timeout, etc.)
-            content = json.dumps({"error": f"Generation failed: {e}"})
+            error_msg = f"Generation failed: {e}"
+            content = str(e)
+            metadata = {
+                "generator_error": error_msg,
+                "generator_error_kind": "infrastructure",
+            }
             logger.warning(
                 "[%s] Generation failed: %s",
                 self.__class__.__name__,
@@ -293,26 +304,70 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
     def _format_validation_error(self, error: Exception) -> str:
         """Format a validation error into constructive feedback.
 
-        Extracts useful information from PydanticAI validation errors
-        to help the LLM correct its output on retry.
+        Accesses ``error.message`` and ``error.body`` (both present on
+        PydanticAI's ``UnexpectedModelBehavior``) so the LLM sees exactly
+        what structural problem occurred and what it produced.
+
+        When ``body`` is ``None`` (common with ``retries=0``), traverses
+        the ``__cause__`` chain to find the underlying validation details
+        (e.g. Pydantic ``ValidationError`` or ``ToolRetryError``).
 
         Args:
-            error: The validation exception
+            error: The UnexpectedModelBehavior exception
 
         Returns:
             Constructive error message for retry feedback
         """
-        error_str = str(error)
+        msg = getattr(error, "message", str(error))
+        body = getattr(error, "body", None)
 
-        # Try to extract the most useful part of the error
-        if "validation error" in error_str.lower():
-            return f"Output validation failed: {error_str}"
-
-        if "json" in error_str.lower():
+        if body:
+            # Include a truncated preview of what the model returned
+            preview = body[:500]
             return (
-                f"Invalid JSON in response: {error_str}. "
-                "Ensure all strings are properly escaped (use \\\" for quotes, "
-                "\\n for newlines) and the JSON structure matches the schema."
+                f"Output validation failed: {msg}\n"
+                f"Your response could not be parsed as a tool call. "
+                f"You must use the provided tool to structure your output.\n"
+                f"Raw response preview: {preview}"
             )
 
-        return f"Unexpected output format: {error_str}"
+        # No body — extract details from __cause__ chain
+        # (retries=0 → ToolRetryError → ValidationError)
+        cause_detail = self._extract_cause_detail(error)
+        if cause_detail:
+            return (
+                f"Output validation failed: {msg}\n"
+                f"Your response could not be parsed correctly. "
+                f"You must use the provided tool to structure your output.\n"
+                f"Validation details: {cause_detail}"
+            )
+
+        return f"Output validation failed: {msg}"
+
+    @staticmethod
+    def _extract_cause_detail(error: Exception) -> str | None:
+        """Walk the ``__cause__`` chain and collect useful details.
+
+        PydanticAI wraps validation errors as:
+        ``UnexpectedModelBehavior`` → ``ToolRetryError(.tool_retry)``
+        → ``ValidationError``.
+        """
+        parts: list[str] = []
+        seen: set[int] = set()
+        current: BaseException | None = getattr(error, "__cause__", None)
+
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            # ToolRetryError carries a RetryPromptPart with content
+            tool_retry = getattr(current, "tool_retry", None)
+            if tool_retry is not None:
+                content = getattr(tool_retry, "content", None)
+                if content:
+                    parts.append(str(content)[:500])
+            else:
+                detail = str(current)[:500]
+                if detail:
+                    parts.append(detail)
+            current = getattr(current, "__cause__", None)
+
+        return " | ".join(parts) if parts else None
