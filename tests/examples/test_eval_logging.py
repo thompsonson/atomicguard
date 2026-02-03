@@ -17,7 +17,9 @@ from examples.swe_bench_ablation.evaluation import (
 
 class TestSanitizeInstanceId:
     def test_forward_slash(self):
-        assert _sanitize_instance_id("astropy/astropy-12907") == "astropy__astropy-12907"
+        assert (
+            _sanitize_instance_id("astropy/astropy-12907") == "astropy__astropy-12907"
+        )
 
     def test_backslash(self):
         assert _sanitize_instance_id("a\\b") == "a__b"
