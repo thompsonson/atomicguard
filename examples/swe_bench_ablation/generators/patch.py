@@ -146,10 +146,24 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
 
         # Add feedback if retry
         if context.feedback_history and template:
-            latest_feedback = context.feedback_history[-1][1]
+            prev_content, latest_feedback = context.feedback_history[-1]
             parts.append(
                 f"\n\n## Previous Attempt Rejected\n{template.feedback_wrapper.format(feedback=latest_feedback)}"
             )
+            # Include previous patch attempt so LLM can see what it tried
+            if prev_content:
+                prev_edits = self._extract_edits_from_content(prev_content)
+                if prev_edits:
+                    parts.append("\n\n## Your Previous Patch (for reference)")
+                    parts.append(
+                        "The following edits were attempted. Review the search strings "
+                        "and ensure they match the EXACT content from the file (including "
+                        "whitespace and line breaks):"
+                    )
+                    for edit in prev_edits:
+                        parts.append(f"\n### File: {edit.get('file', 'unknown')}")
+                        parts.append(f"Search:\n```\n{edit.get('search', '')}\n```")
+                        parts.append(f"Replace:\n```\n{edit.get('replace', '')}\n```")
 
         return "\n".join(parts)
 
@@ -203,6 +217,21 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 if artifact and artifact.content.strip():
                     return artifact.content
         return None
+
+    def _extract_edits_from_content(self, content: str) -> list[dict]:
+        """Extract edits from a previous patch artifact's content.
+
+        The content is JSON with an 'edits' key containing search/replace blocks.
+        Returns a list of edit dicts, or empty list if parsing fails.
+        """
+        try:
+            data = json.loads(content)
+            edits = data.get("edits", [])
+            if isinstance(edits, list):
+                return edits
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return []
 
     def _list_repo_files(
         self,
