@@ -1,7 +1,7 @@
 {
   "name": "S1 TDD Verified",
   "description": "TDD workflow with Docker verification using explicit CompositeGuards. Verifies: (1) test FAILS on buggy code (red phase), (2) test PASSES after patch (green phase), (3) full evaluation suite passes.",
-  "rmax": 3,
+  "rmax": 6,
   "action_pairs": {
     "ap_analysis": {
       "generator": "AnalysisGenerator",

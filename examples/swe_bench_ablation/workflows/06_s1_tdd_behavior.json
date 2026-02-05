@@ -1,7 +1,7 @@
 {
   "name": "S1 TDD Behavior",
   "description": "TDD workflow with behavior-focused test prompts. A/B test variant of 05_s1_tdd_verified.",
-  "rmax": 3,
+  "rmax": 6,
   "action_pairs": {
     "ap_analysis": {
       "generator": "AnalysisGenerator",
