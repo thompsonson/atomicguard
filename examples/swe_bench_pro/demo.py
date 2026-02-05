@@ -121,6 +121,7 @@ _ARM_MAP = {
     "s1_direct": "03_s1_direct",
     "s1_tdd": "04_s1_tdd",
     "s1_tdd_verified": "05_s1_tdd_verified",
+    "s1_tdd_behavior": "06_s1_tdd_behavior",
 }
 
 
