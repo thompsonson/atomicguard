@@ -155,6 +155,9 @@ def build_workflow(
             "api_key": api_key,
             "provider": provider,
         }
+        # AnalysisGenerator needs repo_root for code-aware analysis.
+        if repo_root and issubclass(gen_cls, AnalysisGenerator):
+            gen_kwargs["repo_root"] = repo_root
         # Patch generators need repo_root to produce unified diffs.
         if repo_root and issubclass(gen_cls, PatchGenerator):
             gen_kwargs["repo_root"] = repo_root

@@ -186,8 +186,8 @@ def run_evaluation(
     Returns:
         Dict with ``status``, ``stdout``, ``stderr`` keys.
     """
-    predictions_path = Path(predictions_path)
-    eval_repo_path = Path(eval_repo_path)
+    predictions_path = Path(predictions_path).resolve()
+    eval_repo_path = Path(eval_repo_path).resolve()
 
     if not predictions_path.exists():
         raise FileNotFoundError(f"Predictions file not found: {predictions_path}")
@@ -198,9 +198,9 @@ def run_evaluation(
 
     if dataset_csv is None:
         dataset_csv = eval_repo_path / "swe_bench_pro_full.csv"
-    dataset_csv = Path(dataset_csv)
+    dataset_csv = Path(dataset_csv).resolve()
 
-    output_dir = predictions_path.parent / "eval_output"
+    output_dir = (predictions_path.parent / "eval_output").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -222,11 +222,13 @@ def run_evaluation(
     logger.info("Running SWE-Bench Pro evaluation: %s", " ".join(cmd))
 
     try:
+        # Run from eval_repo_path so relative paths (dockerfiles/) work
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=str(eval_repo_path),
         )
 
         if result.returncode != 0:

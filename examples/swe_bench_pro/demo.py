@@ -222,6 +222,11 @@ _ARM_MAP = {
 @click.option("--split", default="test", help="Dataset split")
 @click.option("--max-instances", default=0, type=int, help="Max instances (0=all)")
 @click.option(
+    "--instances",
+    default=None,
+    help="Comma-separated instance ID substrings to include (e.g., 'openlibrary-798055d1,qutebrowser-e64622cd')",
+)
+@click.option(
     "--max-workers", default=1, type=int, help="Parallel workers (1=sequential)"
 )
 @click.option("--resume", is_flag=True, help="Resume from existing results")
@@ -246,6 +251,7 @@ def experiment(
     output_dir: str,
     split: str,
     max_instances: int,
+    instances: str | None,
     max_workers: int,
     resume: bool,
     evaluate: bool,
@@ -269,10 +275,17 @@ def experiment(
 
     arm_list = [_ARM_MAP[a] for a in raw_arms]
 
+    # Parse instance filter
+    instance_filter: list[str] | None = None
+    if instances:
+        instance_filter = [i.strip() for i in instances.split(",") if i.strip()]
+
     click.echo(f"Running SWE-Bench Pro experiment with model={model}")
     click.echo(f"Arms: {arm_list}")
     if language:
         click.echo(f"Language: {language}")
+    if instance_filter:
+        click.echo(f"Instance filter: {instance_filter}")
     click.echo(f"Output: {output_dir}")
     if max_workers > 1:
         click.echo(f"Parallel workers: {max_workers}")
@@ -291,6 +304,7 @@ def experiment(
         max_instances=max_instances if max_instances > 0 else None,
         resume_from=output_dir if resume else None,
         max_workers=max_workers,
+        instance_filter=instance_filter,
     )
 
     # --- Summary & predictions ---

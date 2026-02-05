@@ -9,6 +9,7 @@ LLMs to generate diff format directly.
 import difflib
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,24 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
     """
 
     output_type = Patch
+
+    def _is_test_file(self, file_path: str) -> bool:
+        """Check if file is a test file that should not be modified.
+
+        Test files are excluded from the patch context because:
+        1. They are not meant to be modified by bug fixes
+        2. Including them can mislead the LLM into patching tests instead of source
+        """
+        path_lower = file_path.lower()
+        filename = path_lower.split("/")[-1]
+        return (
+            "/test/" in path_lower
+            or "/tests/" in path_lower
+            or path_lower.startswith("test/")
+            or path_lower.startswith("tests/")
+            or "_test.py" in filename
+            or filename.startswith("test_")  # test_*.py files
+        )
 
     def __init__(
         self,
@@ -72,20 +91,29 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         # Problem statement
         parts.append(f"\n\n## Problem Statement\n{context.specification}")
 
+        # Track test files to exclude and warn about
+        excluded_test_files: list[str] = []
+
         # Get analysis from dependencies (S1-direct and S1-TDD arms)
         analysis = self._get_analysis(context)
         if analysis:
             parts.append("\n\n## Bug Analysis")
             parts.append(f"Bug type: {analysis.bug_type.value}")
             parts.append(f"Root cause: {analysis.root_cause_hypothesis}")
-            parts.append(f"Files: {', '.join(analysis.files)}")
+            # Show all files in analysis, but mark test files
+            source_files = [f for f in analysis.files if not self._is_test_file(f)]
+            test_files = [f for f in analysis.files if self._is_test_file(f)]
+            parts.append(f"Files: {', '.join(source_files)}")
+            if test_files:
+                excluded_test_files.extend(test_files)
             parts.append(f"Fix approach: {analysis.fix_approach}")
 
-            # Include file content from analysis
+            # Include file content from analysis (excluding test files)
             if self._include_file_content and repo_root:
                 parts.append("\n\n## Current File Content")
                 tag = self._code_block_tag
-                for file_path in analysis.files[:3]:
+                files_to_include = [f for f in analysis.files if not self._is_test_file(f)]
+                for file_path in files_to_include[:3]:
                     content, error = self._read_file(repo_root, file_path)
                     if error:
                         self._file_errors.append(error)
@@ -95,19 +123,32 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         # Get localization from dependencies (baseline arm)
         localization = self._get_localization(context)
         if localization and not analysis:
+            # Filter out test files from localization
+            source_files = [f for f in localization.files if not self._is_test_file(f)]
+            test_files = [f for f in localization.files if self._is_test_file(f)]
+            if test_files:
+                excluded_test_files.extend(test_files)
+
             parts.append("\n\n## Files to Modify")
-            parts.append(f"Files: {', '.join(localization.files)}")
+            parts.append(f"Files: {', '.join(source_files)}")
             if localization.functions:
-                funcs = [f"{f.name} in {f.file}" for f in localization.functions]
-                parts.append(f"Functions: {', '.join(funcs)}")
+                # Filter functions to only those in source files
+                funcs = [
+                    f"{f.name} in {f.file}"
+                    for f in localization.functions
+                    if not self._is_test_file(f.file)
+                ]
+                if funcs:
+                    parts.append(f"Functions: {', '.join(funcs)}")
             if localization.reasoning:
                 parts.append(f"Reasoning: {localization.reasoning}")
 
-            # Include file content
+            # Include file content (excluding test files)
             if self._include_file_content and repo_root:
                 parts.append("\n\n## Current File Content")
                 tag = self._code_block_tag
-                for file_path in localization.files[:3]:  # Limit to 3 files
+                files_to_include = [f for f in localization.files if not self._is_test_file(f)]
+                for file_path in files_to_include[:3]:  # Limit to 3 files
                     content, error = self._read_file(repo_root, file_path)
                     if error:
                         self._file_errors.append(error)
@@ -118,25 +159,60 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         if not analysis and not localization and self._include_file_content and repo_root:
             repo_files = self._list_repo_files(repo_root)
             referenced = [f for f in repo_files if f in context.specification]
-            if referenced:
+            # Filter out test files
+            source_referenced = [f for f in referenced if not self._is_test_file(f)]
+            test_referenced = [f for f in referenced if self._is_test_file(f)]
+            if test_referenced:
+                excluded_test_files.extend(test_referenced)
+            if source_referenced:
                 parts.append("\n\n## Current File Content")
                 tag = self._code_block_tag
-                for file_path in referenced[:5]:
+                for file_path in source_referenced[:5]:
                     content, error = self._read_file(repo_root, file_path)
                     if error:
                         self._file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
+        # Add "Do Not Modify" warning for excluded test files
+        if excluded_test_files:
+            unique_test_files = sorted(set(excluded_test_files))
+            parts.append("\n\n## Files NOT to Modify")
+            parts.append(
+                "The following test files were identified but should NOT be modified. "
+                "Bug fixes should only modify source files, not tests:"
+            )
+            parts.append(f"- {', '.join(unique_test_files)}")
+
+        # Discover and include utility functions when analysis is present
+        if (analysis or localization) and repo_root:
+            utility_files = self._discover_utility_files(repo_root, max_files=5)
+            if utility_files:
+                utility_parts: list[str] = []
+                for util_file in utility_files:
+                    signatures = self._extract_function_signatures(repo_root, util_file)
+                    if signatures:
+                        utility_parts.append(f"\n### {util_file}")
+                        for sig in signatures[:10]:  # Limit signatures per file
+                            utility_parts.append(f"- `{sig}`")
+                if utility_parts:
+                    parts.append("\n\n## Available Utilities")
+                    parts.append(
+                        "The following utility functions are available in the codebase. "
+                        "Consider using these instead of reimplementing similar logic:"
+                    )
+                    parts.extend(utility_parts)
+
         # Get test code from dependencies (S1-TDD arm)
         test_code = self._get_test_code(context)
         if test_code:
             tag = self._code_block_tag
             parts.append(
-                f"\n\n## Failing Test (for guidance only — do NOT patch this)\n"
-                f"The following test demonstrates the expected behavior. "
-                f"Your patch should fix the SOURCE files so this test would pass. "
-                f"Do NOT create or modify test files.\n"
+                f"\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n"
+                f"This test demonstrates the expected behavior after the bug is fixed. "
+                f"Use it to understand what the correct behavior should be.\n\n"
+                f"**IMPORTANT:** Your patch should fix the SOURCE files so this test passes. "
+                f"Do NOT create or modify any test files. Do NOT include test code in your patch.\n"
                 f"```{tag}\n{test_code}\n```"
             )
 
@@ -259,6 +335,77 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                         return found
         return found
 
+    def _discover_utility_files(
+        self,
+        repo_root: str,
+        max_files: int = 10,
+    ) -> list[str]:
+        """Discover utility files that may contain helper functions.
+
+        Looks for files with 'utils', 'helpers', 'common', or 'utility' in
+        their path. These often contain reusable functions the LLM should
+        know about when generating patches.
+        """
+        utility_patterns = ("utils", "helpers", "common", "utility", "utilities")
+        skip_dirs = {"__pycache__", ".git", "node_modules", "vendor", "venv", ".venv", ".tox"}
+        root = Path(repo_root)
+        found: list[str] = []
+
+        for dirpath, dirnames, filenames in root.walk():
+            dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+            for fname in sorted(filenames):
+                if not fname.endswith(".py"):
+                    continue
+                rel_path = str((dirpath / fname).relative_to(root))
+                path_lower = rel_path.lower()
+                # Check if any utility pattern is in the path
+                if any(pattern in path_lower for pattern in utility_patterns):
+                    # Exclude test files
+                    if not self._is_test_file(rel_path):
+                        found.append(rel_path)
+                        if len(found) >= max_files:
+                            return found
+        return found
+
+    def _extract_function_signatures(
+        self,
+        repo_root: str,
+        file_path: str,
+        max_signatures: int = 20,
+    ) -> list[str]:
+        """Extract function signatures from a Python file.
+
+        Returns a list of function signatures (def lines) without the
+        implementation. This provides a concise overview of available
+        functions without including the full file content.
+        """
+        full_path = Path(repo_root) / file_path
+        if not full_path.exists():
+            return []
+
+        try:
+            content = full_path.read_text()
+        except Exception:
+            return []
+
+        signatures: list[str] = []
+        # Match function definitions (handles multiline signatures)
+        # Pattern: def name(...): with optional type hints and return type
+        pattern = re.compile(
+            r"^(def\s+\w+\s*\([^)]*\)\s*(?:->\s*[^:]+)?\s*:)",
+            re.MULTILINE,
+        )
+
+        for match in pattern.finditer(content):
+            sig = match.group(1).strip()
+            # Clean up multiline signatures
+            sig = " ".join(sig.split())
+            signatures.append(sig)
+            if len(signatures) >= max_signatures:
+                break
+
+        return signatures
+
     def _read_file(self, repo_root: str, file_path: str) -> tuple[str | None, str | None]:
         """Read file content from repository.
 
@@ -290,35 +437,45 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         edits: list[SearchReplaceEdit],
         repo_root: str,
     ) -> str:
-        """Convert search-replace edits to unified diff format."""
+        """Convert search-replace edits to unified diff format.
+
+        Groups edits by file and applies them cumulatively to avoid
+        conflicting hunks when multiple edits target the same file.
+        """
         patches = []
 
+        # Group edits by file to apply cumulatively
+        edits_by_file: dict[str, list[SearchReplaceEdit]] = {}
         for edit in edits:
-            file_path = Path(repo_root) / edit.file
+            edits_by_file.setdefault(edit.file, []).append(edit)
+
+        for file_name, file_edits in edits_by_file.items():
+            file_path = Path(repo_root) / file_name
             if not file_path.exists():
-                logger.warning(f"File not found: {edit.file}")
+                logger.warning(f"File not found: {file_name}")
                 continue
 
             try:
                 original = file_path.read_text()
+                modified = original
 
-                # Apply the search-replace
-                if edit.search not in original:
-                    preview = edit.search[:200].replace('\n', '\\n')
-                    logger.warning(
-                        "Search string not found in %s: %r", edit.file, preview
-                    )
-                    continue
+                # Apply all edits to this file cumulatively
+                for edit in file_edits:
+                    if edit.search not in modified:
+                        preview = edit.search[:200].replace('\n', '\\n')
+                        logger.warning(
+                            "Search string not found in %s: %r", edit.file, preview
+                        )
+                        continue
+                    modified = modified.replace(edit.search, edit.replace, 1)
 
-                modified = original.replace(edit.search, edit.replace, 1)
-
-                # Generate unified diff
+                # Generate unified diff from original to fully-modified
                 diff_lines = list(
                     difflib.unified_diff(
                         original.splitlines(keepends=True),
                         modified.splitlines(keepends=True),
-                        fromfile=f"a/{edit.file}",
-                        tofile=f"b/{edit.file}",
+                        fromfile=f"a/{file_name}",
+                        tofile=f"b/{file_name}",
                     )
                 )
 
@@ -326,7 +483,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                     patches.append("".join(diff_lines))
 
             except Exception as e:
-                logger.warning(f"Error processing {edit.file}: {e}")
+                logger.warning(f"Error processing {file_name}: {e}")
                 continue
 
         return "\n".join(patches)

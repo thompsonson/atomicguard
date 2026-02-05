@@ -31,8 +31,9 @@ def load_swe_bench_pro(
     split: str = "test",
     language: str | None = None,
     max_instances: int | None = None,
+    instance_filter: list[str] | None = None,
 ) -> list[SWEBenchProInstance]:
-    """Load SWE-Bench Pro dataset, optionally filtered by language.
+    """Load SWE-Bench Pro dataset, optionally filtered by language or instance ID.
 
     Args:
         split: Dataset split to load.
@@ -40,6 +41,9 @@ def load_swe_bench_pro(
             ``None`` loads all languages.
         max_instances: Maximum number of instances to return. ``None``
             returns all matching instances.
+        instance_filter: List of instance ID substrings to include. An instance
+            is included if any filter substring appears in its instance_id.
+            ``None`` includes all instances. Useful for targeting specific bugs.
 
     Returns:
         List of :class:`SWEBenchProInstance` objects.
@@ -53,10 +57,11 @@ def load_swe_bench_pro(
     from examples.swe_bench_ablation.dataset import _parse_test_list
 
     logger.info(
-        "Loading SWE-Bench Pro (split=%s, language=%s, max=%s)",
+        "Loading SWE-Bench Pro (split=%s, language=%s, max=%s, filter=%s)",
         split,
         language,
         max_instances,
+        instance_filter,
     )
 
     ds = load_dataset("ScaleAI/SWE-bench_Pro", split=split)
@@ -84,6 +89,12 @@ def load_swe_bench_pro(
 
         if language and row_lang.lower() != language.lower():
             continue
+
+        # Instance ID filter: include if any filter substring matches
+        if instance_filter:
+            instance_id = row["instance_id"]
+            if not any(filt in instance_id for filt in instance_filter):
+                continue
 
         fail_to_pass = _parse_test_list(row.get("fail_to_pass", []))
         pass_to_pass = _parse_test_list(row.get("pass_to_pass", []))

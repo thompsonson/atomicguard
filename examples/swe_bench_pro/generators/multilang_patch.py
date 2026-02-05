@@ -105,10 +105,11 @@ class MultiLangPatchGenerator(PatchGenerator):
         if test_code:
             tag = self._lang.code_block_tag
             parts.append(
-                f"\n\n## Failing Test (for guidance only — do NOT patch this)\n"
-                f"The following test demonstrates the expected behavior. "
-                f"Your patch should fix the SOURCE files so this test would pass. "
-                f"Do NOT create or modify test files.\n"
+                f"\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n"
+                f"This test demonstrates the expected behavior after the bug is fixed. "
+                f"Use it to understand what the correct behavior should be.\n\n"
+                f"**IMPORTANT:** Your patch should fix the SOURCE files so this test passes. "
+                f"Do NOT create or modify any test files. Do NOT include test code in your patch.\n"
                 f"```{tag}\n{test_code}\n```"
             )
 

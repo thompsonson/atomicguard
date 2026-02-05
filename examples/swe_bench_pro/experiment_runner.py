@@ -240,6 +240,9 @@ def build_workflow(
                 "api_key": api_key,
                 "provider": provider,
             }
+            # AnalysisGenerator needs repo_root for code-aware analysis.
+            if repo_root and issubclass(gen_cls, AnalysisGenerator):
+                gen_kwargs["repo_root"] = repo_root
             # Patch generators need repo_root to produce unified diffs.
             if repo_root and issubclass(gen_cls, PatchGenerator):
                 gen_kwargs["repo_root"] = repo_root
@@ -350,6 +353,15 @@ class SWEBenchProRunner:
                 repo_root, extensions=lang_config.file_extensions
             )
             specification = instance.problem_statement
+
+            # Add requirements if present (detailed specs for the solution)
+            if instance.requirements:
+                specification += f"\n\n## Requirements\n{instance.requirements}"
+
+            # Add interface if present (new interfaces to introduce)
+            if instance.interface:
+                specification += f"\n\n## Interface\n{instance.interface}"
+
             if repo_files:
                 listing = "\n".join(repo_files)
                 specification += (
@@ -455,6 +467,7 @@ class SWEBenchProRunner:
         max_instances: int | None = None,
         resume_from: str | None = None,
         max_workers: int = 1,
+        instance_filter: list[str] | None = None,
     ) -> list[ArmResult]:
         """Run all arms across all matching instances.
 
@@ -466,6 +479,8 @@ class SWEBenchProRunner:
             resume_from: Path to existing results dir for resume.
             max_workers: Number of parallel workers.  ``1`` (default)
                 runs sequentially.  Values > 1 use a thread pool.
+            instance_filter: List of instance ID substrings to include.
+                An instance is included if any filter matches. ``None`` = all.
 
         Returns:
             List of :class:`ArmResult` objects.
@@ -477,6 +492,7 @@ class SWEBenchProRunner:
             split=split,
             language=language,
             max_instances=max_instances,
+            instance_filter=instance_filter,
         )
 
         # Build the work items list, filtering out already-completed runs.

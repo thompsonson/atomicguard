@@ -1435,6 +1435,106 @@ class TestPatchGuardFileExistence:
 
 
 # =========================================================================
+# PatchGenerator – Test file detection
+# =========================================================================
+
+
+class TestPatchGeneratorTestFileDetection:
+    """Verify _is_test_file correctly identifies test files."""
+
+    def _make_gen(self, **kwargs):
+        from examples.swe_bench_ablation.generators import PatchGenerator
+
+        defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
+        defaults.update(kwargs)
+        return PatchGenerator(**defaults)
+
+    @pytest.mark.parametrize(
+        "path,expected",
+        [
+            # Should be detected as test files
+            ("tests/test_foo.py", True),
+            ("test/unit/test_bar.py", True),
+            ("tests/unit/utils/test_log.py", True),
+            ("test_module.py", True),
+            ("src/module_test.py", True),
+            ("foo/bar/test_baz.py", True),
+            # Should NOT be detected as test files
+            ("src/utils.py", False),
+            ("qutebrowser/utils/urlutils.py", False),
+            ("lib/testing_helpers.py", False),  # 'testing' != 'test' or 'tests'
+            ("contest/module.py", False),  # 'contest' contains 'test' but not /test
+            ("src/latest.py", False),
+        ],
+    )
+    def test_is_test_file(self, path, expected):
+        gen = self._make_gen()
+        assert gen._is_test_file(path) is expected
+
+
+# =========================================================================
+# PatchGenerator – Utility file discovery
+# =========================================================================
+
+
+class TestPatchGeneratorUtilityDiscovery:
+    """Verify _discover_utility_files and _extract_function_signatures."""
+
+    def _make_gen(self, **kwargs):
+        from examples.swe_bench_ablation.generators import PatchGenerator
+
+        defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
+        defaults.update(kwargs)
+        return PatchGenerator(**defaults)
+
+    def test_discover_utility_files(self, tmp_path):
+        # Create a mock repository with utility files
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "utils.py").write_text("def helper(): pass")
+        (tmp_path / "src" / "helpers").mkdir()
+        (tmp_path / "src" / "helpers" / "common.py").write_text("def common_func(): pass")
+        (tmp_path / "src" / "main.py").write_text("def main(): pass")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_utils.py").write_text("def test_helper(): pass")
+
+        gen = self._make_gen()
+        utility_files = gen._discover_utility_files(str(tmp_path))
+
+        # Should find utils.py and helpers/common.py but not test_utils.py
+        assert "src/utils.py" in utility_files
+        assert "src/helpers/common.py" in utility_files
+        assert "src/main.py" not in utility_files
+        assert "tests/test_utils.py" not in utility_files
+
+    def test_extract_function_signatures(self, tmp_path):
+        code = '''
+def simple_func():
+    pass
+
+def func_with_args(a, b, c):
+    return a + b + c
+
+def func_with_types(x: int, y: str) -> bool:
+    return True
+
+class MyClass:
+    def method(self):
+        pass
+'''
+        (tmp_path / "utils.py").write_text(code)
+
+        gen = self._make_gen()
+        signatures = gen._extract_function_signatures(str(tmp_path), "utils.py")
+
+        # Only top-level functions are extracted (regex uses ^ anchor)
+        assert "def simple_func():" in signatures
+        assert "def func_with_args(a, b, c):" in signatures
+        assert "def func_with_types(x: int, y: str) -> bool:" in signatures
+        # Methods inside classes are NOT extracted (indented, so don't match ^)
+        assert "def method(self):" not in signatures
+
+
+# =========================================================================
 # PatchGenerator – TDD prompt includes guidance note
 # =========================================================================
 
@@ -1471,15 +1571,15 @@ class TestPatchGeneratorTestGuidance:
         ctx = self._make_context_with_test("def test_foo(): assert True")
         prompt = gen._build_prompt(ctx, None)
 
-        assert "for guidance only" in prompt
+        assert "REFERENCE ONLY" in prompt
 
     def test_tdd_prompt_warns_not_to_patch_tests(self):
         gen = self._make_gen()
         ctx = self._make_context_with_test("def test_foo(): assert True")
         prompt = gen._build_prompt(ctx, None)
 
-        assert "do NOT patch this" in prompt
-        assert "Do NOT create or modify test files" in prompt
+        assert "DO NOT MODIFY" in prompt
+        assert "Do NOT create or modify any test files" in prompt
 
 
 # =========================================================================
@@ -1521,7 +1621,7 @@ class TestMultiLangPatchGeneratorTestGuidance:
         ctx = self._make_context_with_test('func TestFoo(t *testing.T) { t.Log("ok") }')
         prompt = gen._build_prompt(ctx, None)
 
-        assert "for guidance only" in prompt
+        assert "REFERENCE ONLY" in prompt
 
     def test_tdd_prompt_warns_not_to_patch_tests(self):
         from examples.swe_bench_pro.generators.multilang_patch import (
@@ -1538,8 +1638,8 @@ class TestMultiLangPatchGeneratorTestGuidance:
         ctx = self._make_context_with_test('func TestFoo(t *testing.T) { t.Log("ok") }')
         prompt = gen._build_prompt(ctx, None)
 
-        assert "do NOT patch this" in prompt
-        assert "Do NOT create or modify test files" in prompt
+        assert "DO NOT MODIFY" in prompt
+        assert "Do NOT create or modify any test files" in prompt
 
 
 # =========================================================================
