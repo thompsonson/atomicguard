@@ -17,8 +17,8 @@ from ..dataset import SWEBenchProInstance
 
 logger = logging.getLogger("swe_bench_pro.guards.quick_test")
 
-# Default Docker image path pattern
-_DOCKER_IMAGE_PATTERN = "{dockerhub_username}/swe-bench-pro:{instance_id}"
+# Default Docker image path pattern (official sweap-images format)
+_DOCKER_IMAGE_PATTERN = "{dockerhub_username}/sweap-images:{tag}"
 
 
 @dataclass(frozen=True)
@@ -59,13 +59,25 @@ class QuickTestRunner:
         self._timeout = timeout_seconds
         self._cache_dir = Path(cache_dir).expanduser()
 
-        # Normalize instance ID for Docker image tag
-        # e.g., "django/django-1234" -> "django__django-1234"
-        self._image_tag = instance.instance_id.replace("/", "__")
+        # Build Docker image tag using official SWE-Bench Pro format
+        # Format: {repo_base}.{repo_name}-{uid}
+        # Example: qutebrowser.qutebrowser-qutebrowser__qutebrowser-f91ace96...
+        repo_parts = instance.repo.lower().split("/")
+        repo_base = repo_parts[0]
+        repo_name = repo_parts[1] if len(repo_parts) > 1 else repo_parts[0]
+
+        # Remove "instance_" prefix if present (as per official eval script)
+        uid = instance.instance_id
+        if uid.startswith("instance_"):
+            uid = uid[9:]
+
+        tag = f"{repo_base}.{repo_name}-{uid}"
+        # Docker tags have a 128 character limit; official images are truncated
+        self._image_tag = tag[:128]
 
     def _get_docker_image(self) -> str:
         """Get the Docker image name for this instance."""
-        return f"{self._dockerhub_username}/swe-bench-pro:{self._image_tag}"
+        return f"{self._dockerhub_username}/sweap-images:{self._image_tag}"
 
     def _get_test_filename(self) -> str:
         """Get the appropriate test filename based on language."""
@@ -113,7 +125,7 @@ class QuickTestRunner:
         escaped_test = test_code.replace("'", "'\"'\"'")
 
         script_lines = [
-            "#!/bin/bash",
+            "#!/bin/sh",
             "set -e",
             "",
             "# Reset to base commit",
@@ -177,14 +189,15 @@ class QuickTestRunner:
             Path(script_path).chmod(0o755)
 
             # Run in Docker
+            # Use --entrypoint to ensure shell works (some images have broken default shells)
             docker_cmd = [
                 "docker",
                 "run",
                 "--rm",
                 "--network=none",  # Block network for security
+                "--entrypoint", "/bin/sh",
                 "-v", f"{script_path}:/run_test.sh:ro",
                 image,
-                "/bin/bash",
                 "/run_test.sh",
             ]
 
