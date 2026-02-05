@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from atomicguard.domain.models import Context
+from atomicguard.domain.models import Artifact, Context
 from atomicguard.domain.prompts import PromptTemplate
 from examples.base.generators import PydanticAIGenerator
 
@@ -34,7 +34,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         self,
         *,
         include_file_content: bool = True,
-        max_context_lines: int = 100,
+        max_file_lines: int | None = None,
         repo_root: str | None = None,
         code_block_tag: str = "python",
         **kwargs: Any,
@@ -42,9 +42,10 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         kwargs.setdefault("temperature", 0.3)
         super().__init__(**kwargs)
         self._include_file_content = include_file_content
-        self._max_context_lines = max_context_lines
+        self._max_file_lines = max_file_lines  # None = no limit (optional safeguard)
         self._repo_root = repo_root
         self._code_block_tag = code_block_tag
+        self._file_errors: list[str] = []  # Track file size errors for fatal reporting
 
     def _resolve_repo_root(self, context: Context) -> str | None:
         """Resolve repo_root from context metadata or constructor fallback."""
@@ -85,8 +86,10 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 parts.append("\n\n## Current File Content")
                 tag = self._code_block_tag
                 for file_path in analysis.files[:3]:
-                    content = self._read_file(repo_root, file_path)
-                    if content:
+                    content, error = self._read_file(repo_root, file_path)
+                    if error:
+                        self._file_errors.append(error)
+                    elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         # Get localization from dependencies (baseline arm)
@@ -105,8 +108,10 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 parts.append("\n\n## Current File Content")
                 tag = self._code_block_tag
                 for file_path in localization.files[:3]:  # Limit to 3 files
-                    content = self._read_file(repo_root, file_path)
-                    if content:
+                    content, error = self._read_file(repo_root, file_path)
+                    if error:
+                        self._file_errors.append(error)
+                    elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         # Singleshot fallback: include content of files referenced in the problem
@@ -117,8 +122,10 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 parts.append("\n\n## Current File Content")
                 tag = self._code_block_tag
                 for file_path in referenced[:5]:
-                    content = self._read_file(repo_root, file_path)
-                    if content:
+                    content, error = self._read_file(repo_root, file_path)
+                    if error:
+                        self._file_errors.append(error)
+                    elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         # Get test code from dependencies (S1-TDD arm)
@@ -223,34 +230,31 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                         return found
         return found
 
-    def _read_file(self, repo_root: str, file_path: str) -> str | None:
-        """Read file content from repository."""
+    def _read_file(self, repo_root: str, file_path: str) -> tuple[str | None, str | None]:
+        """Read file content from repository.
+
+        Returns (content, error_message). If error_message is set, content is None.
+        Explicit failure is better than silent truncation.
+        """
         full_path = Path(repo_root) / file_path
         if not full_path.exists():
-            return None
+            return None, None
 
         try:
             content = full_path.read_text()
             lines = content.split("\n")
 
-            # Truncate if too long
-            if len(lines) > self._max_context_lines:
-                half = self._max_context_lines // 2
-                truncated = (
-                    lines[:half]
-                    + [
-                        "...",
-                        f"# ({len(lines) - self._max_context_lines} lines omitted)",
-                        "...",
-                    ]
-                    + lines[-half:]
+            # Optional safeguard: fail if file exceeds limit
+            if self._max_file_lines and len(lines) > self._max_file_lines:
+                return None, (
+                    f"File {file_path} has {len(lines)} lines, exceeding limit of "
+                    f"{self._max_file_lines}. Cannot proceed without full file context."
                 )
-                return "\n".join(truncated)
 
-            return content
+            return content, None  # Full content, no truncation
         except Exception as e:
             logger.warning(f"Could not read {file_path}: {e}")
-            return None
+            return None, None
 
     def _create_unified_diff(
         self,
@@ -297,3 +301,49 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 continue
 
         return "\n".join(patches)
+
+    def generate(
+        self,
+        context: Context,
+        template: PromptTemplate | None = None,
+        action_pair_id: str = "unknown",
+        workflow_id: str = "unknown",
+        workflow_ref: str | None = None,
+    ) -> Artifact:
+        """Generate with fatal error on file size issues.
+
+        Overrides base to check for file errors after prompt building.
+        If file errors occurred (e.g., file exceeds size limit), returns
+        an artifact with fatal error marker in metadata.
+        """
+        self._file_errors = []  # Reset for this generation
+
+        # Call parent generate() - this calls _build_prompt() which populates _file_errors
+        artifact = super().generate(
+            context, template, action_pair_id, workflow_id, workflow_ref
+        )
+
+        # Check for file size errors - these should be fatal
+        if self._file_errors:
+            error_msg = "\n".join(self._file_errors)
+            return Artifact(
+                artifact_id=artifact.artifact_id,
+                workflow_id=artifact.workflow_id,
+                content=json.dumps({"error": error_msg}),
+                previous_attempt_id=artifact.previous_attempt_id,
+                parent_action_pair_id=artifact.parent_action_pair_id,
+                action_pair_id=artifact.action_pair_id,
+                created_at=artifact.created_at,
+                attempt_number=artifact.attempt_number,
+                status=artifact.status,
+                guard_result=artifact.guard_result,
+                context=artifact.context,
+                workflow_ref=artifact.workflow_ref,
+                metadata={
+                    **artifact.metadata,
+                    "generator_error": error_msg,
+                    "generator_error_kind": "fatal_file_size",
+                },
+            )
+
+        return artifact

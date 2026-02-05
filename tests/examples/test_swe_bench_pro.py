@@ -2341,24 +2341,42 @@ class TestReadFileEdgeCases:
         defaults.update(kwargs)
         return PatchGenerator(**defaults)
 
-    def test_long_file_truncated(self, tmp_path):
+    def test_long_file_not_truncated(self, tmp_path):
+        """Files are returned in full, not truncated."""
+        content = "\n".join(f"line_{i}" for i in range(500))
+        (tmp_path / "big.py").write_text(content)
+        gen = self._make_gen()  # No max_file_lines by default
+
+        result, error = gen._read_file(str(tmp_path), "big.py")
+        assert result is not None
+        assert error is None
+        assert "TRUNCATED" not in result
+        assert "line_250" in result  # Middle content present
+
+    def test_file_exceeds_limit_returns_error(self, tmp_path):
+        """When max_file_lines set, exceeding it returns error."""
         content = "\n".join(f"line_{i}" for i in range(200))
         (tmp_path / "big.py").write_text(content)
-        gen = self._make_gen(max_context_lines=50)
+        gen = self._make_gen(max_file_lines=100)
 
-        result = gen._read_file(str(tmp_path), "big.py")
-        assert result is not None
-        assert "lines omitted" in result
+        result, error = gen._read_file(str(tmp_path), "big.py")
+        assert result is None
+        assert error is not None
+        assert "exceeding limit" in error
 
     def test_file_not_found_returns_none(self, tmp_path):
         gen = self._make_gen()
-        assert gen._read_file(str(tmp_path), "nonexistent.py") is None
+        result, error = gen._read_file(str(tmp_path), "nonexistent.py")
+        assert result is None
+        assert error is None
 
     def test_read_error_returns_none(self, tmp_path):
         (tmp_path / "bad.py").write_text("x = 1")
         gen = self._make_gen()
         with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
-            assert gen._read_file(str(tmp_path), "bad.py") is None
+            result, error = gen._read_file(str(tmp_path), "bad.py")
+            assert result is None
+            assert error is None
 
 
 # =========================================================================
@@ -2582,7 +2600,7 @@ class TestQuickTestRunner:
         from examples.swe_bench_pro.dataset import SWEBenchProInstance
 
         return SWEBenchProInstance(
-            instance_id="django/django-1234",
+            instance_id="django__django-1234",
             repo="django/django",
             base_commit="abc123",
             problem_statement="Bug in ORM",
@@ -2595,7 +2613,8 @@ class TestQuickTestRunner:
         from examples.swe_bench_pro.guards import QuickTestRunner
 
         runner = QuickTestRunner(instance=mock_instance)
-        assert runner._get_docker_image() == "jefzda/swe-bench-pro:django__django-1234"
+        # Official SWE-bench Pro format: {repo_base}.{repo_name}-{uid}
+        assert runner._get_docker_image() == "jefzda/sweap-images:django.django-django__django-1234"
 
     def test_get_test_filename_python(self, mock_instance):
         from examples.swe_bench_pro.guards import QuickTestRunner
@@ -2608,8 +2627,8 @@ class TestQuickTestRunner:
         from examples.swe_bench_pro.guards import QuickTestRunner
 
         go_instance = SWEBenchProInstance(
-            instance_id="go/go-1234",
-            repo="go/go",
+            instance_id="golang__go-1234",
+            repo="golang/go",
             base_commit="abc123",
             problem_statement="Bug",
             patch="",
@@ -2651,7 +2670,7 @@ class TestTestRedGuard:
         from examples.swe_bench_pro.dataset import SWEBenchProInstance
 
         return SWEBenchProInstance(
-            instance_id="django/django-1234",
+            instance_id="django__django-1234",
             repo="django/django",
             base_commit="abc123",
             problem_statement="Bug in ORM",
@@ -2706,8 +2725,8 @@ class TestTestRedGuard:
         from examples.swe_bench_pro.guards import TestRedGuard
 
         guard = TestRedGuard(instance=mock_instance)
-        # Mock check_image_available to return False
-        guard._runner.check_image_available = lambda: False
+        # Mock ensure_image_available to return unavailable
+        guard._runner.ensure_image_available = lambda: (False, "Docker image not available")
 
         artifact = make_artifact("def test_foo(): assert False")
         result = guard.validate(artifact)
@@ -2723,7 +2742,7 @@ class TestTestRedGuard:
         from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
 
         guard = TestRedGuard(instance=mock_instance)
-        guard._runner.check_image_available = lambda: True
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
         guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
             status="PASSED",
             output="test passed",
@@ -2742,7 +2761,7 @@ class TestTestRedGuard:
         from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
 
         guard = TestRedGuard(instance=mock_instance)
-        guard._runner.check_image_available = lambda: True
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
         guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
             status="FAILED",
             output="AssertionError: expected 1 got 0",
@@ -2765,7 +2784,7 @@ class TestTestGreenGuard:
         from examples.swe_bench_pro.dataset import SWEBenchProInstance
 
         return SWEBenchProInstance(
-            instance_id="django/django-1234",
+            instance_id="django__django-1234",
             repo="django/django",
             base_commit="abc123",
             problem_statement="Bug in ORM",
@@ -2820,7 +2839,7 @@ class TestTestGreenGuard:
         from examples.swe_bench_pro.guards import TestGreenGuard
 
         guard = TestGreenGuard(instance=mock_instance)
-        guard._runner.check_image_available = lambda: False
+        guard._runner.ensure_image_available = lambda: (False, "Docker image not available")
 
         patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
         test_artifact = make_artifact("def test_foo(): assert fixed()")
@@ -2838,7 +2857,7 @@ class TestTestGreenGuard:
         from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
 
         guard = TestGreenGuard(instance=mock_instance)
-        guard._runner.check_image_available = lambda: True
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
         guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
             status="PASSED",
             output="test passed",
@@ -2859,7 +2878,7 @@ class TestTestGreenGuard:
         from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
 
         guard = TestGreenGuard(instance=mock_instance)
-        guard._runner.check_image_available = lambda: True
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
         guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
             status="FAILED",
             output="AssertionError",

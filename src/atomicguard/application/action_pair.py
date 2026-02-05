@@ -72,12 +72,40 @@ class ActionPair:
         # skip the domain guard — the generator error IS the rejection.
         generator_error = artifact.metadata.get("generator_error")
         if generator_error:
+            generator_error_kind = artifact.metadata.get("generator_error_kind")
+
+            # Determine if this is a fatal error (no retry should be attempted)
+            is_fatal = (
+                generator_error_kind == "fatal_file_size"
+                or self._is_context_too_long_error(generator_error)
+            )
+
             result = GuardResult(
                 passed=False,
                 feedback=generator_error,
+                fatal=is_fatal,  # Mark as fatal - no retry
                 guard_name="GeneratorValidation",
             )
             return artifact, result
 
         result = self._guard.validate(artifact, **dependencies)
         return artifact, result
+
+    @staticmethod
+    def _is_context_too_long_error(error: str) -> bool:
+        """Detect LLM context length errors.
+
+        These are unrecoverable without changing the input, so retrying
+        with the same context is pointless.
+        """
+        patterns = [
+            "context_length_exceeded",
+            "maximum context length",
+            "too many tokens",
+            "context too long",
+            "exceeds the model's maximum",
+            "token limit",
+            "max_tokens",
+        ]
+        error_lower = error.lower()
+        return any(p in error_lower for p in patterns)

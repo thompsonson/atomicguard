@@ -81,8 +81,6 @@ class PatchGuard(GuardInterface):
                 guard_name="PatchGuard",
             )
 
-        errors: list[str] = []
-
         # Get patch content
         patch_content = data.get("patch", "")
         edits = data.get("edits", [])
@@ -94,13 +92,18 @@ class PatchGuard(GuardInterface):
                 guard_name="PatchGuard",
             )
 
+        # Track errors separately for better feedback
+        format_errors: list[str] = []
+        edit_errors: list[str] = []
+        apply_errors: list[str] = []
+
         # Check for identical search/replace edits (no-op)
         if edits and not patch_content:
             if all(
                 edit.get("search", "") == edit.get("replace", "")
                 for edit in edits
             ):
-                errors.append(
+                edit_errors.append(
                     "All edits have identical search and replace strings (no actual changes)"
                 )
 
@@ -114,11 +117,11 @@ class PatchGuard(GuardInterface):
                     missing_files.append(file_path)
             if missing_files:
                 if len(missing_files) <= 3:
-                    errors.append(
+                    edit_errors.append(
                         f"Files not found in repository: {', '.join(missing_files)}"
                     )
                 else:
-                    errors.append(
+                    edit_errors.append(
                         f"Files not found in repository: {', '.join(missing_files[:3])} "
                         f"and {len(missing_files) - 3} more"
                     )
@@ -126,20 +129,26 @@ class PatchGuard(GuardInterface):
         # Validate unified diff format if present
         if patch_content:
             format_errors = self._validate_diff_format(patch_content)
-            errors.extend(format_errors)
 
-        # Check git apply if we have a patch and repo root
-        if self._require_git_apply and patch_content and self._repo_root and not errors:
-            apply_errors = self._check_git_apply(patch_content, self._repo_root)
-            errors.extend(apply_errors)
-
-        # Check Python syntax if we have edits and repo root
-        if self._require_syntax_valid and edits and self._repo_root and not errors:
+        # Check Python syntax if we have edits and repo root (validates SEARCH/REPLACE)
+        if self._require_syntax_valid and edits and self._repo_root and not edit_errors:
             syntax_errors = self._check_syntax(edits, self._repo_root)
-            errors.extend(syntax_errors)
+            edit_errors.extend(syntax_errors)
 
-        if errors:
-            feedback = "Patch validation failed:\n- " + "\n- ".join(errors)
+        # Check git apply if we have a patch and repo root (validates unified diff)
+        if self._require_git_apply and patch_content and self._repo_root and not format_errors:
+            apply_errors = self._check_git_apply(patch_content, self._repo_root)
+
+        # Build feedback based on what failed
+        all_errors = format_errors + edit_errors + apply_errors
+
+        if all_errors:
+            feedback = self._build_failure_feedback(
+                format_errors=format_errors,
+                edit_errors=edit_errors,
+                apply_errors=apply_errors,
+                edits=edits,
+            )
             logger.info("[PatchGuard] ✗ REJECTED: %s", feedback)
             return GuardResult(
                 passed=False,
@@ -157,6 +166,41 @@ class PatchGuard(GuardInterface):
             feedback=feedback,
             guard_name="PatchGuard",
         )
+
+    def _build_failure_feedback(
+        self,
+        format_errors: list[str],
+        edit_errors: list[str],
+        apply_errors: list[str],
+        edits: list[dict[str, str]],
+    ) -> str:
+        """Build detailed feedback distinguishing edit vs diff application failures."""
+        sections: list[str] = []
+
+        # Case 1: Format errors (basic diff structure issues)
+        if format_errors:
+            sections.append("DIFF FORMAT ERRORS:\n- " + "\n- ".join(format_errors))
+
+        # Case 2: Edit errors (search/replace issues)
+        if edit_errors:
+            sections.append("EDIT VALIDATION FAILED:\n- " + "\n- ".join(edit_errors))
+
+        # Case 3: Edits valid but git apply failed (context mismatch)
+        if apply_errors and not edit_errors:
+            sections.append(
+                "EDIT VALIDATION PASSED:\n"
+                f"  ✓ {len(edits)} edit(s) have valid search strings and syntax\n\n"
+                "DIFF APPLICATION FAILED:\n- " + "\n- ".join(apply_errors) + "\n\n"
+                "The SEARCH/REPLACE edits are correct, but the unified diff has "
+                "incorrect context lines.\n"
+                "Regenerate the unified diff with accurate context (the unchanged "
+                "lines surrounding your changes must match the actual file)."
+            )
+        elif apply_errors:
+            # Both edit and apply errors
+            sections.append("DIFF APPLICATION FAILED:\n- " + "\n- ".join(apply_errors))
+
+        return "\n\n".join(sections)
 
     def _validate_diff_format(self, patch_content: str) -> list[str]:
         """Validate unified diff format."""
