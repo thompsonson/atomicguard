@@ -19,7 +19,7 @@ from typing import Any
 
 from examples.swe_bench_ablation.experiment_runner import ArmResult
 
-from atomicguard import ActionPair, Workflow
+from atomicguard import ActionPair, CompositeGuard, Workflow
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
@@ -34,9 +34,12 @@ from .generators import (
 )
 from .guards import (
     AnalysisGuard,
+    FullEvalGuard,
     LocalizationGuard,
     MultiLangTestSyntaxGuard,
     PatchGuard,
+    TestGreenGuard,
+    TestRedGuard,
     TestSyntaxGuard,
 )
 from .language import LanguageConfig, get_language_config
@@ -149,7 +152,15 @@ def _get_guard_registry(
         "localization": LocalizationGuard,
         "patch": PatchGuard,
         "test_syntax": TestSyntaxGuard if is_python else MultiLangTestSyntaxGuard,
+        # TDD verification guards (Docker-based)
+        "test_red": TestRedGuard,
+        "test_green": TestGreenGuard,
+        "full_eval": FullEvalGuard,
     }
+
+
+# Guards that require instance context for Docker execution
+_DOCKER_GUARDS = {TestRedGuard, TestGreenGuard, FullEvalGuard}
 
 
 def build_workflow(
@@ -162,11 +173,27 @@ def build_workflow(
     repo_root: str | None = None,
     api_key: str = "ollama",
     provider: str = "ollama",
+    instance: SWEBenchProInstance | None = None,
 ) -> Workflow:
     """Build a :class:`Workflow` with language-aware registries.
 
     Mirrors the ablation ``build_workflow`` but selects multi-language
     generator / guard subclasses when ``lang_config`` is not Python.
+
+    Args:
+        config: Workflow configuration dict from JSON.
+        prompts: Prompt templates keyed by action pair ID.
+        lang_config: Language configuration for the instance.
+        model: LLM model identifier.
+        base_url: API base URL.
+        artifact_dag: DAG for artifact storage.
+        repo_root: Path to the cloned repository.
+        api_key: API key for LLM provider.
+        provider: LLM provider name.
+        instance: SWE-Bench Pro instance (required for Docker-based guards).
+
+    Returns:
+        Configured Workflow ready for execution.
     """
     generator_registry = _get_generator_registry(lang_config)
     guard_registry = _get_guard_registry(lang_config)
@@ -179,44 +206,69 @@ def build_workflow(
         raise ValueError("Workflow config has no 'action_pairs' section")
     sorted_pairs = _topological_sort(action_pairs)
 
+    def _build_guard(guard_name: str, guard_config: dict[str, Any]) -> Any:
+        """Build a single guard instance with proper configuration."""
+        if guard_name not in guard_registry:
+            raise ValueError(f"Unknown guard: {guard_name}")
+        guard_cls = guard_registry[guard_name]
+
+        config = dict(guard_config)
+        if repo_root:
+            config["repo_root"] = repo_root
+        if guard_cls is MultiLangTestSyntaxGuard:
+            config["language_config"] = lang_config
+        # Docker-based guards need the instance for image selection
+        if guard_cls in _DOCKER_GUARDS:
+            if instance is None:
+                raise ValueError(
+                    f"Guard '{guard_name}' requires instance context for Docker "
+                    "execution, but no instance was provided."
+                )
+            config["instance"] = instance
+
+        return guard_cls(**config)
+
     for ap_id in sorted_pairs:
         ap_config = action_pairs[ap_id]
 
         # ---- Generator ----
         gen_name = ap_config["generator"]
-        if gen_name not in generator_registry:
+
+        if gen_name in generator_registry:
+            gen_cls = generator_registry[gen_name]
+
+            gen_kwargs: dict[str, Any] = {
+                "model": model,
+                "base_url": base_url,
+                "api_key": api_key,
+                "provider": provider,
+            }
+            # Patch generators need repo_root to produce unified diffs.
+            if repo_root and issubclass(gen_cls, PatchGenerator):
+                gen_kwargs["repo_root"] = repo_root
+                gen_kwargs["code_block_tag"] = lang_config.code_block_tag
+            # Multi-language subclasses need the language config.
+            if gen_cls in (MultiLangPatchGenerator, MultiLangTestGenerator):
+                gen_kwargs["language_config"] = lang_config
+
+            generator = gen_cls(**gen_kwargs)
+        else:
             raise ValueError(f"Unknown generator: {gen_name}")
-        gen_cls = generator_registry[gen_name]
-
-        gen_kwargs: dict[str, Any] = {
-            "model": model,
-            "base_url": base_url,
-            "api_key": api_key,
-            "provider": provider,
-        }
-        # Patch generators need repo_root to produce unified diffs.
-        if repo_root and issubclass(gen_cls, PatchGenerator):
-            gen_kwargs["repo_root"] = repo_root
-            gen_kwargs["code_block_tag"] = lang_config.code_block_tag
-        # Multi-language subclasses need the language config.
-        if gen_cls in (MultiLangPatchGenerator, MultiLangTestGenerator):
-            gen_kwargs["language_config"] = lang_config
-
-        generator = gen_cls(**gen_kwargs)
 
         # ---- Guard ----
         guard_name = ap_config["guard"]
-        if guard_name not in guard_registry:
-            raise ValueError(f"Unknown guard: {guard_name}")
-        guard_cls = guard_registry[guard_name]
-
         guard_config = dict(ap_config.get("guard_config", {}))
-        if repo_root:
-            guard_config["repo_root"] = repo_root
-        if guard_cls is MultiLangTestSyntaxGuard:
-            guard_config["language_config"] = lang_config
 
-        guard = guard_cls(**guard_config)
+        # Check if this is a composite guard (explicit configuration)
+        if guard_name == "composite":
+            guard_names = ap_config.get("guards", [])
+            if not guard_names:
+                raise ValueError(f"Composite guard {ap_id} requires 'guards' array")
+
+            sub_guards = [_build_guard(name, guard_config) for name in guard_names]
+            guard = CompositeGuard(*sub_guards)
+        else:
+            guard = _build_guard(guard_name, guard_config)
 
         # ---- Prompt template ----
         template = prompts.get(ap_id)
@@ -294,6 +346,7 @@ class SWEBenchProRunner:
                 repo_root=repo_root,
                 api_key=self._api_key,
                 provider=self._provider,
+                instance=instance,
             )
 
             repo_files = _list_repo_files(
@@ -321,7 +374,10 @@ class SWEBenchProRunner:
                     per_step_tokens[step_id] = step_tokens
                     total_tokens += step_tokens
 
-                if "patch" in step_id or "fix" in step_id or "singleshot" in step_id:
+                if any(
+                    x in step_id
+                    for x in ("patch", "fix", "singleshot", "eval", "verify_green")
+                ):
                     try:
                         data = json.loads(artifact.content)
                         patch_content = data.get("patch", "")
@@ -349,6 +405,18 @@ class SWEBenchProRunner:
                             e,
                         )
                         patch_content = artifact.content
+
+            # Count tokens from failed attempts (provenance) — these
+            # are not in result.artifacts because the step didn't pass.
+            if result.provenance:
+                failed_step = result.failed_step or "unknown"
+                for artifact, _feedback in result.provenance:
+                    prov_tokens = artifact.metadata.get("total_tokens", 0)
+                    if prov_tokens:
+                        per_step_tokens[failed_step] = (
+                            per_step_tokens.get(failed_step, 0) + prov_tokens
+                        )
+                        total_tokens += prov_tokens
 
             return ArmResult(
                 instance_id=instance.instance_id,

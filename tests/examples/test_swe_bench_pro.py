@@ -28,7 +28,12 @@ from examples.swe_bench_pro.language import (
 
 class TestLanguageConfigs:
     def test_all_four_languages_present(self):
-        assert set(LANGUAGE_CONFIGS) == {"python", "go", "javascript", "typescript"}
+        assert set(LANGUAGE_CONFIGS) == {
+            "python", "py",
+            "go",
+            "javascript", "js",
+            "typescript", "ts",
+        }
 
     def test_python_has_syntax_checker(self):
         assert LANGUAGE_CONFIGS["python"].syntax_check_fn is not None
@@ -2562,3 +2567,493 @@ class TestActionPairGeneratorErrorSkip:
         assert "Raw response preview:" in result.feedback
         # Guard was bypassed
         mock_guard.validate.assert_not_called()
+
+
+# =========================================================================
+# TDD Verification Guards
+# =========================================================================
+
+
+class TestQuickTestRunner:
+    """Unit tests for QuickTestRunner without Docker."""
+
+    @pytest.fixture()
+    def mock_instance(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return SWEBenchProInstance(
+            instance_id="django/django-1234",
+            repo="django/django",
+            base_commit="abc123",
+            problem_statement="Bug in ORM",
+            patch="",
+            test_patch="",
+            repo_language="python",
+        )
+
+    def test_get_docker_image(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        assert runner._get_docker_image() == "jefzda/swe-bench-pro:django__django-1234"
+
+    def test_get_test_filename_python(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        assert runner._get_test_filename() == "test_atomicguard.py"
+
+    def test_get_test_filename_go(self, mock_instance):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        go_instance = SWEBenchProInstance(
+            instance_id="go/go-1234",
+            repo="go/go",
+            base_commit="abc123",
+            problem_statement="Bug",
+            patch="",
+            test_patch="",
+            repo_language="go",
+        )
+        runner = QuickTestRunner(instance=go_instance)
+        assert runner._get_test_filename() == "atomicguard_test.go"
+
+    def test_create_test_script_without_patch(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        script = runner._create_test_script("def test_foo(): pass", patch_diff=None)
+
+        assert "git checkout -f abc123" in script
+        assert "git clean -fdx" in script
+        assert "def test_foo(): pass" in script
+        assert "git apply" not in script
+
+    def test_create_test_script_with_patch(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        script = runner._create_test_script(
+            "def test_foo(): pass",
+            patch_diff="--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n-old\n+new",
+        )
+
+        assert "git apply" in script
+        assert "--- a/foo.py" in script
+
+
+class TestTestRedGuard:
+    """Unit tests for TestRedGuard with mocked Docker."""
+
+    @pytest.fixture()
+    def mock_instance(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return SWEBenchProInstance(
+            instance_id="django/django-1234",
+            repo="django/django",
+            base_commit="abc123",
+            problem_statement="Bug in ORM",
+            patch="",
+            test_patch="",
+            repo_language="python",
+        )
+
+    @pytest.fixture()
+    def make_artifact(self):
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        def _factory(content: str) -> Artifact:
+            ctx = ContextSnapshot(
+                workflow_id="w",
+                specification="s",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
+            )
+            return Artifact(
+                artifact_id="a",
+                workflow_id="w",
+                content=content,
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id="ap",
+                created_at="2025-01-01T00:00:00Z",
+                attempt_number=1,
+                status=ArtifactStatus.PENDING,
+                guard_result=None,
+                context=ctx,
+            )
+
+        return _factory
+
+    def test_empty_test_fails(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+
+        guard = TestRedGuard(instance=mock_instance)
+        artifact = make_artifact("")
+        result = guard.validate(artifact)
+
+        assert result.passed is False
+        assert "empty" in result.feedback.lower()
+
+    def test_fatal_when_docker_unavailable(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+
+        guard = TestRedGuard(instance=mock_instance)
+        # Mock check_image_available to return False
+        guard._runner.check_image_available = lambda: False
+
+        artifact = make_artifact("def test_foo(): assert False")
+        result = guard.validate(artifact)
+
+        # Should fail with fatal=True when Docker unavailable (⊥fatal)
+        assert result.passed is False
+        assert result.fatal is True
+        assert "FATAL" in result.feedback
+        assert "Docker image not available" in result.feedback
+
+    def test_fails_when_test_passes_on_buggy_code(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestRedGuard(instance=mock_instance)
+        guard._runner.check_image_available = lambda: True
+        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+            status="PASSED",
+            output="test passed",
+            exit_code=0,
+            duration_seconds=1.0,
+        )
+
+        artifact = make_artifact("def test_foo(): assert True")
+        result = guard.validate(artifact)
+
+        assert result.passed is False
+        assert "PASSES on buggy code" in result.feedback
+
+    def test_passes_when_test_fails_on_buggy_code(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestRedGuard(instance=mock_instance)
+        guard._runner.check_image_available = lambda: True
+        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+            status="FAILED",
+            output="AssertionError: expected 1 got 0",
+            exit_code=1,
+            duration_seconds=1.0,
+        )
+
+        artifact = make_artifact("def test_foo(): assert bug()")
+        result = guard.validate(artifact)
+
+        assert result.passed is True
+        assert "correctly FAILS" in result.feedback
+
+
+class TestTestGreenGuard:
+    """Unit tests for TestGreenGuard with mocked Docker."""
+
+    @pytest.fixture()
+    def mock_instance(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return SWEBenchProInstance(
+            instance_id="django/django-1234",
+            repo="django/django",
+            base_commit="abc123",
+            problem_statement="Bug in ORM",
+            patch="",
+            test_patch="",
+            repo_language="python",
+        )
+
+    @pytest.fixture()
+    def make_artifact(self):
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        def _factory(content: str) -> Artifact:
+            ctx = ContextSnapshot(
+                workflow_id="w",
+                specification="s",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
+            )
+            return Artifact(
+                artifact_id="a",
+                workflow_id="w",
+                content=content,
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id="ap",
+                created_at="2025-01-01T00:00:00Z",
+                attempt_number=1,
+                status=ArtifactStatus.PENDING,
+                guard_result=None,
+                context=ctx,
+            )
+
+        return _factory
+
+    def test_fails_without_test_dependency(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+
+        guard = TestGreenGuard(instance=mock_instance)
+        patch_artifact = make_artifact('{"patch": "diff --git ..."}')
+        result = guard.validate(patch_artifact)
+
+        assert result.passed is False
+        assert "No test artifact" in result.feedback
+
+    def test_fatal_when_docker_unavailable(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+
+        guard = TestGreenGuard(instance=mock_instance)
+        guard._runner.check_image_available = lambda: False
+
+        patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
+        test_artifact = make_artifact("def test_foo(): assert fixed()")
+
+        result = guard.validate(patch_artifact, ap_gen_test=test_artifact)
+
+        # Should fail with fatal=True when Docker unavailable (⊥fatal)
+        assert result.passed is False
+        assert result.fatal is True
+        assert "FATAL" in result.feedback
+        assert "Docker image not available" in result.feedback
+
+    def test_passes_when_test_passes_after_patch(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestGreenGuard(instance=mock_instance)
+        guard._runner.check_image_available = lambda: True
+        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+            status="PASSED",
+            output="test passed",
+            exit_code=0,
+            duration_seconds=1.0,
+        )
+
+        patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
+        test_artifact = make_artifact("def test_foo(): assert fixed()")
+
+        result = guard.validate(patch_artifact, ap_gen_test=test_artifact)
+
+        assert result.passed is True
+        assert "PASSES after patch" in result.feedback
+
+    def test_fails_when_test_still_fails_after_patch(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestGreenGuard(instance=mock_instance)
+        guard._runner.check_image_available = lambda: True
+        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+            status="FAILED",
+            output="AssertionError",
+            exit_code=1,
+            duration_seconds=1.0,
+        )
+
+        patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
+        test_artifact = make_artifact("def test_foo(): assert fixed()")
+
+        result = guard.validate(patch_artifact, ap_gen_test=test_artifact)
+
+        assert result.passed is False
+        assert "still FAILS" in result.feedback
+
+
+class TestTDDVerifiedWorkflowConfig:
+    """Tests for the TDD-verified workflow configuration with CompositeGuards."""
+
+    def test_workflow_loads(self):
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        assert config["name"] == "S1 TDD Verified"
+        assert config["rmax"] == 3
+
+    def test_workflow_has_three_action_pairs(self):
+        """New workflow has 3 action pairs instead of 6 (using CompositeGuards)."""
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        expected = {
+            "ap_analysis",
+            "ap_gen_test",
+            "ap_gen_patch",
+        }
+        assert set(config["action_pairs"].keys()) == expected
+
+    def test_gen_test_uses_composite_guard(self):
+        """ap_gen_test should use composite guard with test_syntax and test_red."""
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        ap = config["action_pairs"]["ap_gen_test"]
+        assert ap["generator"] == "TestGenerator"
+        assert ap["guard"] == "composite"
+        assert ap["guards"] == ["test_syntax", "test_red"]
+
+    def test_gen_patch_uses_composite_guard(self):
+        """ap_gen_patch should use composite guard with patch, test_green, full_eval."""
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        ap = config["action_pairs"]["ap_gen_patch"]
+        assert ap["generator"] == "PatchGenerator"
+        assert ap["guard"] == "composite"
+        assert ap["guards"] == ["patch", "test_green", "full_eval"]
+
+    def test_arm_map_includes_verified(self):
+        from examples.swe_bench_pro.demo import _ARM_MAP
+
+        assert "s1_tdd_verified" in _ARM_MAP
+        assert _ARM_MAP["s1_tdd_verified"] == "05_s1_tdd_verified"
+
+
+class TestCompositeGuardWorkflow:
+    """Tests for CompositeGuard support in build_workflow()."""
+
+    def test_build_workflow_with_composite_guard(self, tmp_path):
+        """build_workflow should correctly parse composite guard config."""
+        from atomicguard import CompositeGuard
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
+
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+        from examples.swe_bench_pro.experiment_runner import (
+            build_workflow,
+            load_prompts,
+            load_workflow_config,
+        )
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        prompts = load_prompts()
+        lang = get_language_config("python")
+        dag = FilesystemArtifactDAG(str(tmp_path / "dag"))
+
+        mock_instance = SWEBenchProInstance(
+            instance_id="test__test__1",
+            repo="test/test",
+            base_commit="abc123",
+            problem_statement="Test bug",
+            patch="diff",
+            test_patch="diff",
+            repo_language="python",
+        )
+
+        wf = build_workflow(
+            config=config,
+            prompts=prompts,
+            lang_config=lang,
+            model="test",
+            base_url="http://localhost",
+            artifact_dag=dag,
+            repo_root=str(tmp_path),
+            api_key="test",
+            instance=mock_instance,
+        )
+
+        # Find ap_gen_test step and verify it has a CompositeGuard
+        gen_test_step = None
+        gen_patch_step = None
+        for step in wf._steps:
+            if step.guard_id == "ap_gen_test":
+                gen_test_step = step
+            elif step.guard_id == "ap_gen_patch":
+                gen_patch_step = step
+
+        assert gen_test_step is not None, "ap_gen_test step not found"
+        assert isinstance(gen_test_step.action_pair.guard, CompositeGuard)
+        assert len(gen_test_step.action_pair.guard.guards) == 2
+
+        assert gen_patch_step is not None, "ap_gen_patch step not found"
+        assert isinstance(gen_patch_step.action_pair.guard, CompositeGuard)
+        assert len(gen_patch_step.action_pair.guard.guards) == 3
+
+    def test_composite_guard_requires_guards_array(self, tmp_path):
+        """build_workflow should raise if composite guard has no guards array."""
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
+
+        from examples.swe_bench_pro.experiment_runner import (
+            build_workflow,
+            load_prompts,
+        )
+
+        config = {
+            "rmax": 3,
+            "action_pairs": {
+                "ap_test": {
+                    "generator": "AnalysisGenerator",
+                    "guard": "composite",
+                    # Missing "guards" array
+                }
+            },
+        }
+        prompts = load_prompts()
+        lang = get_language_config("python")
+        dag = FilesystemArtifactDAG(str(tmp_path / "dag"))
+
+        with pytest.raises(ValueError, match="requires 'guards' array"):
+            build_workflow(
+                config=config,
+                prompts=prompts,
+                lang_config=lang,
+                model="test",
+                base_url="http://localhost",
+                artifact_dag=dag,
+                api_key="test",
+            )
+
+    def test_composite_guard_unknown_subguard_raises(self, tmp_path):
+        """build_workflow should raise if composite guard has unknown sub-guard."""
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
+
+        from examples.swe_bench_pro.experiment_runner import (
+            build_workflow,
+            load_prompts,
+        )
+
+        config = {
+            "rmax": 3,
+            "action_pairs": {
+                "ap_test": {
+                    "generator": "AnalysisGenerator",
+                    "guard": "composite",
+                    "guards": ["analysis", "nonexistent_guard"],
+                }
+            },
+        }
+        prompts = load_prompts()
+        lang = get_language_config("python")
+        dag = FilesystemArtifactDAG(str(tmp_path / "dag"))
+
+        with pytest.raises(ValueError, match="Unknown guard"):
+            build_workflow(
+                config=config,
+                prompts=prompts,
+                lang_config=lang,
+                model="test",
+                base_url="http://localhost",
+                artifact_dag=dag,
+                api_key="test",
+            )
