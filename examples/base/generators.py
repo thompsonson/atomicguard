@@ -158,9 +158,14 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
             from pydantic_ai.models.openai import OpenAIChatModel
             from pydantic_ai.providers.openai import OpenAIProvider
 
+            # Only pass base_url if non-empty (empty string breaks URL construction)
+            provider_kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url:
+                provider_kwargs["base_url"] = base_url
+
             return OpenAIChatModel(
                 model_name=model,
-                provider=OpenAIProvider(base_url=base_url, api_key=api_key),
+                provider=OpenAIProvider(**provider_kwargs),
             )
 
         raise ValueError(
