@@ -56,13 +56,12 @@ _SKIP_DIRS = {"__pycache__", ".git", "node_modules", "vendor", "venv", ".venv", 
 def _list_repo_files(
     repo_root: str,
     extensions: tuple[str, ...] = (".py",),
-    max_files: int = 80,
 ) -> list[str]:
     """Return source file paths relative to *repo_root*.
 
     Walks the repository tree, filtering by *extensions* and skipping
-    common non-source directories.  Returns at most *max_files* entries
-    sorted alphabetically.
+    common non-source directories. Returns all matching files sorted
+    alphabetically.
     """
     root = Path(repo_root)
     found: list[str] = []
@@ -72,8 +71,6 @@ def _list_repo_files(
             if any(fname.endswith(ext) for ext in extensions):
                 rel = (dirpath / fname).relative_to(root)
                 found.append(str(rel))
-                if len(found) >= max_files:
-                    return found
     return found
 
 
