@@ -1,8 +1,16 @@
 """CLI for SWE-Bench Pro evaluation.
 
 Usage:
-    uv run python -m examples.swe_bench_pro.demo --debug experiment --arms singleshot --max-instances 5
+    # Generate patches only (fast, no Docker needed)
+    uv run python -m examples.swe_bench_pro.demo experiment --arms singleshot --max-instances 5 --provider openai
+
+    # Full pipeline: patches → evaluation → visualization (requires Docker)
+    uv run python -m examples.swe_bench_pro.demo experiment --arms singleshot --max-instances 5 --provider openai --evaluate
+
+    # Re-run evaluation on existing predictions
     uv run python -m examples.swe_bench_pro.demo evaluate --predictions-dir output/swe_bench_pro/predictions
+
+    # Re-generate visualizations
     uv run python -m examples.swe_bench_pro.demo visualize --results output/swe_bench_pro/results.jsonl
 """
 
@@ -113,6 +121,56 @@ def cli(debug: bool, log_file: str | None) -> None:
 
 
 # =========================================================================
+# Helper functions
+# =========================================================================
+
+
+def _rewrite_results_with_resolved(
+    results: list, output_dir: str
+) -> None:
+    """Rewrite results.jsonl with resolved status from evaluation.
+
+    This updates the single source of truth (results.jsonl) to include
+    the resolved field from evaluation results.
+    """
+    from dataclasses import asdict
+
+    results_path = Path(output_dir) / "results.jsonl"
+    with open(results_path, "w") as f:
+        for r in results:
+            f.write(json.dumps(asdict(r)) + "\n")
+    logger.info("Rewrote %s with resolved status", results_path)
+
+
+def _print_summary_with_resolved(results: list) -> None:
+    """Print summary with resolved counts by arm."""
+    from collections import defaultdict
+
+    by_arm: dict[str, list] = defaultdict(list)
+    for r in results:
+        by_arm[r.arm].append(r)
+
+    click.echo("\nSummary by arm:")
+    for arm in sorted(by_arm.keys()):
+        arm_results = by_arm[arm]
+        total = len(arm_results)
+        with_patch = sum(1 for r in arm_results if r.patch_content)
+        resolved = sum(1 for r in arm_results if r.resolved)
+
+        if with_patch > 0:
+            resolve_rate = resolved / with_patch * 100
+            click.echo(
+                click.style(
+                    f"  {arm}: {with_patch}/{total} patches, "
+                    f"{resolved}/{with_patch} resolved ({resolve_rate:.1f}%)",
+                    fg="green" if resolved > 0 else "yellow",
+                )
+            )
+        else:
+            click.echo(click.style(f"  {arm}: 0/{total} patches", fg="yellow"))
+
+
+# =========================================================================
 # experiment
 # =========================================================================
 
@@ -167,6 +225,17 @@ _ARM_MAP = {
     "--max-workers", default=1, type=int, help="Parallel workers (1=sequential)"
 )
 @click.option("--resume", is_flag=True, help="Resume from existing results")
+@click.option(
+    "--evaluate",
+    is_flag=True,
+    help="Run evaluation and visualization after generating patches",
+)
+@click.option(
+    "--eval-max-workers",
+    default=4,
+    type=int,
+    help="Parallel workers for evaluation (requires --evaluate)",
+)
 def experiment(
     model: str,
     provider: str,
@@ -179,6 +248,8 @@ def experiment(
     max_instances: int,
     max_workers: int,
     resume: bool,
+    evaluate: bool,
+    eval_max_workers: int,
 ) -> None:
     """Run workflow arms across SWE-Bench Pro instances."""
     from .experiment_runner import SWEBenchProRunner
@@ -223,7 +294,7 @@ def experiment(
     )
 
     # --- Summary & predictions ---
-    from .evaluation import prepare_predictions
+    from .evaluation import evaluate_predictions_inline, prepare_predictions
 
     total = len(results)
     with_patch = sum(1 for r in results if r.patch_content)
@@ -236,9 +307,55 @@ def experiment(
     )
 
     pred_files = prepare_predictions(results, output_dir)
+    pred_dir = Path(output_dir) / "predictions"
 
-    if with_patch > 0 and pred_files:
-        pred_dir = Path(output_dir) / "predictions"
+    # Full pipeline when --evaluate is set (no fallbacks - failures propagate)
+    if evaluate and pred_files and with_patch > 0:
+        # Step 2: Evaluation
+        _report("Running SWE-Bench Pro evaluation...", fg="cyan")
+        resolved_map = evaluate_predictions_inline(
+            pred_dir,
+            eval_max_workers=eval_max_workers,
+        )
+
+        # Merge resolved status into results
+        for r in results:
+            key = (r.instance_id, r.arm)
+            if key in resolved_map:
+                r.resolved = resolved_map[key]
+
+        # Rewrite results.jsonl with resolved status
+        _rewrite_results_with_resolved(results, output_dir)
+
+        # Step 3: Visualization
+        _report("Generating visualizations...", fg="cyan")
+        from examples.swe_bench_ablation.analysis import (
+            generate_visualizations,
+            load_results,
+        )
+
+        arm_results = load_results(str(Path(output_dir) / "results.jsonl"))
+
+        # Build resolved map from results for visualization
+        resolved_map_for_viz = {
+            r.instance_id: r.resolved for r in results if r.resolved is not None
+        }
+
+        paths = generate_visualizations(
+            arm_results, resolved_map_for_viz or None, output_dir
+        )
+        _report(f"Generated {len(paths)} visualizations", fg="green")
+
+        # Print summary with resolved counts
+        _print_summary_with_resolved(results)
+
+    elif evaluate and with_patch == 0:
+        _report(
+            "Skipping evaluation (no patches to evaluate).",
+            warn=True,
+            fg="yellow",
+        )
+    elif with_patch > 0 and pred_files:
         _report(f"Predictions written to {pred_dir}/")
         for arm, path in pred_files.items():
             click.echo(f"  {arm}: {path}")

@@ -33,6 +33,7 @@ class ArmResult:
     per_step_tokens: dict[str, int] = field(default_factory=dict)
     wall_time_seconds: float = 0.0
     error: str | None = None
+    resolved: bool | None = None  # Evaluation result (None = not evaluated)
 
 
 class ExperimentRunner:

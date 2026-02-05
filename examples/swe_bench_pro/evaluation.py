@@ -317,3 +317,78 @@ def load_evaluation_results(
         write_eval_logs(eval_results, str(results_dir), run_id)
 
     return resolved
+
+
+# =========================================================================
+# Inline evaluation for experiment integration
+# =========================================================================
+
+
+def evaluate_predictions_inline(
+    predictions_dir: Path,
+    eval_max_workers: int = 4,
+    eval_timeout: int = 7200,
+) -> dict[tuple[str, str], bool]:
+    """Run evaluation on all prediction files and return resolved mapping.
+
+    This function is designed for integration with the experiment command
+    to enable a single-command workflow: patches → evaluation → visualization.
+
+    Args:
+        predictions_dir: Directory containing prediction JSON files (one per arm).
+        eval_max_workers: Number of parallel evaluation workers.
+        eval_timeout: Timeout in seconds for evaluation.
+
+    Returns:
+        Mapping of ``(instance_id, arm) → resolved`` bool.
+
+    Raises:
+        RuntimeError: If evaluation fails for any arm (explicit failure, no fallbacks).
+    """
+    eval_repo = ensure_eval_repo()
+    resolved_map: dict[tuple[str, str], bool] = {}
+
+    pred_files = sorted(predictions_dir.glob("*.json"))
+    if not pred_files:
+        logger.warning("No prediction files found in %s", predictions_dir)
+        return resolved_map
+
+    for pred_file in pred_files:
+        arm = pred_file.stem
+        logger.info("Evaluating arm=%s from %s", arm, pred_file)
+
+        # Check if prediction file has any entries
+        predictions = json.loads(pred_file.read_text())
+        if not predictions:
+            logger.info(
+                "arm=%s: no predictions to evaluate (all instances failed workflow)", arm
+            )
+            continue
+
+        result = run_evaluation(
+            predictions_path=pred_file,
+            eval_repo_path=eval_repo,
+            max_workers=eval_max_workers,
+            timeout=eval_timeout,
+        )
+
+        if result["status"] == "success":
+            arm_resolved = load_evaluation_results(
+                str(pred_file.parent),
+                run_id=arm,
+            )
+            for instance_id, is_resolved in arm_resolved.items():
+                resolved_map[(instance_id, arm)] = is_resolved
+            logger.info(
+                "arm=%s: %d/%d resolved",
+                arm,
+                sum(1 for v in arm_resolved.values() if v),
+                len(arm_resolved),
+            )
+        else:
+            raise RuntimeError(
+                f"Evaluation failed for arm={arm}: status={result['status']}.\n"
+                f"stderr:\n{result.get('stderr', 'N/A')[-1000:]}"
+            )
+
+    return resolved_map
