@@ -15,16 +15,16 @@
 
   "ap_analysis": {
     "role": "You are a senior software engineer specializing in bug analysis and root cause identification.",
-    "constraints": "Analyze the bug systematically.\n\nREQUIREMENTS:\n- Classify the bug type accurately\n- Identify the root cause with a specific, testable hypothesis\n- List ALL files likely involved (at least one)\n- Provide a concrete fix approach that could guide patch generation\n- Assess your confidence level honestly",
+    "constraints": "Analyze the bug systematically.\n\nREQUIREMENTS:\n- Classify the bug type accurately\n- Identify the root cause with a specific, testable hypothesis\n- List ALL files likely involved (at least one)\n- Provide a concrete fix approach that could guide patch generation\n- Assess your confidence level honestly\n\nFOR TDD - Extract clearly:\n- EXPECTED BEHAVIOR: What should happen when code works correctly?\n- ACTUAL BEHAVIOR: What happens now due to the bug?\n- TRIGGER INPUTS: What specific inputs/conditions trigger the bug?",
     "task": "Analyze the bug: classify its type, identify the root cause, list affected files, and describe a fix approach.",
     "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- root_cause_hypothesis is specific and actionable\n- fix_approach describes concrete code changes\n- files must use exact paths from the Repository Structure listing in the problem statement"
   },
 
   "ap_gen_test": {
-    "role": "You are a test engineer writing tests to reproduce bugs.",
-    "constraints": "Write a failing test that reproduces the bug.\n\nREQUIREMENTS:\n- Use the appropriate test framework for the target language\n- The test MUST fail on the current buggy code\n- The test MUST pass after the bug is fixed\n- Import or require only modules available in the project\n- Be specific about expected vs actual behaviour\n- Include clear assertions with descriptive messages",
-    "task": "Write a failing test that reproduces the bug described in the problem statement.",
-    "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nInstruction: Fix the test code. Common issues:\n- Syntax errors in the test\n- No test functions found\n- Test doesn't actually test the reported bug behaviour\n\nGenerate corrected test code."
+    "role": "You are a test engineer writing TDD-style tests to reproduce bugs.",
+    "constraints": "Write a test that asserts CORRECT behavior, which will FAIL on the current buggy code.\n\nTDD PATTERN:\n- Assert what the code SHOULD do (correct behavior)\n- This assertion will FAIL because the buggy code behaves incorrectly\n- After the bug is fixed, the assertion will PASS\n\nDO NOT write tests that:\n- Only check if functions exist (e.g., `assert callable(func)`)\n- Only check types or module imports\n- These pass on BOTH buggy and fixed code!\n\nINSTEAD, write tests that:\n- Call the buggy function with SPECIFIC INPUTS that trigger the bug\n- Assert the EXPECTED OUTPUT (what it SHOULD return when fixed)\n- This will FAIL now because buggy code returns something WRONG\n\nEXAMPLE (Good):\n```python\ndef test_subdomain_not_blocked():\n    result = is_blocked('sub.example.com', blocked=['example.com'])\n    assert result == False, 'Subdomains should not match parent'\n```\nFails on buggy code (incorrectly blocks), passes after fix.\n\nEXAMPLE (Bad):\n```python\ndef test_exists():\n    assert callable(is_blocked)  # Passes on buggy code!\n```\n\nREQUIREMENTS:\n- Use the appropriate test framework\n- Import only from project modules\n- Use concrete input values that trigger the bug\n- Assert the EXPECTED (correct) output value",
+    "task": "Write a test that asserts CORRECT behavior. It will FAIL on buggy code because the bug causes INCORRECT behavior.",
+    "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nCOMMON MISTAKES (tests that pass on buggy code):\n1. Testing existence (callable, hasattr) instead of behavior\n2. Testing types/signatures instead of actual outputs\n3. Not using inputs that trigger the specific bug\n4. Asserting what code DOES instead of what it SHOULD do\n\nFIX: Call the buggy function with trigger inputs, assert EXPECTED output.\n\nGenerate corrected test code."
   },
 
   "ap_gen_fix": {

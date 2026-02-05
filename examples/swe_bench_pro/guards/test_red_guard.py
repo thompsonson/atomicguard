@@ -116,13 +116,18 @@ class TestRedGuard(GuardInterface):
                 passed=False,
                 feedback=(
                     "Test PASSES on buggy code - it doesn't capture the bug!\n\n"
-                    "The test should FAIL before the fix is applied.\n"
-                    "This means the test isn't actually testing for the bug.\n\n"
+                    "WHY THIS HAPPENS:\n"
+                    "- Your test asserts something TRUE even in buggy code\n"
+                    "- Common mistakes: testing existence, types, or imports\n\n"
+                    "HOW TO FIX:\n"
+                    "1. Identify INPUTS that trigger the bug\n"
+                    "2. Call the buggy function with those inputs\n"
+                    "3. Assert the EXPECTED OUTPUT (what it SHOULD return)\n"
+                    "4. This will FAIL because buggy code returns something WRONG\n\n"
                     f"Test output:\n{output_snippet}\n\n"
-                    "Regenerate the test to:\n"
-                    "1. Target the specific buggy behavior described in the issue\n"
-                    "2. Assert the CORRECT expected behavior (which will fail now)\n"
-                    "3. Use concrete inputs that trigger the bug"
+                    "Example pattern:\n"
+                    "  result = buggy_function(trigger_input)\n"
+                    "  assert result == expected_correct_value"
                 ),
                 guard_name="TestRedGuard",
             )
