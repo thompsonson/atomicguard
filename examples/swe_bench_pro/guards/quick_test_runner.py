@@ -261,6 +261,17 @@ class QuickTestRunner:
             True if the image exists, False otherwise.
         """
         image = self._get_docker_image()
+        return self._check_image_local(image)
+
+    def _check_image_local(self, image: str) -> bool:
+        """Check if image exists locally (no pull).
+
+        Args:
+            image: The Docker image name to check.
+
+        Returns:
+            True if the image exists locally, False otherwise.
+        """
         try:
             result = subprocess.run(
                 ["docker", "image", "inspect", image],
@@ -270,3 +281,41 @@ class QuickTestRunner:
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
+
+    def ensure_image_available(self, pull_if_missing: bool = True) -> tuple[bool, str]:
+        """Ensure Docker image is available, pulling if necessary.
+
+        Args:
+            pull_if_missing: If True, attempt to pull image when not found locally.
+
+        Returns:
+            Tuple of (available: bool, message: str)
+        """
+        image = self._get_docker_image()
+
+        # Fast path: check local
+        if self._check_image_local(image):
+            return True, f"Image available locally: {image}"
+
+        if not pull_if_missing:
+            return False, f"Image not found locally: {image}"
+
+        # Attempt to pull
+        logger.info("Pulling Docker image: %s", image)
+        try:
+            result = subprocess.run(
+                ["docker", "pull", image],
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 min timeout for large images
+            )
+            if result.returncode == 0:
+                return True, f"Successfully pulled: {image}"
+            else:
+                # Pass through Docker's error message
+                error_msg = result.stderr.strip() or result.stdout.strip()
+                return False, error_msg or f"Failed to pull {image}"
+        except subprocess.TimeoutExpired:
+            return False, f"Timeout pulling image: {image}"
+        except FileNotFoundError:
+            return False, "Docker not installed or not in PATH"

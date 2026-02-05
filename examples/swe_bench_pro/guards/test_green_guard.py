@@ -95,21 +95,22 @@ class TestGreenGuard(GuardInterface):
                 guard_name="TestGreenGuard",
             )
 
-        # Check if Docker image is available
-        if not self._runner.check_image_available():
+        # Check if Docker image is available (will auto-pull if missing)
+        available, message = self._runner.ensure_image_available()
+        if not available:
             logger.error(
-                "Docker image not available for %s - cannot verify patch fixes the bug",
+                "Docker image not available for %s - cannot verify patch fixes the bug: %s",
                 self._instance.instance_id,
+                message,
             )
             return GuardResult(
                 passed=False,
                 fatal=True,  # ⊥fatal - cannot validate, must escalate
                 feedback=(
-                    "FATAL: Cannot verify TDD green phase - Docker image not available.\n"
-                    f"Expected image: {self._runner._get_docker_image()}\n\n"
+                    f"FATAL: {message}\n\n"
                     "The guard cannot validate that the patch fixes the bug.\n"
                     "To proceed, either:\n"
-                    "1. Pull the Docker image: docker pull {image}\n"
+                    "1. Ensure Docker is running and you have network access\n"
                     "2. Use a workflow without Docker verification (e.g., s1_tdd)"
                 ),
                 guard_name="TestGreenGuard",

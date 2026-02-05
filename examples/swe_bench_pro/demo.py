@@ -120,6 +120,7 @@ _ARM_MAP = {
     "singleshot": "02_singleshot",
     "s1_direct": "03_s1_direct",
     "s1_tdd": "04_s1_tdd",
+    "s1_tdd_verified": "05_s1_tdd_verified",
 }
 
 

@@ -68,21 +68,22 @@ class FullEvalGuard(GuardInterface):
             GuardResult with passed=True if all tests pass,
             passed=False with detailed feedback on failures.
         """
-        # Check if Docker image is available
-        if not self._docker_checker.check_image_available():
+        # Check if Docker image is available (will auto-pull if missing)
+        available, message = self._docker_checker.ensure_image_available()
+        if not available:
             logger.error(
-                "Docker image not available for %s - cannot run full evaluation",
+                "Docker image not available for %s - cannot run full evaluation: %s",
                 self._instance.instance_id,
+                message,
             )
             return GuardResult(
                 passed=False,
                 fatal=True,  # ⊥fatal - cannot validate, must escalate
                 feedback=(
-                    "FATAL: Cannot run full evaluation - Docker image not available.\n"
-                    f"Expected image: {self._docker_checker._get_docker_image()}\n\n"
+                    f"FATAL: {message}\n\n"
                     "The guard cannot validate the patch against the full test suite.\n"
                     "To proceed, either:\n"
-                    "1. Pull the Docker image: docker pull {image}\n"
+                    "1. Ensure Docker is running and you have network access\n"
                     "2. Use a workflow without full evaluation"
                 ),
                 guard_name="FullEvalGuard",
