@@ -1,0 +1,152 @@
+/* AtomicGuard Artifact Viewer TUI Styles */
+
+/* Main layout */
+#main-container {
+    height: 1fr;
+}
+
+/* Sidebar styling */
+#sidebar {
+    width: 40;
+    min-width: 30;
+    max-width: 60;
+    background: $surface;
+    border-right: solid $primary;
+    padding: 1;
+}
+
+#sidebar .section-label {
+    margin-top: 1;
+    margin-bottom: 0;
+    color: $text-muted;
+    text-style: bold;
+}
+
+#path-input {
+    margin-bottom: 1;
+}
+
+#load-btn {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#workflow-select {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#artifact-tree {
+    height: 1fr;
+    min-height: 10;
+    border: solid $primary-lighten-2;
+    background: $surface-darken-1;
+}
+
+#artifact-tree > .tree--cursor {
+    background: $accent;
+    color: $text;
+}
+
+#artifact-tree > .tree--highlight {
+    background: $primary-darken-1;
+}
+
+/* Main area styling */
+#main-area {
+    width: 1fr;
+    padding: 1;
+}
+
+#detail-tabs {
+    height: 1fr;
+}
+
+/* Panel styling */
+#content-panel,
+#metadata-panel,
+#provenance-panel,
+#context-panel {
+    padding: 1;
+    height: auto;
+}
+
+ContentPanel {
+    background: $surface-darken-1;
+}
+
+MetadataPanel {
+    background: $surface;
+}
+
+ProvenancePanel {
+    background: $surface;
+}
+
+ContextPanel {
+    background: $surface;
+}
+
+/* Tab styling */
+TabbedContent {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 0;
+}
+
+/* Scrollable areas */
+VerticalScroll {
+    height: 1fr;
+}
+
+/* Header customization */
+Header {
+    background: $primary;
+}
+
+/* Footer customization */
+Footer {
+    background: $surface-darken-2;
+}
+
+/* Button variants */
+Button.-primary {
+    background: $primary;
+}
+
+Button.-primary:hover {
+    background: $primary-lighten-1;
+}
+
+/* Input styling */
+Input {
+    border: solid $primary-lighten-2;
+}
+
+Input:focus {
+    border: solid $accent;
+}
+
+/* Select styling */
+Select {
+    border: solid $primary-lighten-2;
+}
+
+Select:focus {
+    border: solid $accent;
+}
+
+/* Tree node styling for different statuses */
+.status-accepted {
+    color: $success;
+}
+
+.status-rejected {
+    color: $error;
+}
+
+.status-pending {
+    color: $text-muted;
+}
