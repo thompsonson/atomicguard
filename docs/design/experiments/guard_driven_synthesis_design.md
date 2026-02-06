@@ -1,6 +1,6 @@
 # AtomicGuard Experimental Design: Guard-Driven Synthesis on SWE-bench
 
-**Version:** 0.1 — Working Document
+**Version:** 0.2 — Working Document
 **Date:** February 6, 2026
 **Branch:** `feature/composite-guard-tdd`
 
@@ -270,7 +270,7 @@ class CompositeGuard:
 
 ## 5. Design Space for Future Arms
 
-The current six arms explore one axis: progressive decomposition with escalating guard rigour. Several additional axes remain open.
+The current six arms explore one axis: progressive decomposition with escalating guard rigour. Several additional axes remain open, grouped below by the capability they test.
 
 ### 5.1 Localization-Augmented Arms
 
@@ -355,7 +355,265 @@ Same as Arm 05, but guard_config varies by repo_language:
 ```
 Tests whether language-specific guard implementations (beyond the current multi-lang subclass approach) capture more failures.
 
-### 5.6 Future Arm Summary Table
+### 5.6 Feedback-Classified Backtracking Arms
+
+Arms 01-16 are all *forward-only*: if a step exhausts its retry budget, the workflow fails. The framework's `DualStateAgent` retries within a single action pair, but there is no cross-pair feedback loop. The planning search design (see `docs/design/plans/plan_search_feedback_loop.md`) formalises this gap: guard feedback carries signal about *where in the pipeline* the root cause lies, making it a heuristic for search, not just a pass/fail gate.
+
+The key insight is that **guards are not just validators — they are heuristic functions for the planning search**. A `test_green` failure saying "AssertionError: expected 200, got 404" tells you the patch is wrong (retry same step). But a `test_red` failure saying "ImportError: No module named 'foobar'" after 3 retries tells you the analysis misidentified the affected module (backtrack to analysis). The feedback *classifies* the appropriate backtrack depth.
+
+This requires a new action pair and a new orchestration pattern.
+
+#### New Action Pair: `ap_diff_review`
+
+`ap_diff_review` is a *critique* action pair that reviews the generated patch as a code reviewer would. It receives the patch diff, the analysis, and the generated test as dependencies. Its output is a structured review: issues found (critical/minor), confidence that the patch is correct, and — crucially — a *failure classification* when issues are found.
+
+```
+Input:   patch diff + analysis + test (as dependencies)
+Output:  { "verdict": "approve" | "revise" | "backtrack",
+           "issues": [...],
+           "backtrack_target": null | "ap_gen_patch" | "ap_gen_test" | "ap_analysis",
+           "reasoning": "..." }
+Guard:   review_schema (G_val) — validates JSON structure
+```
+
+The `backtrack_target` field is the heuristic signal. When `ap_diff_review` says "backtrack to ap_gen_test", it means the reviewer concluded that the test itself is testing the wrong thing — no patch can satisfy it correctly. When it says "backtrack to ap_analysis", the root cause hypothesis is wrong.
+
+This separates *generation* from *critique*. LLMs are empirically better at reviewing code than generating it. The review step catches logical errors that structural guards (git apply, syntax parse) cannot detect, and semantic guards (test_green) may miss if the test itself is flawed.
+
+**Guard for ap_diff_review**: A schema validation guard (G_val) that checks the review output is valid JSON with the required fields. The review itself is not executed — it is an LLM judgement, not a test execution. The *actionability* of the review comes from the backtracking orchestrator consuming the `backtrack_target` field.
+
+#### Arm 17: S1 TDD + Diff Review (Forward Only)
+
+**Workflow**: `ap_analysis` -> `ap_gen_test` -> `ap_gen_patch` -> `ap_diff_review`
+**rmax**: 6
+**Thesis**: Adding a review step after patch generation catches logical errors that structural and execution guards miss. Forward-only — if the review rejects, feedback loops back to `ap_gen_patch` for retry. The `backtrack_target` field is recorded but not acted on. This is the control arm for Arm 18.
+
+```
++--------------+     +--------------+     +--------------+     +----------------+
+| ap_analysis  |---->| ap_gen_test  |---->| ap_gen_patch |---->| ap_diff_review |
+|              |     |              |     |              |     |                |
+| G: analysis  |     | G: composite |     | G: composite |     | G: review_     |
+|              |     |  (syntax+red)|     |  (patch+     |     |    schema      |
+|              |     |              |     |   green+eval)|     |                |
++--------------+     +--------------+     +--------------+     +----------------+
+```
+
+**What it measures**: Does LLM-as-reviewer improve resolve rate over Arm 05 (which has no review step)? The review guard is cheap (one LLM call, no Docker), so the overhead is small. Even without backtracking, the review's rejection feedback ("your patch handles the error case but breaks the happy path because...") is more informative than test output alone.
+
+#### Arm 18: S1 TDD + Diff Review + Selective Backtracking
+
+**Workflow**: Same structure as Arm 17, but with a `BacktrackOrchestrator` wrapping the workflow.
+**rmax**: 6 per step, backtrack_budget: 2 per step
+**Thesis**: When `ap_diff_review` identifies the failure origin (via `backtrack_target`), the orchestrator backtracks to the indicated step with the review's reasoning as amended context. This is *informed* search — the backtrack depth is guided by the review heuristic rather than being fixed.
+
+```
++--------------+     +--------------+     +--------------+     +----------------+
+| ap_analysis  |<-+  | ap_gen_test  |<-+  | ap_gen_patch |---->| ap_diff_review |
+|              |  |  |              |  |  |              |     |                |
+| G: analysis  |  |  | G: composite |  |  | G: composite |     | G: review_     |
+|              |  |  |  (syntax+red)|  |  |  (patch+     |     |    schema      |
+|              |  |  |              |  |  |   green+eval)|     |                |
++--------------+  |  +--------------+  |  +--------------+     +----------------+
+       ^          |         ^          |                              |
+       |          |         |          |                              |
+       +----------+---------+----------+--------- backtrack_target --+
+```
+
+**Backtrack semantics** (from `plan_search_feedback_loop.md` Section 4):
+
+| `backtrack_target` | Action | Context amendment |
+|--------------------|--------|-------------------|
+| `null` (approve) | Accept patch, workflow succeeds | — |
+| `"ap_gen_patch"` | Retry patch with review feedback | Review issues appended to retry context |
+| `"ap_gen_test"` | Regenerate test, then re-attempt patch | "Previous test led to a patch that [review reasoning]. Generate a test that better captures the actual bug." |
+| `"ap_analysis"` | Regenerate analysis, then cascade forward | "Previous analysis hypothesised [X] but review found [Y]. Revise the root cause." |
+
+**Budget model** (adapted from `plan_search_feedback_loop.md` Section 5):
+
+```
+ap_analysis:    rmax=3, backtrack_budget=1  -> max 6 analysis calls
+ap_gen_test:    rmax=3, backtrack_budget=2  -> max 9 test calls
+ap_gen_patch:   rmax=6, backtrack_budget=0  -> max 6 patch calls per test
+ap_diff_review: rmax=1, backtrack_budget=0  -> 1 review per patch attempt
+```
+
+Worst case: ~30 LLM calls + Docker executions. Common case: analysis passes, test passes red, patch passes green, review approves = 4 LLM calls + 2 Docker execs.
+
+**What it measures**: Does informed backtracking (guided by diff review) improve over:
+- Arm 05 (no backtracking, no review)?
+- Arm 17 (review but no backtracking)?
+- Arm 13 (fixed backtracking without review heuristic)?
+
+The comparison between Arms 13 and 18 is particularly important: Arm 13 backtracks mechanically when `test_green` fails (always goes to test refinement). Arm 18 backtracks *selectively* based on the reviewer's diagnosis — sometimes the test is wrong, sometimes the analysis is wrong, and the reviewer's `backtrack_target` distinguishes these cases.
+
+**Why ap_diff_review is the right heuristic source**: The plan search design doc (`plan_search_feedback_loop.md` Section 4.2) defines a heuristic function `h: (step_id, GuardResult, retry_count, history) -> backtrack_depth`. The original design uses rule-based pattern matching on guard feedback strings ("not parseable" -> depth 0, "not satisfiable" -> depth 1). This is fragile — guard feedback in code repair is diverse and unstructured. `ap_diff_review` replaces the rule-based heuristic with an LLM-based one: the reviewer reads the full context (analysis + test + patch + guard feedback) and produces a *reasoned* backtrack recommendation. The cost is one additional LLM call per failed attempt, but the backtrack decision is far more accurate than string matching.
+
+#### Arm 19: S1 TDD + Backtracking (No Review, Rule-Based Heuristic)
+
+**Workflow**: Same as Arm 05 but with rule-based backtracking.
+**rmax**: 6 per step, backtrack_budget: 2
+**Thesis**: Control arm for Arm 18. Uses the rule-based heuristic from `plan_search_feedback_loop.md` Section 4.1 instead of `ap_diff_review`. Backtrack depth is determined by pattern-matching guard feedback strings:
+
+```python
+def backtrack_heuristic(step_id, guard_result, retry_count, history):
+    feedback = guard_result.feedback.lower()
+
+    # Structural errors -> retry same step
+    if "syntax error" in feedback or "not parseable" in feedback:
+        return 0
+
+    # Repeated identical failures -> escalate
+    if same_feedback_repeated(history, guard_result, threshold=2):
+        return min(retry_count, 2)
+
+    # Import/module errors after multiple retries -> analysis wrong
+    if retry_count >= 2 and ("importerror" in feedback or "modulenotfounderror" in feedback):
+        return 2  # backtrack to analysis
+
+    # Test discrimination failure -> test is wrong
+    if "passed on buggy code" in feedback:
+        return 0  # retry test (already at test step)
+
+    # Patch doesn't fix the bug -> maybe test is wrong
+    if "still fails after patch" in feedback and retry_count >= 3:
+        return 1  # backtrack from patch to test
+
+    # Default: retry at same level
+    return 0
+```
+
+**What it measures**: Is rule-based backtracking sufficient, or does the LLM-based review (Arm 18) provide meaningfully better heuristics? If Arm 19 matches Arm 18, the review step is overhead. If Arm 18 >> Arm 19, the LLM's ability to reason about *why* the patch is wrong justifies the extra call.
+
+### 5.7 Generated Workflow Arms (Meta-Level)
+
+Arms 01-19 use static workflow definitions: every instance runs the same pipeline regardless of problem characteristics. But SWE-bench instances vary enormously — a one-line typo fix and a multi-file API refactor have different optimal strategies. The framework's Extension 06 (Generated Workflows) formalises this: workflow definitions are themselves artifacts that can be generated, validated, and executed.
+
+This introduces a **two-level hierarchy**:
+- **Meta-level**: A planning agent classifies the problem and generates a workflow specification
+- **Object-level**: The generated workflow executes against the instance
+
+The meta-level is itself an action pair: `ap_generate_workflow` with a guard that validates the generated workflow is structurally sound (all components resolvable, dependencies well-formed, budget within limits). This is the DS-PDDL schema from Extension 06 Definition 25.
+
+#### New Action Pair: `ap_classify_problem`
+
+Classifies the problem instance into a category that determines which workflow template to use.
+
+```
+Input:   problem_statement + repository file listing
+Output:  { "category": "trivial_fix" | "single_file_bug" | "multi_file_bug" | "api_change" | "refactor",
+           "estimated_complexity": 1-5,
+           "reasoning": "..." }
+Guard:   classification_schema (G_val) — validates JSON + category enum
+```
+
+#### New Action Pair: `ap_generate_workflow`
+
+Generates a workflow specification (JSON) based on the problem classification. The workflow specification uses the same format as the static workflow configs (action_pairs, requires, guard, guard_config) but is generated per-instance.
+
+```
+Input:   problem classification + component registry (available generators, guards)
+Output:  workflow JSON (same format as 01_baseline.json etc.)
+Guard:   workflow_schema (G_val) — all action pairs reference registered components,
+         dependencies are acyclic, total budget within B_max
+```
+
+The component registry (Definition 26) is the list of available generators and guards — the meta-level agent can only compose from existing primitives, not invent new ones. This constrains the generated workflow to be executable.
+
+#### Arm 20: Adaptive Workflow (Classify + Generate + Execute)
+
+**Workflow** (meta-level): `ap_classify_problem` -> `ap_generate_workflow` -> execute(generated_workflow)
+**rmax**: 2 (meta-level), generated workflow's own rmax (object-level)
+**Thesis**: Problem-adaptive workflow selection outperforms a fixed pipeline. Simple instances get lightweight workflows (singleshot or analysis -> patch). Complex instances get full TDD with execution verification. The meta-level overhead (2 LLM calls for classification + generation) is amortised by avoiding expensive pipelines on easy instances and providing richer pipelines for hard ones.
+
+```
++--------------------+     +---------------------+     +----------------------+
+| ap_classify_problem|---->| ap_generate_workflow|---->| execute(workflow)    |
+|                    |     |                     |     |                      |
+| G: classification_ |     | G: workflow_schema  |     | (object-level        |
+|    schema          |     |  (components valid, |     |  execution with      |
+|                    |     |   deps acyclic,     |     |  its own guards)     |
+|                    |     |   budget in range)  |     |                      |
++--------------------+     +---------------------+     +----------------------+
+```
+
+**Example generated workflows by category**:
+
+| Problem category | Expected generated workflow | Why |
+|-----------------|---------------------------|-----|
+| `trivial_fix` | `ap_singleshot` (rmax=2) | One-line fix, decomposition is overhead |
+| `single_file_bug` | `ap_analysis -> ap_gen_patch` (rmax=3) | Comprehension helps but TDD overkill |
+| `multi_file_bug` | `ap_analysis -> ap_gen_test -> ap_gen_patch` (rmax=6, CompositeGuard) | Full TDD with execution verification |
+| `api_change` | `ap_localize -> ap_analysis -> ap_gen_test -> ap_gen_patch` (rmax=6) | Localization critical for multi-file |
+| `refactor` | `ap_analysis -> ap_regression_spec -> ap_gen_patch` (rmax=4) | Regression focus, no new behaviour to test |
+
+**What it measures**: Does per-instance workflow selection improve over best-fixed-pipeline (Arm 05)? The resolve rate comparison tells us whether adaptive selection helps. The token efficiency comparison tells us whether it saves budget on easy instances. The per-category breakdown reveals which problem types benefit most from adaptation.
+
+**Connection to backtracking**: The generated workflow *can include backtracking configuration* if the meta-level agent includes it in the spec. An advanced variant would generate workflows with `backtrack_budget` fields, effectively letting the meta-level agent decide not just *which steps* to run but also *how much search* to allocate. This connects Arm 20 to the backtracking arms (17-19): the meta-level agent could choose to include `ap_diff_review` + backtracking for complex instances but skip it for simple ones.
+
+#### Arm 21: Adaptive Workflow + Backtracking (Full Meta-Level)
+
+**Workflow** (meta-level): `ap_classify_problem` -> `ap_generate_workflow` -> execute(generated_workflow_with_backtracking)
+**Thesis**: The meta-level agent generates workflows that include backtracking configuration. For complex instances, the generated workflow includes `ap_diff_review` and `backtrack_budget` per step. For simple instances, no backtracking overhead.
+
+This is the most ambitious arm — it combines:
+- **Adaptive workflow selection** (Arm 20): right pipeline for the problem
+- **Informed backtracking** (Arm 18): `ap_diff_review` as heuristic when included
+- **Budget-aware search** (`plan_search_feedback_loop.md` Section 5): per-step backtrack budgets tuned by the meta-level agent
+
+```
+Meta-level:
+  ap_classify_problem -> ap_generate_workflow(+backtrack_config)
+
+Object-level (generated, example for multi_file_bug):
+  ap_analysis -> ap_gen_test -> ap_gen_patch -> ap_diff_review
+  with backtrack_budget: {ap_analysis: 1, ap_gen_test: 2, ap_gen_patch: 0}
+```
+
+**What it measures**: The ceiling question — how much of the gap between singleshot (Arm 02) and perfect is recoverable through adaptive orchestration? If Arm 21 significantly outperforms Arm 05 (best fixed pipeline) and Arm 18 (fixed pipeline + backtracking), the meta-level adds genuine value beyond just choosing the right fixed pipeline. If it doesn't, fixed pipelines with backtracking are sufficient and the meta-level is unnecessary complexity.
+
+**Learning signal**: Every instance x workflow execution produces a trace: which workflow was generated, which steps succeeded/failed, which backtracks occurred, final resolve outcome. This trace is a training signal for improving the meta-level agent. Over many instances, the `ap_classify_problem` and `ap_generate_workflow` prompts can be refined based on which generated workflows actually led to resolves. This connects to Extension 04 (Learning Loop, Definitions 21-24): the refinement predicate selects traces where the generated workflow succeeded, and the training loss conditions on both the problem statement and the classification to improve future workflow generation.
+
+### 5.8 Additional Action Pairs (Composable Across Arms)
+
+The following action pairs are not tied to specific arms — they can be inserted into any pipeline to test their individual contribution.
+
+#### `ap_context_gather` — Targeted File Reading
+
+```
+Input:   localization result (file list from ap_localize)
+Output:  { "files": [{"path": "...", "content": "...", "relevant_lines": [...]}] }
+Guard:   context_schema (G_val) — at least one file read, total content within token budget
+Requires: ap_localize
+```
+
+Between localization and analysis, reads the actual file contents of localized files and injects them into context. Currently models get a file *listing* but never see contents — the most frequently observed failure mode. Unlike just adding localization (Arm 07), this explicitly extracts and bounds the content to fit within the context window.
+
+#### `ap_regression_spec` — Regression Test Extraction
+
+```
+Input:   analysis artifact + repository file listing
+Output:  { "test_framework": "...", "test_patterns": [...], "fixture_conventions": [...],
+           "example_tests": [...] }
+Guard:   spec_schema (G_val) — references actual test files from the repository
+Requires: ap_analysis
+```
+
+Before writing the discriminating test, extracts existing test patterns from the repo: framework, assertion style, fixture conventions, naming patterns. Grounds the test generator in the project's idioms rather than generic pytest patterns. Particularly valuable for non-Python projects where test conventions vary widely (Go table-driven tests, Jest describe/it nesting, etc.).
+
+#### `ap_root_cause_verify` — Analysis Verification via Counterfactual
+
+```
+Input:   analysis artifact
+Output:  { "verification_test": "...", "prediction": "fail" | "pass",
+           "actual_result": "fail" | "pass", "verified": true | false }
+Guard:   composite(test_syntax, counterfactual_exec) — test parses AND execution
+         matches prediction
+Requires: ap_analysis
+```
+
+After analysis, generates a counterfactual question: "If the root cause hypothesis is correct, what specific test would demonstrate it?" Runs that test against the buggy code. If the test doesn't fail as predicted, the analysis is wrong — backtrack. This is a *verification guard on the analysis itself*, not just schema validation. The existing `AnalysisGuard` only checks JSON structure; this checks whether the hypothesis is empirically consistent.
+
+### 5.9 Future Arm Summary Table
 
 | Arm | Action Pairs | New Element | Hypothesis |
 |-----|-------------|-------------|------------|
@@ -365,10 +623,15 @@ Tests whether language-specific guard implementations (beyond the current multi-
 | 10 | analysis -> test(+spec) -> patch | Requirements injection | Richer spec -> better tests |
 | 11 | analysis -> spec_extract -> test -> patch | Explicit specification step | Structured spec intermediary |
 | 12 | analysis -> test -> patch -> refine_patch | Cross-pair iteration (forward) | Regression repair |
-| 13 | analysis -> test -> patch -> refine_test -> patch | Cross-pair backtracking | Controlled re-specification |
+| 13 | analysis -> test -> patch -> refine_test -> patch | Cross-pair backtracking (fixed) | Controlled re-specification |
 | 14 | analysis xN -> test -> patch | SC-Planning on analysis | Hypothesis selection |
 | 15 | analysis -> test xN -> patch | Multi-test generation | Test diversity |
 | 16 | (05 with adaptive guards) | Language-specific guards | Language-aware validation |
+| 17 | analysis -> test -> patch -> diff_review | LLM-as-reviewer, forward only | Critique catches logical errors |
+| 18 | analysis -> test -> patch -> diff_review + backtrack | Review-guided selective backtracking | Informed search via LLM heuristic |
+| 19 | (05 with rule-based backtracking) | Rule-based backtracking, no review | Baseline for backtracking value |
+| 20 | classify -> generate_workflow -> execute | Per-instance adaptive workflow | Right pipeline for the problem |
+| 21 | classify -> generate_workflow(+backtrack) -> execute | Adaptive workflow + backtracking | Full meta-level orchestration |
 
 ---
 
@@ -407,9 +670,12 @@ The arms form a nested ablation:
      +- + test synthesis = 04 (s1_tdd, static guards)
          +- + execution verification = 05 (s1_tdd_verified)
              +- + behaviour prompts = 06 (s1_tdd_behavior)
+             +- + diff review (forward) = 17 (s1_tdd_review)
+             |   +- + selective backtracking = 18 (review-guided backtrack)
+             +- + rule-based backtracking = 19 (baseline backtrack)
 ```
 
-Each transition isolates one variable. Arm 01 (baseline) provides an orthogonal comparison — decomposition via localization instead of comprehension.
+Each transition isolates one variable. Arm 01 (baseline) provides an orthogonal comparison — decomposition via localization instead of comprehension. Arms 17-19 form a second ablation branch from Arm 05, isolating review value (17 vs 05), backtracking value (18 vs 17), and heuristic quality (18 vs 19). Arms 20-21 are orthogonal — they test meta-level orchestration and can incorporate any of the above as object-level components.
 
 ---
 
@@ -451,6 +717,10 @@ output/swe_bench_pro/
 | SWE-bench Pro vs Verified | S5.1 Unknown Specifications | Specification richness vs bootstrap difficulty |
 | Future Arms 14-15 | S7.3 SC-Planning | Self-Consistency for hypothesis/test selection |
 | Arm 05 guard chain cost | S6 Complexity Cliff | G_val = O(N), G_ver = O(exec) |
+| Arms 17-19 (backtracking) | S4 Contingency + plan_search_feedback_loop.md | Guards as heuristic functions for cross-pair search |
+| ap_diff_review (Arm 18) | S4 Red Loop + plan_search_feedback_loop.md S4.2 | LLM-based heuristic replacing rule-based backtrack depth |
+| Arms 20-21 (generated workflows) | Ext 06 Generated Workflows (Defs 25-26) | Workflow artifacts, component registry, two-level hierarchy |
+| Arm 21 learning signal | Ext 04 Learning Loop (Defs 21-24) | Refinement predicate on workflow execution traces |
 
 ### 8.2 Predictions from Theory
 
@@ -461,12 +731,26 @@ output/swe_bench_pro/
 5. **Pro delta > Verified delta**: Guard-Driven Synthesis shows larger relative improvement on Pro (richer spec material)
 6. **06 >= 05**: Behavior-focused prompts should produce better discriminating tests (higher test_red pass rate)
 
-### 8.3 What Would Disprove the Framework
+### 8.3 Predictions for Backtracking and Meta-Level Arms
+
+7. **18 > 17 > 05**: Adding review improves over no review; adding backtracking improves over forward-only review
+8. **18 > 19**: LLM-based backtrack heuristic (ap_diff_review) outperforms rule-based heuristic on diverse feedback
+9. **19 > 05 on hard instances**: Even rule-based backtracking should help on multi-file patches where first attempts frequently fail
+10. **Backtrack depth distribution**: Most backtracks should be depth 0-1 (retry or regenerate test); depth 2 (regenerate analysis) should be rare (<10% of backtracks)
+11. **20 > 05 on token efficiency**: Adaptive workflows save budget on easy instances (singleshot for trivial fixes) while matching or beating resolve rate
+12. **21 >= 20**: Adding backtracking configuration to generated workflows should not hurt and may help on the hardest instances
+13. **ap_diff_review backtrack_target accuracy**: When the reviewer recommends backtracking to a specific step, the subsequent regeneration should succeed at a higher rate than blind retry — this validates that the heuristic is informative
+
+### 8.4 What Would Disprove the Framework
 
 - **02 >= 05**: If singleshot matches or beats the full TDD pipeline, decomposition adds cost without value
 - **04 ~ 05 everywhere**: If execution guards never catch what static guards miss, the CompositeGuard is overhead
 - **Retry loops don't converge**: If attempt N+1 success rate equals attempt 1 success rate, feedback doesn't help
 - **Verified delta > Pro delta**: If Guard-Driven Synthesis helps more on easy tasks, the theory about specification richness is wrong
+- **19 ~ 05**: If rule-based backtracking doesn't improve over fixed retry, cross-pair feedback is not actionable
+- **18 ~ 19**: If the LLM review heuristic doesn't outperform rules, the extra LLM call is pure overhead
+- **20 ~ 05**: If adaptive workflow selection doesn't improve over best-fixed-pipeline, the classification step is wasted
+- **backtrack_target is random**: If ap_diff_review's backtrack recommendations don't correlate with successful recovery, the LLM cannot reliably diagnose failure origins
 
 All outcomes are publishable. Negative results constrain the framework's applicability claims.
 
@@ -489,8 +773,13 @@ All outcomes are publishable. Negative results constrain the framework's applica
 | 04 | 3-9 | 0 | 20-90s |
 | 05 | 3-18 | 2-12 | 1-10 min |
 | 06 | 3-18 | 2-12 | 1-10 min |
+| 17 | 4-24 | 2-12 | 1-12 min |
+| 18 | 4-30 | 2-18 | 2-15 min |
+| 19 | 3-24 | 2-18 | 1-12 min |
+| 20 | 3-22 | 0-12 | 1-12 min |
+| 21 | 4-32 | 0-18 | 2-18 min |
 
-Full 731-instance run across all 6 arms: ~50-200 compute-hours depending on model and parallelism.
+Full 731-instance run across core 6 arms: ~50-200 compute-hours depending on model and parallelism. Backtracking arms (17-19) add ~50% overhead. Meta-level arms (20-21) vary widely by generated workflow complexity.
 
 ### 9.3 Recommended Sampling Strategy for ISMIS
 
@@ -506,4 +795,5 @@ If full runs are infeasible within the submission timeline:
 
 | Date | Change |
 |------|--------|
-| 2026-02-06 | v0.1 — Initial design document. 6 arms defined. Future arm design space outlined. |
+| 2026-02-06 | v0.1 — Initial design document. 6 arms defined. Future arm design space (Arms 07-16) outlined. |
+| 2026-02-06 | v0.2 — Added feedback-classified backtracking arms (17-19) with ap_diff_review as LLM-based heuristic. Added generated workflow arms (20-21) for adaptive meta-level orchestration. Added composable action pairs (ap_context_gather, ap_regression_spec, ap_root_cause_verify). Extended theory mapping and predictions for new arms. |
