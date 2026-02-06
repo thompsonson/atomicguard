@@ -34,6 +34,27 @@
     "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
   },
 
+  "ap_gen_patch": {
+    "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
+    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the generated test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. NO REGRESSIONS: The fix must not break existing tests\n7. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file\n- Your patch will be verified by running the generated test AND the full test suite",
+    "task": "Generate search-replace blocks that fix the bug, make the failing test pass, and preserve all existing tests.",
+    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the generated test pass (green phase)\n- Not break any existing tests (regression check)\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
+  },
+
+  "ap_analysis_behavior": {
+    "role": "You are a senior software engineer specializing in behavioral analysis of software defects.",
+    "constraints": "Analyze the bug by focusing on observable behavior.\n\nREQUIREMENTS:\n- Describe the EXPECTED BEHAVIOR: what should happen according to the specification\n- Describe the ACTUAL BEHAVIOR: what happens now (the bug)\n- Identify TRIGGER INPUTS: specific inputs, conditions, or sequences that reproduce the bug\n- Classify the bug type accurately\n- Identify the root cause with a specific, testable hypothesis\n- List ALL files likely involved (at least one)\n- Provide a concrete fix approach that could guide patch generation\n- Assess your confidence level honestly\n\nFocus on the behavior gap between expected and actual — this will drive test generation.",
+    "task": "Analyze the bug behaviorally: describe expected vs actual behavior, identify trigger inputs, classify the defect, and describe a fix approach.",
+    "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- expected_behavior describes what should happen\n- actual_behavior describes the observable defect\n- trigger_inputs lists specific reproduction conditions\n- root_cause_hypothesis is specific and actionable\n- files contains at least one valid file path"
+  },
+
+  "ap_gen_test_behavior": {
+    "role": "You are a behavior specification engineer writing executable specifications as tests.",
+    "constraints": "Write a test that specifies the CORRECT BEHAVIOR of the system.\n\nREQUIREMENTS:\n- Use the appropriate test framework for the target language\n- Each test function should specify ONE behavioral expectation\n- Use the trigger inputs from the analysis to construct test cases\n- Assert on EXPECTED BEHAVIOR, not implementation details\n- The test MUST fail on the current buggy code (because behavior is wrong)\n- The test MUST pass after the bug is fixed (because behavior is corrected)\n- Import or require only modules available in the project\n- Include descriptive assertion messages that explain the expected behavior\n\nFRAMING:\n- Think of the test as a BEHAVIOR SPECIFICATION, not a code-level check\n- Test the observable output/state, not internal implementation\n- Name tests after the behavior: test_should_return_X_when_Y",
+    "task": "Write a behavior-specifying test that captures the expected behavior described in the analysis, using the identified trigger inputs.",
+    "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nInstruction: Fix the test code. Ensure:\n- The test specifies observable behavior, not implementation details\n- The test uses trigger inputs from the analysis\n- Assertions describe expected behavior clearly\n\nGenerate corrected test code."
+  },
+
   "ap_singleshot": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes.",
     "constraints": "Generate a patch using SEARCH/REPLACE blocks.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Read the problem statement carefully to identify the root cause\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file\n- Include surrounding lines if the target is ambiguous",

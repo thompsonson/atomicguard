@@ -15,7 +15,7 @@
       "generator": "PatchGenerator",
       "guard": "patch",
       "guard_config": {
-        "require_git_apply": false,
+        "require_git_apply": true,
         "require_syntax_valid": true
       },
       "requires": ["ap_analysis"],

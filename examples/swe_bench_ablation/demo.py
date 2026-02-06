@@ -15,6 +15,7 @@ import click
 
 from atomicguard import ActionPair, Workflow, WorkflowStatus
 from atomicguard.domain.prompts import PromptTemplate
+from atomicguard.guards.composite.base import SequentialGuard
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
 from .generators import (
@@ -23,7 +24,15 @@ from .generators import (
     PatchGenerator,
     TestGenerator,
 )
-from .guards import AnalysisGuard, LocalizationGuard, PatchGuard, TestSyntaxGuard
+from .guards import (
+    AnalysisGuard,
+    FullEvalGuard,
+    LocalizationGuard,
+    PatchGuard,
+    TestGreenGuard,
+    TestRedGuard,
+    TestSyntaxGuard,
+)
 
 logger = logging.getLogger("swe_bench_ablation")
 
@@ -52,12 +61,15 @@ def get_generator_registry() -> dict[str, type]:
 
 
 def get_guard_registry() -> dict[str, type]:
-    """Get guard class registry."""
+    """Get guard class registry for simple (non-composite) guards."""
     return {
         "analysis": AnalysisGuard,
         "localization": LocalizationGuard,
         "patch": PatchGuard,
         "test_syntax": TestSyntaxGuard,
+        "test_red": TestRedGuard,
+        "test_green": TestGreenGuard,
+        "full_eval": FullEvalGuard,
     }
 
 
@@ -142,11 +154,8 @@ def build_workflow(
             raise ValueError(f"Unknown generator: {gen_name}")
         gen_cls = generator_registry[gen_name]
 
-        # Get guard class
+        # Get guard (may be a simple guard or a composite)
         guard_name = ap_config["guard"]
-        if guard_name not in guard_registry:
-            raise ValueError(f"Unknown guard: {guard_name}")
-        guard_cls = guard_registry[guard_name]
 
         # Build generator with model config
         gen_kwargs: dict[str, Any] = {
@@ -164,10 +173,11 @@ def build_workflow(
         guard_config = ap_config.get("guard_config", {})
         if repo_root:
             guard_config["repo_root"] = repo_root
-        guard = guard_cls(**guard_config)
+        guard = _build_guard(guard_name, guard_config, guard_registry)
 
-        # Get prompt template
-        template = prompts.get(ap_id)
+        # Get prompt template (supports prompt_override for Arm 06 behavior variant)
+        prompt_key = ap_config.get("prompt_override", ap_id)
+        template = prompts.get(prompt_key)
 
         # Create action pair
         action_pair = ActionPair(
@@ -183,6 +193,42 @@ def build_workflow(
         workflow.add_step(ap_id, action_pair, requires=requires)
 
     return workflow
+
+
+def _build_guard(
+    guard_name: str,
+    guard_config: dict[str, Any],
+    guard_registry: dict[str, type],
+) -> Any:
+    """Build a guard instance, supporting composite guard names.
+
+    Composite guards are built by composing multiple sub-guards in a
+    SequentialGuard (fail-fast). The naming convention is:
+    - "composite_test_verified": TestSyntaxGuard -> TestRedGuard
+    - "composite_patch_verified": PatchGuard -> TestGreenGuard -> FullEvalGuard
+
+    Simple guards are looked up directly in the registry.
+    """
+    # Composite guard definitions: ordered sub-guard sequences
+    composite_definitions: dict[str, list[str]] = {
+        "composite_test_verified": ["test_syntax", "test_red"],
+        "composite_patch_verified": ["patch", "test_green", "full_eval"],
+    }
+
+    if guard_name in composite_definitions:
+        sub_guard_names = composite_definitions[guard_name]
+        sub_guards = []
+        for sg_name in sub_guard_names:
+            if sg_name not in guard_registry:
+                raise ValueError(f"Unknown sub-guard in composite: {sg_name}")
+            sg_cls = guard_registry[sg_name]
+            sub_guards.append(sg_cls(**guard_config))
+        return SequentialGuard(sub_guards)
+
+    if guard_name not in guard_registry:
+        raise ValueError(f"Unknown guard: {guard_name}")
+    guard_cls = guard_registry[guard_name]
+    return guard_cls(**guard_config)
 
 
 def _topological_sort(action_pairs: dict[str, Any]) -> list[str]:
@@ -335,9 +381,12 @@ def experiment(
     from .experiment_runner import ExperimentRunner
 
     arm_map = {
+        "baseline": "01_baseline",
         "singleshot": "02_singleshot",
         "s1_direct": "03_s1_direct",
         "s1_tdd": "04_s1_tdd",
+        "s1_tdd_verified": "05_s1_tdd_verified",
+        "s1_tdd_behavior": "06_s1_tdd_behavior",
     }
     arm_list = [arm_map[a.strip()] for a in arms.split(",") if a.strip() in arm_map]
 

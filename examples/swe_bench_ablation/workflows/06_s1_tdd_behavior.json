@@ -1,0 +1,34 @@
+{
+  "name": "S1 TDD Behavior",
+  "description": "Arm 06: Prompt variant of Arm 05 — behavior-focused analysis and test generation. rmax=6.",
+  "model": "moonshotai/kimi-k2-0905",
+  "provider": "openrouter",
+  "rmax": 6,
+  "action_pairs": {
+    "ap_analysis": {
+      "generator": "AnalysisGenerator",
+      "guard": "analysis",
+      "guard_config": {},
+      "prompt_override": "ap_analysis_behavior",
+      "description": "Analyze the bug with behavior focus: expected vs actual behavior, trigger inputs"
+    },
+    "ap_gen_test": {
+      "generator": "TestGenerator",
+      "guard": "composite_test_verified",
+      "guard_config": {},
+      "prompt_override": "ap_gen_test_behavior",
+      "requires": ["ap_analysis"],
+      "description": "Write a behavior-specifying test (verified via Docker execution)"
+    },
+    "ap_gen_patch": {
+      "generator": "PatchGenerator",
+      "guard": "composite_patch_verified",
+      "guard_config": {
+        "require_git_apply": true,
+        "require_syntax_valid": true
+      },
+      "requires": ["ap_analysis", "ap_gen_test"],
+      "description": "Generate patch that fixes the bug, passes generated test, and passes full eval"
+    }
+  }
+}

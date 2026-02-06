@@ -1,9 +1,9 @@
 {
-  "name": "S1 TDD",
-  "description": "Experiment 7.2 Arm 3: Analysis, test generation, then fix (3 action pairs, rmax=3).",
+  "name": "S1 TDD Verified",
+  "description": "Arm 05: Guard-Driven Synthesis with CompositeGuard (execution-verified red/green/eval). rmax=6.",
   "model": "moonshotai/kimi-k2-0905",
   "provider": "openrouter",
-  "rmax": 3,
+  "rmax": 6,
   "action_pairs": {
     "ap_analysis": {
       "generator": "AnalysisGenerator",
@@ -13,20 +13,20 @@
     },
     "ap_gen_test": {
       "generator": "TestGenerator",
-      "guard": "test_syntax",
+      "guard": "composite_test_verified",
       "guard_config": {},
       "requires": ["ap_analysis"],
-      "description": "Write a failing test that reproduces the bug"
+      "description": "Write a failing test that reproduces the bug (verified via Docker execution)"
     },
-    "ap_gen_fix": {
+    "ap_gen_patch": {
       "generator": "PatchGenerator",
-      "guard": "patch",
+      "guard": "composite_patch_verified",
       "guard_config": {
         "require_git_apply": true,
         "require_syntax_valid": true
       },
       "requires": ["ap_analysis", "ap_gen_test"],
-      "description": "Generate patch to fix the bug and pass the test"
+      "description": "Generate patch that fixes the bug, passes generated test, and passes full eval"
     }
   }
 }
