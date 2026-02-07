@@ -370,6 +370,12 @@ class SWEBenchProRunner:
                     f"```\n{listing}\n```"
                 )
 
+            # Add test infrastructure context for TDD workflows
+            # This helps the LLM generate tests that follow project patterns
+            test_infra = self._get_test_infrastructure(repo_root, lang_config)
+            if test_infra:
+                specification += f"\n\n## Test Infrastructure\n{test_infra}"
+
             result = workflow.execute(specification)
             wall_time = time.time() - start_time
 
@@ -668,6 +674,142 @@ class SWEBenchProRunner:
             _run_git(["git", "checkout", instance.base_commit])
 
         return str(repo_dir)
+
+    # -----------------------------------------------------------------
+    # Test infrastructure context
+    # -----------------------------------------------------------------
+
+    def _get_test_infrastructure(
+        self,
+        repo_root: str,
+        lang_config: LanguageConfig,
+        analysis_files: list[str] | None = None,
+    ) -> str:
+        """Extract test infrastructure context from the project.
+
+        Reads conftest.py and sample test files to help the LLM understand
+        the project's test patterns (fixtures, imports, initialization).
+
+        Args:
+            repo_root: Path to the cloned repository.
+            lang_config: Language configuration for file extensions.
+            analysis_files: Files identified in analysis (to find relevant tests).
+
+        Returns:
+            Formatted string with test infrastructure context, or empty string.
+        """
+        root = Path(repo_root)
+        parts: list[str] = []
+        max_content_size = 3000  # Limit per file to avoid huge prompts
+
+        # Common conftest.py locations
+        conftest_paths = [
+            "tests/conftest.py",
+            "test/conftest.py",
+            "conftest.py",
+            "tests/unit/conftest.py",
+        ]
+
+        # Find and read conftest.py
+        for conftest_path in conftest_paths:
+            full_path = root / conftest_path
+            if full_path.exists():
+                try:
+                    content = full_path.read_text(errors="replace")
+                    if len(content) > max_content_size:
+                        content = content[:max_content_size] + "\n# ... (truncated)"
+                    parts.append(
+                        f"### Test Configuration ({conftest_path})\n"
+                        f"This file defines pytest fixtures and test setup.\n"
+                        f"```python\n{content}\n```"
+                    )
+                    break  # Use first found
+                except Exception:
+                    pass
+
+        # Find a sample test file to show patterns
+        # Priority: tests related to analysis files, then any test file
+        sample_test = self._find_sample_test(root, lang_config, analysis_files)
+        if sample_test:
+            rel_path = sample_test.relative_to(root)
+            try:
+                content = sample_test.read_text(errors="replace")
+                if len(content) > max_content_size:
+                    content = content[:max_content_size] + "\n# ... (truncated)"
+                parts.append(
+                    f"### Sample Test Pattern ({rel_path})\n"
+                    f"Follow this file's import and fixture patterns.\n"
+                    f"```python\n{content}\n```"
+                )
+            except Exception:
+                pass
+
+        if not parts:
+            return ""
+
+        header = (
+            "The project has existing test infrastructure. "
+            "Your generated test MUST follow these patterns to run correctly."
+        )
+        return header + "\n\n" + "\n\n".join(parts)
+
+    def _find_sample_test(
+        self,
+        repo_root: Path,
+        lang_config: LanguageConfig,
+        analysis_files: list[str] | None = None,
+    ) -> Path | None:
+        """Find a representative test file from the project.
+
+        Args:
+            repo_root: Path to the repository root.
+            lang_config: Language configuration.
+            analysis_files: Files from analysis to find related tests.
+
+        Returns:
+            Path to a sample test file, or None if not found.
+        """
+        test_dirs = ["tests", "test", "tests/unit", "test/unit"]
+
+        # If we have analysis files, try to find tests for those modules
+        if analysis_files:
+            for src_file in analysis_files:
+                # Convert source file to potential test file
+                # e.g., "qutebrowser/utils/qtlog.py" -> "tests/unit/utils/test_qtlog.py"
+                src_path = Path(src_file)
+                base_name = src_path.stem
+                parent_parts = src_path.parent.parts
+
+                for test_dir in test_dirs:
+                    # Try various test file patterns
+                    patterns = [
+                        f"{test_dir}/**/test_{base_name}.py",
+                        f"{test_dir}/**/{base_name}_test.py",
+                        f"{test_dir}/**/test_{base_name}*.py",
+                    ]
+                    for pattern in patterns:
+                        matches = list(repo_root.glob(pattern))
+                        if matches:
+                            return matches[0]
+
+        # Fallback: find any test file
+        for test_dir in test_dirs:
+            test_path = repo_root / test_dir
+            if test_path.exists():
+                for ext in lang_config.file_extensions:
+                    # Look for test_*.py or *_test.py patterns
+                    patterns = [f"**/test_*{ext}", f"**/*_test{ext}"]
+                    for pattern in patterns:
+                        matches = list(test_path.glob(pattern))
+                        if matches:
+                            # Return first non-trivial test file
+                            for match in matches[:5]:
+                                try:
+                                    if match.stat().st_size > 200:
+                                        return match
+                                except Exception:
+                                    pass
+        return None
 
     # -----------------------------------------------------------------
     # Resume helpers
