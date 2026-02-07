@@ -5,7 +5,7 @@ Core types (Artifact, Context, GuardResult, etc.) are imported from atomicguard.
 """
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -165,6 +165,111 @@ class TestResults(BaseModel):
     error_message: str | None = None
     stdout: str = ""
     stderr: str = ""
+
+
+# =============================================================================
+# Diff Review Output (Arms 17-18)
+# =============================================================================
+
+
+class DiffReviewVerdict(str, Enum):
+    """Verdict from the diff review action pair."""
+
+    APPROVE = "approve"
+    REVISE = "revise"
+    BACKTRACK = "backtrack"
+
+
+class DiffReviewIssue(BaseModel):
+    """A single issue identified in the diff review."""
+
+    severity: Literal["critical", "minor"] = "critical"
+    description: str
+    location: str | None = None
+
+
+class DiffReview(BaseModel):
+    """Structured output from diff review (ap_diff_review).
+
+    The reviewer reads analysis + test + patch and produces a structured
+    critique. The backtrack_target field is the heuristic signal consumed
+    by the BacktrackOrchestrator in Arm 18.
+    """
+
+    verdict: DiffReviewVerdict
+    issues: list[DiffReviewIssue] = Field(default_factory=list)
+    backtrack_target: str | None = Field(
+        default=None,
+        description=(
+            "Which action pair to backtrack to when verdict is 'backtrack'. "
+            "One of: ap_gen_patch, ap_gen_test, ap_analysis, or null."
+        ),
+    )
+    reasoning: str
+
+
+# =============================================================================
+# Problem Classification Output (Arms 20-21)
+# =============================================================================
+
+
+class ProblemCategory(str, Enum):
+    """Classification of problem complexity."""
+
+    TRIVIAL_FIX = "trivial_fix"
+    SINGLE_FILE_BUG = "single_file_bug"
+    MULTI_FILE_BUG = "multi_file_bug"
+    API_CHANGE = "api_change"
+    REFACTOR = "refactor"
+
+
+class ProblemClassification(BaseModel):
+    """Structured output from problem classification (ap_classify_problem)."""
+
+    category: ProblemCategory
+    estimated_complexity: int = Field(ge=1, le=5)
+    reasoning: str
+
+
+# =============================================================================
+# Generated Workflow Output (Arms 20-21)
+# =============================================================================
+
+
+class GeneratedActionPairSpec(BaseModel):
+    """Specification for a single action pair in a generated workflow."""
+
+    generator: str
+    guard: str
+    guard_config: dict[str, Any] = Field(default_factory=dict)
+    requires: list[str] = Field(default_factory=list)
+    description: str = ""
+    prompt_override: str | None = None
+
+
+class BacktrackConfig(BaseModel):
+    """Per-step backtracking budget for generated workflows (Arm 21)."""
+
+    backtrack_budget: dict[str, int] = Field(
+        default_factory=dict,
+        description="Map of action_pair_id -> backtrack budget",
+    )
+    include_diff_review: bool = False
+
+
+class GeneratedWorkflow(BaseModel):
+    """Structured output from workflow generation (ap_generate_workflow).
+
+    Uses the same schema as static workflow configs, enabling direct
+    execution by the existing workflow infrastructure.
+    """
+
+    name: str
+    description: str = ""
+    rmax: int = Field(default=4, ge=1, le=10)
+    action_pairs: dict[str, GeneratedActionPairSpec]
+    backtrack_config: BacktrackConfig | None = None
+    reasoning: str | None = None
 
 
 # =============================================================================

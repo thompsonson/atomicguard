@@ -1,0 +1,23 @@
+{
+  "name": "Adaptive Workflow + Backtracking (Full Meta-Level)",
+  "description": "Arm 21: Meta-level classifies the problem, generates a per-instance workflow with backtracking config, then executes it. Two-level hierarchy — meta-level selects pipeline and search budget, object-level executes with backtracking.",
+  "model": "moonshotai/kimi-k2-0905",
+  "provider": "openrouter",
+  "rmax": 2,
+  "meta_level": true,
+  "action_pairs": {
+    "ap_classify_problem": {
+      "generator": "ClassificationGenerator",
+      "guard": "classification_schema",
+      "guard_config": {},
+      "description": "Classify the problem instance by type and complexity to select appropriate workflow"
+    },
+    "ap_generate_workflow": {
+      "generator": "WorkflowGenerator",
+      "guard": "workflow_schema",
+      "guard_config": {},
+      "requires": ["ap_classify_problem"],
+      "description": "Generate a per-instance workflow specification with backtracking config based on problem classification"
+    }
+  }
+}

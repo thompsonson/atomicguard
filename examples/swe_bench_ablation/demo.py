@@ -20,18 +20,24 @@ from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifact
 
 from .generators import (
     AnalysisGenerator,
+    ClassificationGenerator,
+    DiffReviewGenerator,
     LocalizationGenerator,
     PatchGenerator,
     TestGenerator,
+    WorkflowGenerator,
 )
 from .guards import (
     AnalysisGuard,
+    ClassificationGuard,
+    DiffReviewGuard,
     FullEvalGuard,
     LocalizationGuard,
     PatchGuard,
     TestGreenGuard,
     TestRedGuard,
     TestSyntaxGuard,
+    WorkflowSchemaGuard,
 )
 
 logger = logging.getLogger("swe_bench_ablation")
@@ -54,9 +60,12 @@ def get_generator_registry() -> dict[str, type]:
     """Get generator class registry."""
     return {
         "AnalysisGenerator": AnalysisGenerator,
+        "ClassificationGenerator": ClassificationGenerator,
+        "DiffReviewGenerator": DiffReviewGenerator,
         "LocalizationGenerator": LocalizationGenerator,
         "PatchGenerator": PatchGenerator,
         "TestGenerator": TestGenerator,
+        "WorkflowGenerator": WorkflowGenerator,
     }
 
 
@@ -64,12 +73,15 @@ def get_guard_registry() -> dict[str, type]:
     """Get guard class registry for simple (non-composite) guards."""
     return {
         "analysis": AnalysisGuard,
+        "classification_schema": ClassificationGuard,
         "localization": LocalizationGuard,
         "patch": PatchGuard,
+        "review_schema": DiffReviewGuard,
         "test_syntax": TestSyntaxGuard,
         "test_red": TestRedGuard,
         "test_green": TestGreenGuard,
         "full_eval": FullEvalGuard,
+        "workflow_schema": WorkflowSchemaGuard,
     }
 
 
@@ -387,6 +399,10 @@ def experiment(
         "s1_tdd": "04_s1_tdd",
         "s1_tdd_verified": "05_s1_tdd_verified",
         "s1_tdd_behavior": "06_s1_tdd_behavior",
+        "s1_tdd_review": "17_s1_tdd_review",
+        "s1_tdd_review_backtrack": "18_s1_tdd_review_backtrack",
+        "s1_tdd_rule_backtrack": "19_s1_tdd_rule_backtrack",
+        "adaptive_backtrack": "21_adaptive_backtrack",
     }
     arm_list = [arm_map[a.strip()] for a in arms.split(",") if a.strip() in arm_map]
 
