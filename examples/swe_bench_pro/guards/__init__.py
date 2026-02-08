@@ -6,9 +6,12 @@ provides multi-language and TDD verification guards.
 
 from examples.swe_bench_ablation.guards import (
     AnalysisGuard,
+    ClassificationGuard,
+    DiffReviewGuard,
     LocalizationGuard,
     PatchGuard,
     TestSyntaxGuard,
+    WorkflowGuard,
 )
 
 from .full_eval_guard import FullEvalGuard
@@ -19,6 +22,8 @@ from .test_red_guard import TestRedGuard
 
 __all__ = [
     "AnalysisGuard",
+    "ClassificationGuard",
+    "DiffReviewGuard",
     "FullEvalGuard",
     "LocalizationGuard",
     "MultiLangTestSyntaxGuard",
@@ -28,4 +33,5 @@ __all__ = [
     "TestGreenGuard",
     "TestRedGuard",
     "TestSyntaxGuard",
+    "WorkflowGuard",
 ]
