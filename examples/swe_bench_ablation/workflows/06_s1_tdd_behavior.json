@@ -18,7 +18,7 @@
     "ap_gen_patch": {
       "generator": "PatchGenerator",
       "guard": "composite",
-      "guards": ["patch", "test_green", "full_eval"],
+      "guards": ["patch", "lint", "test_green", "full_eval"],
       "guard_config": {
         "require_git_apply": true,
         "require_syntax_valid": true

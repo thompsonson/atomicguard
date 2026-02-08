@@ -41,6 +41,7 @@ from .guards import (
     ClassificationGuard,
     DiffReviewGuard,
     FullEvalGuard,
+    LintGuard,
     LocalizationGuard,
     MultiLangTestSyntaxGuard,
     PatchGuard,
@@ -157,6 +158,7 @@ def _get_guard_registry(
     return {
         "analysis": AnalysisGuard,
         "classification_schema": ClassificationGuard,
+        "lint": LintGuard,
         "localization": LocalizationGuard,
         "patch": PatchGuard,
         "review_schema": DiffReviewGuard,

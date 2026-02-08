@@ -9,6 +9,7 @@ from .backtrack_orchestrator import (
 )
 from .classification_guard import ClassificationGuard
 from .diff_review_guard import DiffReviewGuard
+from .lint_guard import LintGuard
 from .localization_guard import LocalizationGuard
 from .patch_guard import PatchGuard
 from .test_syntax_guard import TestSyntaxGuard
@@ -19,6 +20,7 @@ __all__ = [
     "BacktrackState",
     "ClassificationGuard",
     "DiffReviewGuard",
+    "LintGuard",
     "LocalizationGuard",
     "PatchGuard",
     "TestSyntaxGuard",
