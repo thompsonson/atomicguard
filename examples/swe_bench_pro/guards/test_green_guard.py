@@ -9,6 +9,7 @@ the validated edits to ensure it always applies cleanly (Option 3).
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -184,11 +185,14 @@ class TestGreenGuard(GuardInterface):
         if result.status == "FAILED":
             # Test still fails after patch - fix didn't work
             output_snippet = result.output[-800:] if result.output else ""
+            # Extract structured failure details for better feedback
+            failure_details = self._parse_test_failure(result.output or "")
             return GuardResult(
                 passed=False,
                 feedback=(
                     "Test still FAILS after patch - the fix didn't work!\n\n"
-                    f"Test output:\n{output_snippet}\n\n"
+                    f"{failure_details}\n\n"
+                    f"Full test output (last 800 chars):\n{output_snippet}\n\n"
                     "Analyze the test failure and adjust the patch to:\n"
                     "1. Fix the root cause of the bug, not just symptoms\n"
                     "2. Ensure the fix doesn't break other functionality\n"
@@ -211,6 +215,97 @@ class TestGreenGuard(GuardInterface):
             ),
             guard_name="TestGreenGuard",
         )
+
+    def _parse_test_failure(self, output: str) -> str:
+        """Extract structured failure details from pytest output.
+
+        Parses pytest output to find assertion errors, expected vs actual values,
+        and returns a structured summary to help the model understand the failure.
+
+        Args:
+            output: Raw pytest output string.
+
+        Returns:
+            Structured summary of the test failure.
+        """
+        if not output:
+            return "No test output available."
+
+        details: list[str] = []
+
+        # Find assertion error lines
+        # Pattern: "AssertionError: ..." or "assert ... == ..."
+        assertion_patterns = [
+            r"AssertionError:\s*(.+?)(?:\n|$)",
+            r"assert\s+(.+?)\s*(?:==|!=|is|in)\s*(.+?)(?:\n|$)",
+            r"E\s+assert\s+(.+)",
+            r"E\s+AssertionError:\s*(.+)",
+        ]
+
+        for pattern in assertion_patterns:
+            matches = re.findall(pattern, output, re.MULTILINE)
+            if matches:
+                for match in matches[:3]:  # Limit to 3 matches
+                    if isinstance(match, tuple):
+                        details.append(f"ASSERTION: {' '.join(match)}")
+                    else:
+                        details.append(f"ASSERTION: {match}")
+                break
+
+        # Find "expected" vs "actual" patterns (common in pytest output)
+        expected_patterns = [
+            r"Expected:\s*(.+?)(?:\n|Actual|$)",
+            r"expected:\s*(.+?)(?:\n|actual|$)",
+            r"E\s+Expected:\s*(.+)",
+        ]
+        actual_patterns = [
+            r"Actual:\s*(.+?)(?:\n|$)",
+            r"actual:\s*(.+?)(?:\n|$)",
+            r"E\s+Actual:\s*(.+)",
+        ]
+
+        for pattern in expected_patterns:
+            match = re.search(pattern, output, re.IGNORECASE | re.MULTILINE)
+            if match:
+                details.append(f"EXPECTED: {match.group(1).strip()}")
+                break
+
+        for pattern in actual_patterns:
+            match = re.search(pattern, output, re.IGNORECASE | re.MULTILINE)
+            if match:
+                details.append(f"ACTUAL: {match.group(1).strip()}")
+                break
+
+        # Find comparison failures (e.g., "1 != 2")
+        comparison_pattern = r"E\s+(\S+)\s*(==|!=|<|>|<=|>=|is not|is)\s*(\S+)"
+        comparison_matches = re.findall(comparison_pattern, output)
+        for match in comparison_matches[:2]:
+            left, op, right = match
+            details.append(f"COMPARISON: {left} {op} {right}")
+
+        # Find the failed test name
+        test_name_patterns = [
+            r"FAILED\s+(\S+::\S+)",
+            r"(\S+::\S+)\s+FAILED",
+            r"test_\w+.*?FAILED",
+        ]
+        for pattern in test_name_patterns:
+            match = re.search(pattern, output)
+            if match:
+                details.insert(0, f"FAILED TEST: {match.group(1) if match.groups() else match.group(0)}")
+                break
+
+        # Find traceback location (last file:line before assertion)
+        traceback_pattern = r"(\S+\.py):(\d+).*?\n.*?(?:assert|raise|Error)"
+        traceback_matches = re.findall(traceback_pattern, output, re.DOTALL)
+        if traceback_matches:
+            file, line = traceback_matches[-1]
+            details.append(f"LOCATION: {file}:{line}")
+
+        if details:
+            return "## Test Failure Analysis\n" + "\n".join(details)
+
+        return "Could not parse specific failure details from test output."
 
     def _regenerate_diff_from_edits(
         self,

@@ -119,6 +119,8 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                         self._file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
+                # Add file content anchoring instruction
+                parts.append(self._get_search_string_rules())
 
         # Get localization from dependencies (baseline arm)
         localization = self._get_localization(context)
@@ -154,6 +156,8 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                         self._file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
+                # Add file content anchoring instruction
+                parts.append(self._get_search_string_rules())
 
         # Singleshot fallback: include content of files referenced in the problem
         if not analysis and not localization and self._include_file_content and repo_root:
@@ -173,6 +177,8 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                         self._file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
+                # Add file content anchoring instruction
+                parts.append(self._get_search_string_rules())
 
         # Add "Do Not Modify" warning for excluded test files
         if excluded_test_files:
@@ -220,26 +226,36 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
 
-        # Add feedback if retry
+        # Add feedback history with guard chain
         if context.feedback_history and template:
-            prev_content, latest_feedback = context.feedback_history[-1]
+            # Show the most recent 3 attempts (most recent first)
+            history_to_show = list(context.feedback_history)[-3:]
+            num_attempts = len(context.feedback_history)
+
+            parts.append(f"\n\n## Previous Attempts ({num_attempts} total, showing last {len(history_to_show)})")
             parts.append(
-                f"\n\n## Previous Attempt Rejected\n{template.feedback_wrapper.format(feedback=latest_feedback)}"
+                "Review what went wrong and fix the issues. "
+                "Each rejection shows which guard failed and why."
             )
-            # Include previous patch attempt so LLM can see what it tried
-            if prev_content:
-                prev_edits = self._extract_edits_from_content(prev_content)
-                if prev_edits:
-                    parts.append("\n\n## Your Previous Patch (for reference)")
-                    parts.append(
-                        "The following edits were attempted. Review the search strings "
-                        "and ensure they match the EXACT content from the file (including "
-                        "whitespace and line breaks):"
-                    )
-                    for edit in prev_edits:
-                        parts.append(f"\n### File: {edit.get('file', 'unknown')}")
-                        parts.append(f"Search:\n```\n{edit.get('search', '')}\n```")
-                        parts.append(f"Replace:\n```\n{edit.get('replace', '')}\n```")
+
+            for i, (prev_content, feedback) in enumerate(reversed(history_to_show)):
+                attempt_num = num_attempts - i
+                guard_name = self._extract_guard_name(feedback)
+                parts.append(f"\n### Attempt {attempt_num} - Rejected by {guard_name}")
+                parts.append(f"{feedback}")
+
+                # Show the edits from the most recent attempt only
+                if i == 0 and prev_content:
+                    prev_edits = self._extract_edits_from_content(prev_content)
+                    if prev_edits:
+                        parts.append("\n**Your Edits (for reference):**")
+                        parts.append(
+                            "Ensure search strings match EXACTLY (including whitespace):"
+                        )
+                        for edit in prev_edits[:3]:  # Limit to 3 edits
+                            parts.append(f"\nFile: `{edit.get('file', 'unknown')}`")
+                            search = edit.get("search", "")[:200]
+                            parts.append(f"Search (first 200 chars): `{search}`")
 
         return "\n".join(parts)
 
@@ -407,10 +423,11 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         return signatures
 
     def _read_file(self, repo_root: str, file_path: str) -> tuple[str | None, str | None]:
-        """Read file content from repository.
+        """Read file content from repository with line numbers.
 
         Returns (content, error_message). If error_message is set, content is None.
         Explicit failure is better than silent truncation.
+        Line numbers are added to help the model reference specific lines.
         """
         full_path = Path(repo_root) / file_path
         if not full_path.exists():
@@ -427,10 +444,72 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                     f"{self._max_file_lines}. Cannot proceed without full file context."
                 )
 
-            return content, None  # Full content, no truncation
+            # Add line numbers for easier reference
+            numbered_lines = [f"{i+1:4d}| {line}" for i, line in enumerate(lines)]
+            return "\n".join(numbered_lines), None
         except Exception as e:
             logger.warning(f"Could not read {file_path}: {e}")
             return None, None
+
+    def _extract_guard_name(self, feedback: str) -> str:
+        """Extract guard name from feedback text.
+
+        Guards often include their name in the feedback (e.g., "guard_name=PatchGuard").
+        Falls back to detecting common guard names from patterns in the text.
+        """
+        # Common guard name patterns in feedback
+        patterns = [
+            r"guard_name[=:]?\s*['\"]?(\w+Guard)['\"]?",
+            r"Rejected by (\w+Guard)",
+            r"(\w+Guard)\s*:\s*",
+            r"^(PatchGuard|TestGreenGuard|TestRedGuard|GeneratorValidation|DiffReviewGuard)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, feedback, re.MULTILINE | re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+        # Infer from feedback content
+        feedback_lower = feedback.lower()
+        if "search string" in feedback_lower or "not found" in feedback_lower:
+            return "PatchGuard"
+        if "test" in feedback_lower and ("pass" in feedback_lower or "fail" in feedback_lower):
+            return "TestGuard"
+        if "json" in feedback_lower or "schema" in feedback_lower:
+            return "GeneratorValidation"
+        if "review" in feedback_lower or "verdict" in feedback_lower:
+            return "DiffReviewGuard"
+
+        return "Guard"
+
+    def _get_search_string_rules(self) -> str:
+        """Return the search string rules instruction.
+
+        This is a critical instruction that helps prevent hallucinated search strings.
+        The model must copy-paste exact code from the file content shown above.
+        """
+        return """
+
+## CRITICAL: Search String Rules
+
+Your SEARCH strings MUST be copied EXACTLY from the file contents shown above.
+
+**DO NOT:**
+- Write search strings from memory or training data
+- Modify whitespace, indentation, or line breaks
+- Guess what the code looks like
+
+**DO:**
+- Copy-paste exact lines from the numbered file content above
+- Include the EXACT indentation (spaces/tabs) as shown
+- Use line numbers to verify you have the right code
+
+**NOTE:** The line numbers (e.g., "  42| ") are for reference only.
+Do NOT include line numbers in your search strings - only the code after the "| ".
+
+If the code you need to modify isn't shown above, the patch cannot succeed.
+"""
 
     def _create_unified_diff(
         self,
