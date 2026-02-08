@@ -64,7 +64,6 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         self._max_file_lines = max_file_lines  # None = no limit (optional safeguard)
         self._repo_root = repo_root
         self._code_block_tag = code_block_tag
-        self._file_errors: list[str] = []  # Track file size errors for fatal reporting
 
     def _resolve_repo_root(self, context: Context) -> str | None:
         """Resolve repo_root from context metadata or constructor fallback."""
@@ -79,10 +78,31 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         self,
         context: Context,
         template: PromptTemplate | None,
-    ) -> str:
-        """Build the prompt for patch generation."""
+    ) -> str | tuple[str, list[str]]:
+        """Build the prompt for patch generation.
+
+        Returns:
+            Either a prompt string (for base class compatibility) or a tuple
+            of (prompt, file_errors) when called via _build_prompt_with_errors().
+        """
+        prompt, errors = self._build_prompt_with_errors(context, template)
+        # For base class compatibility, return just the prompt
+        # The generate() override handles errors separately
+        return prompt
+
+    def _build_prompt_with_errors(
+        self,
+        context: Context,
+        template: PromptTemplate | None,
+    ) -> tuple[str, list[str]]:
+        """Build the prompt for patch generation with error tracking.
+
+        Returns:
+            Tuple of (prompt_string, file_errors_list).
+        """
         repo_root = self._resolve_repo_root(context)
-        parts = []
+        parts: list[str] = []
+        file_errors: list[str] = []
 
         # Task from template
         if template:
@@ -116,7 +136,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 for file_path in files_to_include[:3]:
                     content, error = self._read_file(repo_root, file_path)
                     if error:
-                        self._file_errors.append(error)
+                        file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
                 # Add file content anchoring instruction
@@ -153,7 +173,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 for file_path in files_to_include[:3]:  # Limit to 3 files
                     content, error = self._read_file(repo_root, file_path)
                     if error:
-                        self._file_errors.append(error)
+                        file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
                 # Add file content anchoring instruction
@@ -174,7 +194,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 for file_path in source_referenced[:5]:
                     content, error = self._read_file(repo_root, file_path)
                     if error:
-                        self._file_errors.append(error)
+                        file_errors.append(error)
                     elif content:
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
                 # Add file content anchoring instruction
@@ -257,7 +277,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                             search = edit.get("search", "")[:200]
                             parts.append(f"Search (first 200 chars): `{search}`")
 
-        return "\n".join(parts)
+        return "\n".join(parts), file_errors
 
     def _process_output(self, output: Patch, context: Context) -> str:
         """Convert validated Patch to JSON, generating unified diff if possible."""
@@ -445,7 +465,9 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 )
 
             # Add line numbers for easier reference
-            numbered_lines = [f"{i+1:4d}| {line}" for i, line in enumerate(lines)]
+            # Format: right-aligned number, pipe, then code (no space after pipe)
+            # This prevents models from including "| " in search strings
+            numbered_lines = [f"{i+1:>4d}|{line}" for i, line in enumerate(lines)]
             return "\n".join(numbered_lines), None
         except Exception as e:
             logger.warning(f"Could not read {file_path}: {e}")
@@ -505,8 +527,8 @@ Your SEARCH strings MUST be copied EXACTLY from the file contents shown above.
 - Include the EXACT indentation (spaces/tabs) as shown
 - Use line numbers to verify you have the right code
 
-**NOTE:** The line numbers (e.g., "  42| ") are for reference only.
-Do NOT include line numbers in your search strings - only the code after the "| ".
+**NOTE:** The line numbers (e.g., "  42|") are for reference only.
+Do NOT include line numbers in your search strings - only the code after the "|".
 
 If the code you need to modify isn't shown above, the patch cannot succeed.
 """
@@ -581,34 +603,48 @@ If the code you need to modify isn't shown above, the patch cannot succeed.
         If file errors occurred (e.g., file exceeds size limit), returns
         an artifact with fatal error marker in metadata.
         """
-        self._file_errors = []  # Reset for this generation
+        # Build prompt and collect any file errors (no instance state mutation)
+        _, file_errors = self._build_prompt_with_errors(context, template)
 
-        # Call parent generate() - this calls _build_prompt() which populates _file_errors
-        artifact = super().generate(
-            context, template, action_pair_id, workflow_id, workflow_ref
-        )
+        # Check for file size errors before calling LLM - these should be fatal
+        if file_errors:
+            from datetime import UTC, datetime
+            from types import MappingProxyType
+            from uuid import uuid4
 
-        # Check for file size errors - these should be fatal
-        if self._file_errors:
-            error_msg = "\n".join(self._file_errors)
+            from atomicguard.domain.models import ArtifactStatus, ContextSnapshot, FeedbackEntry
+
+            error_msg = "\n".join(file_errors)
+            context_snapshot = ContextSnapshot(
+                workflow_id=workflow_id,
+                specification=context.specification,
+                constraints=context.ambient.constraints,
+                feedback_history=tuple(
+                    FeedbackEntry(artifact_id=aid, feedback=fb)
+                    for aid, fb in context.feedback_history
+                ),
+                dependency_artifacts=context.dependency_artifacts,
+            )
             return Artifact(
-                artifact_id=artifact.artifact_id,
-                workflow_id=artifact.workflow_id,
+                artifact_id=str(uuid4()),
+                workflow_id=workflow_id,
                 content=json.dumps({"error": error_msg}),
-                previous_attempt_id=artifact.previous_attempt_id,
-                parent_action_pair_id=artifact.parent_action_pair_id,
-                action_pair_id=artifact.action_pair_id,
-                created_at=artifact.created_at,
-                attempt_number=artifact.attempt_number,
-                status=artifact.status,
-                guard_result=artifact.guard_result,
-                context=artifact.context,
-                workflow_ref=artifact.workflow_ref,
-                metadata={
-                    **artifact.metadata,
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id=action_pair_id,
+                created_at=datetime.now(UTC).isoformat(),
+                attempt_number=0,
+                status=ArtifactStatus.PENDING,
+                guard_result=None,
+                context=context_snapshot,
+                workflow_ref=workflow_ref,
+                metadata=MappingProxyType({
                     "generator_error": error_msg,
                     "generator_error_kind": "fatal_file_size",
-                },
+                }),
             )
 
-        return artifact
+        # No file errors - proceed with normal generation
+        return super().generate(
+            context, template, action_pair_id, workflow_id, workflow_ref
+        )
