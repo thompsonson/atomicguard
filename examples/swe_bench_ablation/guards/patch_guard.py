@@ -17,6 +17,9 @@ from typing import Any
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
 
+from .edit_grounder import ground_edits
+from .similarity import find_similar_content
+
 logger = logging.getLogger("swe_bench_ablation.guards")
 
 
@@ -129,6 +132,13 @@ class PatchGuard(GuardInterface):
         # Validate unified diff format if present
         if patch_content:
             format_errors = self._validate_diff_format(patch_content)
+
+        # Ground edits before validation (fixes indentation/whitespace issues)
+        grounding_warnings: list[str] = []
+        if edits and self._repo_root:
+            edits, grounding_warnings = ground_edits(edits, self._repo_root)
+            for warning in grounding_warnings:
+                logger.debug("[PatchGuard] Grounding: %s", warning)
 
         # Check Python syntax if we have edits and repo root (validates SEARCH/REPLACE)
         if self._require_syntax_valid and edits and self._repo_root and not edit_errors:
@@ -314,7 +324,7 @@ class PatchGuard(GuardInterface):
                 if search not in original:
                     preview = search[:200].replace('\n', '\\n')
                     # Find similar content to help the generator
-                    similar = self._find_similar_content(original, search, file_path)
+                    similar = find_similar_content(original, search, file_path)
                     errors.append(
                         f"Search string not found in {file_path}.\n"
                         f"You searched for:\n{preview!r}\n\n"
@@ -337,128 +347,3 @@ class PatchGuard(GuardInterface):
                 logger.warning(f"Error checking syntax for {file_path}: {e}")
 
         return errors
-
-    def _find_similar_content(
-        self,
-        file_content: str,
-        search_string: str,
-        file_path: str,
-    ) -> str:
-        """Find similar content in file to help generator correct its search string.
-
-        Uses the first line of the search string to locate approximate position,
-        then shows surrounding context.
-        """
-        lines = file_content.split("\n")
-        search_lines = search_string.split("\n")
-
-        if not search_lines:
-            return f"File {file_path} has {len(lines)} lines."
-
-        # Get first non-empty line of search to use as anchor
-        first_search_line = ""
-        for line in search_lines:
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
-                first_search_line = stripped
-                break
-
-        if not first_search_line:
-            # All comment lines or empty - just show file structure
-            return self._show_file_structure(lines, file_path)
-
-        # Find best matching line in file
-        best_match_idx = -1
-        best_match_score = 0
-
-        for i, line in enumerate(lines):
-            score = self._line_similarity(line.strip(), first_search_line)
-            if score > best_match_score:
-                best_match_score = score
-                best_match_idx = i
-
-        if best_match_score < 0.3:
-            # No good match - show file structure instead
-            return self._show_file_structure(lines, file_path)
-
-        # Show context around the best match
-        start = max(0, best_match_idx - 3)
-        end = min(len(lines), best_match_idx + len(search_lines) + 3)
-
-        context_lines = []
-        for i in range(start, end):
-            prefix = ">>>" if i == best_match_idx else "   "
-            context_lines.append(f"{prefix} {i + 1:4d}: {lines[i]}")
-
-        match_quality = "exact" if best_match_score > 0.9 else "similar"
-        return (
-            f"Found {match_quality} content at line {best_match_idx + 1}:\n"
-            + "\n".join(context_lines)
-            + "\n\nUse the EXACT content shown above as your search string."
-        )
-
-    def _line_similarity(self, line1: str, line2: str) -> float:
-        """Similarity score between two lines (0-1), weighted for code patterns."""
-        if not line1 or not line2:
-            return 0.0
-        if line1 == line2:
-            return 1.0
-
-        # Extract function/class name if present - check this FIRST
-        def extract_name(line: str) -> str | None:
-            for prefix in ("def ", "async def ", "class "):
-                if line.startswith(prefix):
-                    rest = line[len(prefix):]
-                    # Get the name before ( or :
-                    name = rest.split("(")[0].split(":")[0].strip()
-                    return name
-            return None
-
-        name1 = extract_name(line1)
-        name2 = extract_name(line2)
-
-        # If both are function/class definitions, compare names
-        if name1 and name2:
-            if name1 == name2:
-                return 0.95  # Same name, different signature - highest priority
-            # Partial match only if one is a prefix of the other
-            if name2.startswith(name1) or name1.startswith(name2):
-                return 0.6  # e.g., validate vs validate_patch
-            return 0.1  # Different function names
-
-        # If searching for a def/class, only match other defs/classes
-        if name2 and not name1:
-            return 0.0  # Searching for function but this line isn't one
-
-        # Check for substring match - weight by length of match
-        if line1 in line2:
-            return 0.5 + 0.3 * (len(line1) / len(line2))
-        if line2 in line1:
-            return 0.5 + 0.3 * (len(line2) / len(line1))
-
-        # Count common words
-        words1 = set(line1.split())
-        words2 = set(line2.split())
-        if not words1 or not words2:
-            return 0.0
-
-        common = len(words1 & words2)
-        total = len(words1 | words2)
-        return common / total if total > 0 else 0.0
-
-    def _show_file_structure(self, lines: list[str], file_path: str) -> str:
-        """Show file structure when no similar content found."""
-        # Find function/class definitions
-        definitions = []
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped.startswith(("def ", "class ", "async def ")):
-                definitions.append(f"  {i + 1:4d}: {stripped[:60]}")
-
-        if definitions:
-            return (
-                f"No similar content found. File structure of {file_path}:\n"
-                + "\n".join(definitions[:15])
-                + (f"\n  ... and {len(definitions) - 15} more" if len(definitions) > 15 else "")
-            )
-        return f"No similar content found in {file_path} ({len(lines)} lines)."
