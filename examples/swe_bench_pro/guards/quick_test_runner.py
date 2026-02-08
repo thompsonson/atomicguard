@@ -97,13 +97,21 @@ class QuickTestRunner:
         test_file = self._get_test_filename()
 
         if lang == "python":
-            return ["python", "-m", "pytest", test_file, "-v", "--tb=short"]
+            # --noconftest: Don't load project's conftest.py (may import Qt/Django)
+            # -p no:cacheprovider: Avoid cache issues in Docker
+            return [
+                "python", "-m", "pytest", test_file,
+                "-v", "--tb=short", "--noconftest", "-p", "no:cacheprovider"
+            ]
         elif lang == "go":
             return ["go", "test", "-v", "-run", "TestAtomicGuard"]
         elif lang in ("javascript", "typescript"):
             return ["npm", "test", "--", test_file]
         else:
-            return ["python", "-m", "pytest", test_file, "-v", "--tb=short"]
+            return [
+                "python", "-m", "pytest", test_file,
+                "-v", "--tb=short", "--noconftest", "-p", "no:cacheprovider"
+            ]
 
     def _create_test_script(
         self,
@@ -114,33 +122,44 @@ class QuickTestRunner:
 
         The script:
         1. Resets the repo to base_commit
-        2. Optionally applies the patch
-        3. Writes the test file
-        4. Runs the test
+        2. Verifies the checkout succeeded
+        3. Optionally applies the patch
+        4. Writes the test file
+        5. Runs the test
         """
         test_filename = self._get_test_filename()
         test_cmd = " ".join(self._get_test_command())
+        expected_commit = self._instance.base_commit
 
-        # Escape test code for heredoc
-        escaped_test = test_code.replace("'", "'\"'\"'")
+        # Note: Using quoted heredoc delimiters (<< 'EOF') means no escaping needed.
+        # The content is passed through literally without shell expansion.
 
         script_lines = [
             "#!/bin/sh",
             "set -e",
             "",
-            "# Reset to base commit",
-            f"git checkout -f {self._instance.base_commit}",
+            "# Fetch and reset to base commit",
+            f"git fetch --depth=1 origin {expected_commit} 2>/dev/null || true",
+            f"git checkout -f {expected_commit}",
             "git clean -fdx",
+            "",
+            "# Verify commit",
+            "ACTUAL_COMMIT=$(git rev-parse HEAD)",
+            f'EXPECTED_PREFIX="{expected_commit[:12]}"',
+            'if [ "${ACTUAL_COMMIT#$EXPECTED_PREFIX}" = "$ACTUAL_COMMIT" ]; then',
+            f'    echo "ERROR: Commit mismatch. Expected {expected_commit[:12]}..., got $ACTUAL_COMMIT"',
+            "    exit 1",
+            "fi",
             "",
         ]
 
         if patch_diff:
-            # Escape patch for heredoc
-            escaped_patch = patch_diff.replace("'", "'\"'\"'")
+            # Using quoted heredoc delimiter - no escaping needed
+            # --whitespace=fix auto-corrects trailing whitespace issues
             script_lines.extend([
                 "# Apply patch",
-                "cat << 'PATCH_EOF' | git apply -",
-                escaped_patch,
+                "cat << 'PATCH_EOF' | git apply -v --whitespace=fix -",
+                patch_diff,
                 "PATCH_EOF",
                 "",
             ])
@@ -148,7 +167,7 @@ class QuickTestRunner:
         script_lines.extend([
             "# Write test file",
             f"cat << 'TEST_EOF' > {test_filename}",
-            escaped_test,
+            test_code,
             "TEST_EOF",
             "",
             "# Run test",
