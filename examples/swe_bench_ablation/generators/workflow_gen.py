@@ -57,8 +57,7 @@ class WorkflowGenerator(PydanticAIGenerator[GeneratedWorkflow]):
                 "test_green",
                 "full_eval",
                 "review_schema",
-                "composite_test_verified",
-                "composite_patch_verified",
+                "composite",
             ],
         }
 

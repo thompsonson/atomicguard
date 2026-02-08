@@ -21,14 +21,16 @@
     },
     "ap_gen_test": {
       "generator": "TestGenerator",
-      "guard": "composite_test_verified",
+      "guard": "composite",
+      "guards": ["test_syntax", "test_red"],
       "guard_config": {},
       "requires": ["ap_analysis"],
       "description": "Write a failing test that reproduces the bug (verified via Docker execution)"
     },
     "ap_gen_patch": {
       "generator": "PatchGenerator",
-      "guard": "composite_patch_verified",
+      "guard": "composite",
+      "guards": ["patch", "test_green", "full_eval"],
       "guard_config": {
         "require_git_apply": true,
         "require_syntax_valid": true
