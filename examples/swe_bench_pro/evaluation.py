@@ -121,7 +121,8 @@ def prepare_predictions(
         predictions = []
         skipped: list[str] = []
         for r in arm_results:
-            if r.workflow_status != "success" or not r.patch_content:
+            # Skip if workflow failed (error or guard rejection) or no patch
+            if r.error or r.failed_step or not r.patch_content:
                 skipped.append(r.instance_id)
                 continue
             predictions.append(

@@ -27,13 +27,15 @@ class ArmResult:
 
     instance_id: str
     arm: str
-    workflow_status: str
     patch_content: str = ""
     total_tokens: int = 0
     per_step_tokens: dict[str, int] = field(default_factory=dict)
     wall_time_seconds: float = 0.0
     error: str | None = None
     resolved: bool | None = None  # Evaluation result (None = not evaluated)
+    failed_step: str | None = None  # Which action pair failed (None = success)
+    failed_guard: str | None = None  # Which guard in the step failed (for composite)
+    retry_count: int = 0  # How many retries before failure
 
 
 class ExperimentRunner:
@@ -135,14 +137,23 @@ class ExperimentRunner:
                     except (json.JSONDecodeError, TypeError):
                         patch_content = artifact.content
 
+            # Extract guard name from provenance (if failure)
+            failed_guard = None
+            if result.provenance:
+                last_artifact, _ = result.provenance[-1]
+                if last_artifact.guard_result and last_artifact.guard_result.guard_name:
+                    failed_guard = last_artifact.guard_result.guard_name
+
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status=result.status.value,
                 patch_content=patch_content,
                 total_tokens=total_tokens,
                 per_step_tokens=per_step_tokens,
                 wall_time_seconds=round(wall_time, 2),
+                failed_step=result.failed_step,
+                failed_guard=failed_guard,
+                retry_count=len(result.provenance),
             )
 
         except Exception as e:
@@ -156,7 +167,6 @@ class ExperimentRunner:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="error",
                 wall_time_seconds=round(wall_time, 2),
                 error=str(e),
             )
@@ -308,6 +318,9 @@ class ExperimentRunner:
         if not results_path.exists():
             return results, completed
 
+        # Get valid field names from the dataclass
+        valid_fields = {f.name for f in ArmResult.__dataclass_fields__.values()}
+
         with open(results_path) as f:
             for line in f:
                 line = line.strip()
@@ -315,7 +328,9 @@ class ExperimentRunner:
                     continue
                 try:
                     data = json.loads(line)
-                    arm_result = ArmResult(**data)
+                    # Filter out unknown fields (backward compatibility)
+                    filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+                    arm_result = ArmResult(**filtered_data)
                     results.append(arm_result)
                     completed.add((arm_result.instance_id, arm_result.arm))
                 except (json.JSONDecodeError, TypeError) as e:

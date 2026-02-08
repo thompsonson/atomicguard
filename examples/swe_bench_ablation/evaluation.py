@@ -57,9 +57,11 @@ def prepare_predictions(
 
     for arm, arm_results in by_arm.items():
         pred_file = out_path / f"{arm}.jsonl"
+        success_count = 0
         with open(pred_file, "w") as f:
             for r in arm_results:
-                if r.workflow_status != "success" or not r.patch_content:
+                # Skip if workflow failed (error or guard rejection) or no patch
+                if r.error or r.failed_step or not r.patch_content:
                     continue
 
                 prediction = {
@@ -68,11 +70,12 @@ def prepare_predictions(
                     "model_name_or_path": f"atomicguard-{arm}",
                 }
                 f.write(json.dumps(prediction) + "\n")
+                success_count += 1
 
         prediction_files[arm] = pred_file
         logger.info(
             "Wrote %d predictions for arm=%s to %s",
-            sum(1 for r in arm_results if r.workflow_status == "success"),
+            success_count,
             arm,
             pred_file,
         )

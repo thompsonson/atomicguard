@@ -132,6 +132,9 @@ def load_results(results_path: str | Path) -> list[ArmResult]:
         logger.warning("Results file not found: %s", path)
         return results
 
+    # Get valid field names from the dataclass
+    valid_fields = {f.name for f in ArmResult.__dataclass_fields__.values()}
+
     with open(path) as f:
         for line in f:
             line = line.strip()
@@ -139,7 +142,9 @@ def load_results(results_path: str | Path) -> list[ArmResult]:
                 continue
             try:
                 data = json.loads(line)
-                results.append(ArmResult(**data))
+                # Filter out unknown fields (backward compatibility)
+                filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+                results.append(ArmResult(**filtered_data))
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning("Skipping malformed line: %s", e)
 
@@ -174,8 +179,10 @@ def compute_arm_metrics(
                 1 for r in arm_results if resolved.get(r.instance_id, False)
             )
         else:
-            # Use workflow status as proxy
-            successes = sum(1 for r in arm_results if r.workflow_status == "success")
+            # Use workflow completion as proxy (no error and no failed_step)
+            successes = sum(
+                1 for r in arm_results if not r.error and not r.failed_step
+            )
 
         pass_rate, ci_lo, ci_hi = wilson_ci(successes, total)
 
@@ -237,8 +244,12 @@ def compute_pairwise(
                 succ_a = sum(1 for r in results_a if resolved.get(r.instance_id, False))
                 succ_b = sum(1 for r in results_b if resolved.get(r.instance_id, False))
             else:
-                succ_a = sum(1 for r in results_a if r.workflow_status == "success")
-                succ_b = sum(1 for r in results_b if r.workflow_status == "success")
+                succ_a = sum(
+                    1 for r in results_a if not r.error and not r.failed_step
+                )
+                succ_b = sum(
+                    1 for r in results_b if not r.error and not r.failed_step
+                )
 
             fail_a = total_a - succ_a
             fail_b = total_b - succ_b
@@ -820,7 +831,8 @@ def _plot_instance_outcome_heatmap(
             return -1
         if resolved is not None:
             return 1 if resolved.get(inst_id, False) else 0
-        return 1 if r.workflow_status == "success" else 0
+        # No error and no failed_step means workflow completed successfully
+        return 1 if not r.failed_step else 0
 
     # Sort instances by number of arms that solved them (descending)
     instances = sorted(

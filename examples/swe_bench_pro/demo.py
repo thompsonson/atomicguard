@@ -143,7 +143,7 @@ def _rewrite_results_with_resolved(
 
 
 def _print_summary_with_resolved(results: list) -> None:
-    """Print summary with resolved counts by arm."""
+    """Print summary with resolved counts and guard failures by arm."""
     from collections import defaultdict
 
     by_arm: dict[str, list] = defaultdict(list)
@@ -154,20 +154,25 @@ def _print_summary_with_resolved(results: list) -> None:
     for arm in sorted(by_arm.keys()):
         arm_results = by_arm[arm]
         total = len(arm_results)
-        with_patch = sum(1 for r in arm_results if r.patch_content)
         resolved = sum(1 for r in arm_results if r.resolved)
+        total_retries = sum(r.retry_count for r in arm_results)
 
-        if with_patch > 0:
-            resolve_rate = resolved / with_patch * 100
-            click.echo(
-                click.style(
-                    f"  {arm}: {with_patch}/{total} patches, "
-                    f"{resolved}/{with_patch} resolved ({resolve_rate:.1f}%)",
-                    fg="green" if resolved > 0 else "yellow",
-                )
+        # Count failures by guard (prefer guard name over step ID)
+        failures: dict[str, int] = defaultdict(int)
+        for r in arm_results:
+            if r.failed_step:
+                failure_key = r.failed_guard or r.failed_step
+                failures[failure_key] += 1
+
+        failure_str = ", ".join(f"{g}:{c}" for g, c in sorted(failures.items()))
+
+        click.echo(
+            click.style(
+                f"  {arm}: {resolved}/{total} RESOLVED | "
+                f"{total_retries} retries | failures: {failure_str or 'none'}",
+                fg="green" if resolved > 0 else "yellow",
             )
-        else:
-            click.echo(click.style(f"  {arm}: 0/{total} patches", fg="yellow"))
+        )
 
 
 # =========================================================================
@@ -180,6 +185,11 @@ _ARM_MAP = {
     "s1_tdd": "04_s1_tdd",
     "s1_tdd_verified": "05_s1_tdd_verified",
     "s1_tdd_behavior": "06_s1_tdd_behavior",
+    # LLM-as-reviewer and backtracking arms
+    "s1_tdd_review": "17_s1_tdd_review",
+    "s1_tdd_review_backtrack": "18_s1_tdd_review_backtrack",
+    "s1_tdd_rule_backtrack": "19_s1_tdd_rule_backtrack",
+    "adaptive_backtrack": "21_adaptive_backtrack",
 }
 
 
@@ -312,7 +322,7 @@ def experiment(
 
     total = len(results)
     with_patch = sum(1 for r in results if r.patch_content)
-    errors = sum(1 for r in results if r.workflow_status == "error")
+    errors = sum(1 for r in results if r.error)
 
     _report(
         f"Done: {total} runs, {with_patch} with patches, "

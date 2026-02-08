@@ -12,8 +12,9 @@ import tempfile
 import threading
 import time
 import traceback
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -26,14 +27,19 @@ from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifact
 from .dataset import SWEBenchProInstance, load_swe_bench_pro
 from .generators import (
     AnalysisGenerator,
+    ClassificationGenerator,
+    DiffReviewGenerator,
     LocalizationGenerator,
     MultiLangPatchGenerator,
     MultiLangTestGenerator,
     PatchGenerator,
     TestGenerator,
+    WorkflowGenerator,
 )
 from .guards import (
     AnalysisGuard,
+    ClassificationGuard,
+    DiffReviewGuard,
     FullEvalGuard,
     LocalizationGuard,
     MultiLangTestSyntaxGuard,
@@ -41,6 +47,7 @@ from .guards import (
     TestGreenGuard,
     TestRedGuard,
     TestSyntaxGuard,
+    WorkflowGuard,
 )
 from .language import LanguageConfig, get_language_config
 
@@ -133,9 +140,12 @@ def _get_generator_registry(
     is_python = lang_config.name == "python"
     return {
         "AnalysisGenerator": AnalysisGenerator,
+        "ClassificationGenerator": ClassificationGenerator,
+        "DiffReviewGenerator": DiffReviewGenerator,
         "LocalizationGenerator": LocalizationGenerator,
         "PatchGenerator": PatchGenerator if is_python else MultiLangPatchGenerator,
         "TestGenerator": TestGenerator if is_python else MultiLangTestGenerator,
+        "WorkflowGenerator": WorkflowGenerator,
     }
 
 
@@ -146,8 +156,11 @@ def _get_guard_registry(
     is_python = lang_config.name == "python"
     return {
         "analysis": AnalysisGuard,
+        "classification_schema": ClassificationGuard,
         "localization": LocalizationGuard,
         "patch": PatchGuard,
+        "review_schema": DiffReviewGuard,
+        "workflow_schema": WorkflowGuard,
         "test_syntax": TestSyntaxGuard if is_python else MultiLangTestSyntaxGuard,
         # TDD verification guards (Docker-based)
         "test_red": TestRedGuard,
@@ -283,6 +296,277 @@ def build_workflow(
         workflow.add_step(ap_id, action_pair, requires=requires)
 
     return workflow
+
+
+# =========================================================================
+# Progress Tracking
+# =========================================================================
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration in human-readable form."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.0f}m"
+    else:
+        hours = seconds / 3600
+        remaining_minutes = (seconds % 3600) / 60
+        if remaining_minutes > 0:
+            return f"{hours:.0f}h {remaining_minutes:.0f}m"
+        return f"{hours:.0f}h"
+
+
+@dataclass
+class ArmStats:
+    """Per-arm statistics for progress tracking.
+
+    IMPORTANT: The PRIMARY metric is `eval_resolved` (patches that pass
+    SWE-Bench evaluation). Guard failures are tracked separately to show
+    which guards are blocking progress.
+    """
+
+    eval_resolved: int = 0  # PRIMARY: Patches that pass evaluation
+    eval_pending: int = 0  # Awaiting evaluation (resolved is None)
+    errors: int = 0  # Exceptions during execution
+    # Guard failure tracking:
+    failed_by_guard: dict[str, int] = field(default_factory=dict)  # {guard_name: count}
+    total_retries: int = 0  # Total retry attempts across all runs
+    total_tokens: int = 0
+    total_wall_time: float = 0.0
+
+    @property
+    def total(self) -> int:
+        """Total runs = resolved + pending + errors + guard failures."""
+        return (
+            self.eval_resolved
+            + self.eval_pending
+            + self.errors
+            + sum(self.failed_by_guard.values())
+        )
+
+
+@dataclass
+class GuardFailureStats:
+    """Guard failure tracking for warning detection."""
+
+    total: int = 0
+    failures: int = 0
+    failure_reasons: dict[str, int] = field(default_factory=dict)
+
+
+class ProgressTracker:
+    """Thread-safe progress tracker for experiment runs."""
+
+    def __init__(self, total_runs: int, log_interval: int = 10):
+        """Initialize progress tracker.
+
+        Args:
+            total_runs: Total number of (instance, arm) pairs to run.
+            log_interval: Log progress every N completed runs.
+        """
+        self._total_runs = total_runs
+        self._log_interval = log_interval
+        self._start_time = time.time()
+        self._completed = 0
+        self._lock = threading.Lock()
+
+        # Per-arm statistics
+        self._arm_stats: dict[str, ArmStats] = defaultdict(ArmStats)
+
+        # Guard failure tracking (guard_name -> stats)
+        self._guard_failures: dict[str, GuardFailureStats] = defaultdict(
+            GuardFailureStats
+        )
+
+        # Last log time for time-based logging
+        self._last_log_time = self._start_time
+        self._time_log_interval = 300  # Log every 5 minutes regardless
+
+    def record_result(self, arm: str, result: "ArmResult") -> int:
+        """Record a completed run result.
+
+        Args:
+            arm: The workflow arm name.
+            result: The ArmResult from the run.
+
+        Returns:
+            The current completed count (for logging).
+        """
+        with self._lock:
+            self._completed += 1
+            finished_count = self._completed
+            stats = self._arm_stats[arm]
+            stats.total_tokens += result.total_tokens
+            stats.total_wall_time += result.wall_time_seconds
+            stats.total_retries += result.retry_count
+
+            # Track errors first
+            if result.error:
+                stats.errors += 1
+            # Track guard failures (prefer failed_guard for specific guard name)
+            elif result.failed_step:
+                # Use guard name if available (e.g., "TestGreenGuard"), else step ID
+                failure_key = result.failed_guard or result.failed_step
+                stats.failed_by_guard[failure_key] = (
+                    stats.failed_by_guard.get(failure_key, 0) + 1
+                )
+            # Track evaluation result (only if workflow succeeded)
+            elif result.resolved is True:
+                stats.eval_resolved += 1
+            elif result.resolved is None:
+                stats.eval_pending += 1
+            # resolved is False = patch generated but failed evaluation
+            # (counts toward total via the property, no separate tracking needed)
+
+            # Check if we should log progress
+            should_log = (
+                self._completed % self._log_interval == 0
+                or self._completed == self._total_runs
+                or (time.time() - self._last_log_time) > self._time_log_interval
+            )
+
+            if should_log:
+                self._log_progress()
+                self._last_log_time = time.time()
+
+        return finished_count
+
+    def record_guard_failure(
+        self, guard_name: str, success: bool, failure_reason: str = ""
+    ) -> None:
+        """Record a guard check result for failure tracking.
+
+        Args:
+            guard_name: Name of the guard.
+            success: Whether the guard passed.
+            failure_reason: Reason for failure if applicable.
+        """
+        with self._lock:
+            stats = self._guard_failures[guard_name]
+            stats.total += 1
+            if not success:
+                stats.failures += 1
+                if failure_reason:
+                    # Normalize and truncate the reason
+                    reason = failure_reason[:100].strip()
+                    stats.failure_reasons[reason] = (
+                        stats.failure_reasons.get(reason, 0) + 1
+                    )
+
+    def _log_progress(self) -> None:
+        """Log current progress (must hold lock)."""
+        elapsed = time.time() - self._start_time
+        remaining = self._total_runs - self._completed
+
+        # Calculate rate and ETA
+        if self._completed > 0:
+            rate = self._completed / elapsed * 60  # runs per minute
+            eta_seconds = remaining / (self._completed / elapsed)
+            eta_str = _format_duration(eta_seconds)
+        else:
+            rate = 0.0
+            eta_str = "calculating..."
+
+        pct = self._completed / self._total_runs * 100
+
+        # Main progress line
+        logger.info(
+            "Progress: %d/%d runs completed (%.1f%%)",
+            self._completed,
+            self._total_runs,
+            pct,
+        )
+        logger.info(
+            "Elapsed: %s | ETA: %s | Rate: %.1f runs/min",
+            _format_duration(elapsed),
+            eta_str,
+            rate,
+        )
+
+        # Per-arm stats with guard failure breakdown
+        if self._arm_stats:
+            logger.info("Results by arm:")
+            for arm in sorted(self._arm_stats.keys()):
+                stats = self._arm_stats[arm]
+                if stats.total > 0:
+                    # Guard failure summary
+                    guard_failures = ", ".join(
+                        f"{g}:{c}" for g, c in sorted(stats.failed_by_guard.items())
+                    )
+                    logger.info(
+                        "  %s: %d/%d RESOLVED | %d retries | failures: %s",
+                        arm,
+                        stats.eval_resolved,
+                        stats.total,
+                        stats.total_retries,
+                        guard_failures or "none",
+                    )
+
+        # Guard failure warnings (100% fail rate = potential issue)
+        high_fail_guards = []
+        for guard_name, gstats in self._guard_failures.items():
+            if gstats.total >= 10 and gstats.failures / gstats.total > 0.95:
+                high_fail_guards.append((guard_name, gstats))
+
+        if high_fail_guards:
+            logger.warning("Guards with high failure rate (potential issues):")
+            for guard_name, gstats in high_fail_guards:
+                fail_pct = gstats.failures / gstats.total * 100
+                logger.warning(
+                    "  %s: %d/%d failures (%.0f%% fail rate)",
+                    guard_name,
+                    gstats.failures,
+                    gstats.total,
+                    fail_pct,
+                )
+                # Show top failure reasons
+                if gstats.failure_reasons:
+                    top_reasons = sorted(
+                        gstats.failure_reasons.items(), key=lambda x: -x[1]
+                    )[:3]
+                    for reason, count in top_reasons:
+                        logger.warning("    - %s (%d occurrences)", reason, count)
+
+    def get_summary(self) -> dict[str, Any]:
+        """Get final summary statistics.
+
+        Returns:
+            Dictionary with summary stats for each arm. The PRIMARY metric
+            is `eval_resolved` (patches passing SWE-Bench evaluation).
+        """
+        with self._lock:
+            elapsed = time.time() - self._start_time
+            summary = {
+                "total_runs": self._total_runs,
+                "completed_runs": self._completed,
+                "elapsed_seconds": round(elapsed, 2),
+                "arms": {},
+            }
+            for arm, stats in self._arm_stats.items():
+                summary["arms"][arm] = {
+                    "total": stats.total,
+                    # PRIMARY METRIC: patches that pass SWE-Bench evaluation
+                    "eval_resolved": stats.eval_resolved,
+                    "resolve_rate": (
+                        round(stats.eval_resolved / stats.total * 100, 1)
+                        if stats.total > 0
+                        else 0.0
+                    ),
+                    # Guard failures
+                    "failed_by_guard": dict(stats.failed_by_guard),
+                    "total_retries": stats.total_retries,
+                    "errors": stats.errors,
+                    "eval_pending": stats.eval_pending,
+                    "total_tokens": stats.total_tokens,
+                    "avg_wall_time": (
+                        round(stats.total_wall_time / stats.total, 1)
+                        if stats.total > 0
+                        else 0.0
+                    ),
+                }
+            return summary
 
 
 # =========================================================================
@@ -423,6 +707,8 @@ class SWEBenchProRunner:
 
             # Count tokens from failed attempts (provenance) — these
             # are not in result.artifacts because the step didn't pass.
+            # Also extract the guard name from the last failed attempt.
+            failed_guard = None
             if result.provenance:
                 failed_step = result.failed_step or "unknown"
                 for artifact, _feedback in result.provenance:
@@ -432,15 +718,21 @@ class SWEBenchProRunner:
                             per_step_tokens.get(failed_step, 0) + prov_tokens
                         )
                         total_tokens += prov_tokens
+                # Extract guard name from last failed attempt
+                last_artifact, _ = result.provenance[-1]
+                if last_artifact.guard_result and last_artifact.guard_result.guard_name:
+                    failed_guard = last_artifact.guard_result.guard_name
 
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status=result.status.value,
                 patch_content=patch_content,
                 total_tokens=total_tokens,
                 per_step_tokens=per_step_tokens,
                 wall_time_seconds=round(wall_time, 2),
+                failed_step=result.failed_step,
+                failed_guard=failed_guard,
+                retry_count=len(result.provenance),
             )
 
         except Exception as e:
@@ -456,7 +748,6 @@ class SWEBenchProRunner:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="error",
                 wall_time_seconds=round(wall_time, 2),
                 error=f"{e}\n{tb}",
             )
@@ -540,15 +831,15 @@ class SWEBenchProRunner:
         self._output_dir.mkdir(parents=True, exist_ok=True)
         results_path = self._output_dir / "results.jsonl"
         write_lock = threading.Lock()
-        finished_count = 0
-        finished_lock = threading.Lock()
+
+        # Initialize progress tracker
+        progress = ProgressTracker(total_runs=total_runs, log_interval=10)
 
         def _execute_and_record(
             idx: int,
             instance: SWEBenchProInstance,
             arm: str,
         ) -> ArmResult:
-            nonlocal finished_count
             logger.info(
                 "Starting: instance=%s, arm=%s, lang=%s (%d/%d instances)",
                 instance.instance_id,
@@ -562,17 +853,27 @@ class SWEBenchProRunner:
             with write_lock, open(results_path, "a") as f:
                 f.write(json.dumps(asdict(arm_result)) + "\n")
 
-            with finished_lock:
-                finished_count += 1
-                logger.info(
-                    "Finished %d/%d: instance=%s, arm=%s, status=%s (%.1fs)",
-                    finished_count,
-                    total_runs,
-                    instance.instance_id,
-                    arm,
-                    arm_result.workflow_status,
-                    arm_result.wall_time_seconds,
-                )
+            # Record result for progress tracking and get finished count
+            finished_count = progress.record_result(arm, arm_result)
+
+            # Determine status string for logging (include guard name if available)
+            if arm_result.error:
+                status = "error"
+            elif arm_result.failed_step:
+                guard_info = arm_result.failed_guard or arm_result.failed_step
+                status = f"failed:{guard_info}"
+            else:
+                status = "success"
+
+            logger.info(
+                "Finished %d/%d: instance=%s, arm=%s, status=%s (%.1fs)",
+                finished_count,
+                total_runs,
+                instance.instance_id,
+                arm,
+                status,
+                arm_result.wall_time_seconds,
+            )
 
             return arm_result
 
@@ -607,11 +908,42 @@ class SWEBenchProRunner:
                             tb,
                         )
 
+        # Log final summary
+        summary = progress.get_summary()
         logger.info(
             "Experiment complete. %d results written to %s",
             len(results),
             results_path,
         )
+        logger.info(
+            "Total elapsed: %s",
+            _format_duration(summary["elapsed_seconds"]),
+        )
+
+        # Log per-arm summary
+        if summary["arms"]:
+            logger.info("Final results by arm:")
+            for arm_name in sorted(summary["arms"].keys()):
+                arm_data = summary["arms"][arm_name]
+                guard_failures = ", ".join(
+                    f"{g}:{c}"
+                    for g, c in sorted(arm_data.get("failed_by_guard", {}).items())
+                )
+                logger.info(
+                    "  %s: %d/%d RESOLVED | %d retries | failures: %s",
+                    arm_name,
+                    arm_data["eval_resolved"],
+                    arm_data["total"],
+                    arm_data["total_retries"],
+                    guard_failures or "none",
+                )
+
+        # Save summary to file
+        summary_path = self._output_dir / "summary.json"
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2)
+        logger.info("Summary written to %s", summary_path)
+
         return results
 
     # -----------------------------------------------------------------
@@ -634,10 +966,21 @@ class SWEBenchProRunner:
         repo_dir = base_dir / instance.instance_id.replace("/", "__")
         repo_url = f"https://github.com/{instance.repo}.git"
 
-        def _run_git(args: list[str], *, timeout: int = 60) -> None:
-            """Run a git command, raising *RuntimeError* on failure."""
+        def _run_git(
+            args: list[str], *, timeout: int = 60, capture: bool = False
+        ) -> str:
+            """Run a git command, raising *RuntimeError* on failure.
+
+            Args:
+                args: Git command and arguments.
+                timeout: Maximum seconds to wait.
+                capture: If True, return stdout instead of None.
+
+            Returns:
+                stdout if capture=True, else empty string.
+            """
             try:
-                subprocess.run(
+                result = subprocess.run(
                     args,
                     cwd=str(repo_dir) if repo_dir.exists() else None,
                     capture_output=True,
@@ -645,6 +988,7 @@ class SWEBenchProRunner:
                     timeout=timeout,
                     check=True,
                 )
+                return result.stdout.strip() if capture else ""
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(
                     f"Git command failed for {instance.instance_id} "
@@ -659,6 +1003,11 @@ class SWEBenchProRunner:
 
         if repo_dir.exists():
             logger.info("Resetting existing repo: %s", repo_dir)
+            # Fetch the target commit in case it's missing from shallow history
+            _run_git(
+                ["git", "fetch", "--depth=1", "origin", instance.base_commit],
+                timeout=120,
+            )
             _run_git(["git", "checkout", "-f", instance.base_commit])
             _run_git(["git", "clean", "-fdx"])
         else:
@@ -673,6 +1022,22 @@ class SWEBenchProRunner:
             )
             _run_git(["git", "checkout", instance.base_commit])
 
+        # Verify we're at the expected commit
+        actual_commit = _run_git(["git", "rev-parse", "HEAD"], capture=True)
+        expected_short = instance.base_commit[:12]
+        actual_short = actual_commit[:12]
+
+        if not actual_commit.startswith(instance.base_commit[:7]):
+            raise RuntimeError(
+                f"Commit mismatch for {instance.instance_id}: "
+                f"expected {expected_short}, got {actual_short}"
+            )
+
+        logger.info(
+            "Repo ready at commit %s for %s",
+            actual_short,
+            instance.instance_id,
+        )
         return str(repo_dir)
 
     # -----------------------------------------------------------------
@@ -778,7 +1143,6 @@ class SWEBenchProRunner:
                 # e.g., "qutebrowser/utils/qtlog.py" -> "tests/unit/utils/test_qtlog.py"
                 src_path = Path(src_file)
                 base_name = src_path.stem
-                parent_parts = src_path.parent.parts
 
                 for test_dir in test_dirs:
                     # Try various test file patterns
@@ -826,6 +1190,9 @@ class SWEBenchProRunner:
         if not results_path.exists():
             return results, completed
 
+        # Get valid field names from the dataclass
+        valid_fields = {f.name for f in ArmResult.__dataclass_fields__.values()}
+
         with open(results_path) as f:
             for line in f:
                 line = line.strip()
@@ -833,7 +1200,9 @@ class SWEBenchProRunner:
                     continue
                 try:
                     data = json.loads(line)
-                    arm_result = ArmResult(**data)
+                    # Filter out unknown fields (backward compatibility)
+                    filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+                    arm_result = ArmResult(**filtered_data)
                     results.append(arm_result)
                     completed.add((arm_result.instance_id, arm_result.arm))
                 except (json.JSONDecodeError, TypeError) as e:
