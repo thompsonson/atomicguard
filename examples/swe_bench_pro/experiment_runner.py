@@ -328,6 +328,7 @@ class ArmStats:
     """
 
     eval_resolved: int = 0  # PRIMARY: Patches that pass evaluation
+    eval_failed: int = 0  # Patches generated but failed evaluation (resolved=False)
     eval_pending: int = 0  # Awaiting evaluation (resolved is None)
     errors: int = 0  # Exceptions during execution
     # Guard failure tracking:
@@ -338,9 +339,10 @@ class ArmStats:
 
     @property
     def total(self) -> int:
-        """Total runs = resolved + pending + errors + guard failures."""
+        """Total runs = resolved + failed + pending + errors + guard failures."""
         return (
             self.eval_resolved
+            + self.eval_failed
             + self.eval_pending
             + self.errors
             + sum(self.failed_by_guard.values())
@@ -415,10 +417,11 @@ class ProgressTracker:
             # Track evaluation result (only if workflow succeeded)
             elif result.resolved is True:
                 stats.eval_resolved += 1
+            elif result.resolved is False:
+                # Patch generated but failed evaluation
+                stats.eval_failed += 1
             elif result.resolved is None:
                 stats.eval_pending += 1
-            # resolved is False = patch generated but failed evaluation
-            # (counts toward total via the property, no separate tracking needed)
 
             # Check if we should log progress
             should_log = (
@@ -554,6 +557,8 @@ class ProgressTracker:
                         if stats.total > 0
                         else 0.0
                     ),
+                    # Evaluation failures (patch generated but failed eval)
+                    "eval_failed": stats.eval_failed,
                     # Guard failures
                     "failed_by_guard": dict(stats.failed_by_guard),
                     "total_retries": stats.total_retries,
