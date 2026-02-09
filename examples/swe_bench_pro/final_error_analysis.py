@@ -33,6 +33,8 @@ class ExperimentOverview:
     failed_runs: int
     total_tokens: int
     avg_wall_time: float
+    avg_init_time: float = 0.0
+    avg_workflow_time: float = 0.0
 
 
 @dataclass
@@ -370,6 +372,22 @@ def compute_experiment_overview(
             wall_times.append(wt)
     avg_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0.0
 
+    # Init time average (new field, may not exist in old results)
+    init_times = []
+    for r in all_results:
+        it = r.get("init_time_seconds", 0)
+        if it:
+            init_times.append(it)
+    avg_init_time = sum(init_times) / len(init_times) if init_times else 0.0
+
+    # Workflow time average (new field, may not exist in old results)
+    workflow_times = []
+    for r in all_results:
+        wft = r.get("workflow_time_seconds", 0)
+        if wft:
+            workflow_times.append(wft)
+    avg_workflow_time = sum(workflow_times) / len(workflow_times) if workflow_times else 0.0
+
     # Try to extract model from experiment log
     model = None
     log_path = results_path.parent / "experiment.log"
@@ -392,6 +410,8 @@ def compute_experiment_overview(
         failed_runs=failed,
         total_tokens=total_tokens,
         avg_wall_time=avg_wall_time,
+        avg_init_time=avg_init_time,
+        avg_workflow_time=avg_workflow_time,
     )
 
 
@@ -468,6 +488,12 @@ def generate_final_error_report(
 
         if overview.avg_wall_time > 0:
             lines.append(f"| Avg Wall Time | {overview.avg_wall_time:.1f}s |")
+
+        if overview.avg_init_time > 0:
+            lines.append(f"| Avg Init Time | {overview.avg_init_time:.1f}s |")
+
+        if overview.avg_workflow_time > 0:
+            lines.append(f"| Avg Workflow Time | {overview.avg_workflow_time:.1f}s |")
 
         lines.append("")
 

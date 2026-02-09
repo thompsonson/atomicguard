@@ -617,6 +617,9 @@ class SWEBenchProRunner:
         start_time = time.time()
 
         try:
+            # Track init phase (repo clone + checkout + workflow setup)
+            init_start = time.time()
+
             repo_root = self._prepare_repo(instance)
             lang_config = get_language_config(instance.repo_language)
 
@@ -667,7 +670,14 @@ class SWEBenchProRunner:
             if test_infra:
                 specification += f"\n\n## Test Infrastructure\n{test_infra}"
 
+            init_time = time.time() - init_start
+
+            # Track workflow phase (action pair execution)
+            workflow_start = time.time()
+
             result = workflow.execute(specification)
+
+            workflow_time = time.time() - workflow_start
             wall_time = time.time() - start_time
 
             patch_content = ""
@@ -737,6 +747,8 @@ class SWEBenchProRunner:
                 total_tokens=total_tokens,
                 per_step_tokens=per_step_tokens,
                 wall_time_seconds=round(wall_time, 2),
+                init_time_seconds=round(init_time, 2),
+                workflow_time_seconds=round(workflow_time, 2),
                 failed_step=result.failed_step,
                 failed_guard=failed_guard,
                 retry_count=len(result.provenance),

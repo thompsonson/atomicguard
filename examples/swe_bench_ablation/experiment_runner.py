@@ -31,6 +31,8 @@ class ArmResult:
     total_tokens: int = 0
     per_step_tokens: dict[str, int] = field(default_factory=dict)
     wall_time_seconds: float = 0.0
+    init_time_seconds: float = 0.0  # Repo clone + checkout time
+    workflow_time_seconds: float = 0.0  # Action pair execution time
     error: str | None = None
     resolved: bool | None = None  # Evaluation result (None = not evaluated)
     failed_step: str | None = None  # Which action pair failed (None = success)
@@ -88,6 +90,9 @@ class ExperimentRunner:
         start_time = time.time()
 
         try:
+            # Track init phase (repo clone + checkout + workflow setup)
+            init_start = time.time()
+
             # Clone and checkout repo
             repo_root = self._prepare_repo(instance)
 
@@ -112,9 +117,15 @@ class ExperimentRunner:
                 provider=self._provider,
             )
 
+            init_time = time.time() - init_start
+
+            # Track workflow phase (action pair execution)
+            workflow_start = time.time()
+
             # Execute workflow with problem statement
             result = workflow.execute(instance.problem_statement)
 
+            workflow_time = time.time() - workflow_start
             wall_time = time.time() - start_time
 
             # Extract patch from final artifact
@@ -151,6 +162,8 @@ class ExperimentRunner:
                 total_tokens=total_tokens,
                 per_step_tokens=per_step_tokens,
                 wall_time_seconds=round(wall_time, 2),
+                init_time_seconds=round(init_time, 2),
+                workflow_time_seconds=round(workflow_time, 2),
                 failed_step=result.failed_step,
                 failed_guard=failed_guard,
                 retry_count=len(result.provenance),
