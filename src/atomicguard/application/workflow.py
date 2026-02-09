@@ -117,6 +117,14 @@ class Workflow:
         """
         if deps is None:
             deps = requires
+
+        # Extension 09: Validate r_patience < rmax invariant (Definition 44)
+        if r_patience is not None and r_patience >= self._rmax:
+            raise ValueError(
+                f"r_patience ({r_patience}) must be < rmax ({self._rmax}). "
+                f"Extension 09 invariant: 1 < r_patience < rmax"
+            )
+
         self._steps.append(
             WorkflowStep(
                 guard_id=guard_id,
@@ -147,6 +155,15 @@ class Workflow:
         """
         # Generate a unique workflow_id for this execution
         workflow_id = str(uuid.uuid4())
+
+        # Extension 09: Validate escalation targets exist before execution
+        step_ids = {s.guard_id for s in self._steps}
+        for step in self._steps:
+            for target in step.escalation:
+                if target not in step_ids:
+                    raise ValueError(
+                        f"Escalation target '{target}' not found in workflow steps"
+                    )
 
         while not self._is_goal_state():
             step = self._find_applicable()

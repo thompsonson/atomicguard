@@ -62,7 +62,7 @@ class TestWorkflowStepWithEscalation:
         """add_step stores r_patience parameter."""
         gen = MockGenerator(responses=["x = 1"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(rmax=5)  # rmax > r_patience for valid config
 
         workflow.add_step("g_test", pair, r_patience=3)
 
@@ -470,3 +470,70 @@ class TestEscalationBudgetEnforcement:
         # Each step has independent count
         assert workflow._escalation_count["ap_step1"] == 2
         assert workflow._escalation_count["ap_step2"] == 4
+
+
+class TestInvariantValidation:
+    """Tests for Extension 09 invariant validation."""
+
+    def test_r_patience_equal_to_rmax_raises_error(self) -> None:
+        """r_patience >= rmax raises ValueError (Definition 44 invariant)."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow(rmax=3)
+
+        with pytest.raises(ValueError, match="r_patience.*must be < rmax"):
+            workflow.add_step("test", pair, r_patience=3)
+
+    def test_r_patience_greater_than_rmax_raises_error(self) -> None:
+        """r_patience > rmax raises ValueError."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow(rmax=3)
+
+        with pytest.raises(ValueError, match="r_patience.*must be < rmax"):
+            workflow.add_step("test", pair, r_patience=5)
+
+    def test_r_patience_less_than_rmax_allowed(self) -> None:
+        """r_patience < rmax is valid."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow(rmax=6)
+
+        # Should not raise
+        workflow.add_step("test", pair, r_patience=2)
+
+        assert workflow._steps[0].r_patience == 2
+
+    def test_r_patience_none_allowed(self) -> None:
+        """r_patience=None (disabled) is always valid."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow(rmax=3)
+
+        # Should not raise
+        workflow.add_step("test", pair, r_patience=None)
+
+        assert workflow._steps[0].r_patience is None
+
+    def test_invalid_escalation_target_raises_on_execute(self) -> None:
+        """Escalation target not in workflow steps raises ValueError."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow(rmax=5)
+        workflow.add_step("step1", pair, escalation=("nonexistent",))
+
+        with pytest.raises(ValueError, match="not found in workflow"):
+            workflow.execute("Spec")
+
+    def test_valid_escalation_targets_allowed(self) -> None:
+        """Valid escalation targets do not raise."""
+        gen = MockGenerator(responses=["x", "y"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow(rmax=5)
+        workflow.add_step("step1", pair)
+        workflow.add_step("step2", pair, requires=("step1",), escalation=("step1",))
+
+        # Should not raise, and should succeed
+        result = workflow.execute("Spec")
+
+        assert result.status == WorkflowStatus.SUCCESS
