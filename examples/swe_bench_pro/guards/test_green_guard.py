@@ -21,6 +21,53 @@ from .quick_test_runner import QuickTestRunner
 
 logger = logging.getLogger("swe_bench_pro.guards.test_green")
 
+# Keywords that indicate diagnostic lines in test output
+_DIAGNOSTIC_KEYWORDS = (
+    "AssertionError",
+    "assert ",
+    "FAILED",
+    "Error",
+    "raise ",
+    "TypeError",
+    "ValueError",
+    "AttributeError",
+    "KeyError",
+    "ImportError",
+    "NameError",
+    "expected",
+    "actual",
+    "!=",
+    "not equal",
+)
+
+
+def _extract_diagnostic_lines(output: str, max_lines: int = 15) -> str:
+    """Extract the most diagnostic lines from test output.
+
+    Prioritises assertion errors, tracebacks, and FAILED lines
+    that tell the generator *what* went wrong rather than boilerplate.
+
+    Args:
+        output: Raw test output string.
+        max_lines: Maximum number of diagnostic lines to extract.
+
+    Returns:
+        Extracted diagnostic lines joined by newlines, or empty string.
+    """
+    lines = output.splitlines()
+    hits: list[str] = []
+    for i, line in enumerate(lines):
+        if any(kw in line for kw in _DIAGNOSTIC_KEYWORDS):
+            # Include surrounding context (1 line before, 2 after)
+            start = max(0, i - 1)
+            end = min(len(lines), i + 3)
+            for ctx_line in lines[start:end]:
+                if ctx_line not in hits:
+                    hits.append(ctx_line)
+        if len(hits) >= max_lines:
+            break
+    return "\n".join(hits) if hits else ""
+
 
 class TestGreenGuard(GuardInterface):
     """Validate that test PASSES after patch applied.
@@ -150,29 +197,39 @@ class TestGreenGuard(GuardInterface):
         if result.status == "ERROR":
             # Patch couldn't be applied or test errored
             error_msg = result.error_message or "Unknown error"
-            output_snippet = result.output[-800:] if result.output else ""
+            raw_output = result.output or ""
+            output_snippet = raw_output[-2000:] if raw_output else ""
 
             # Check if it's a patch application error
-            if "patch" in error_msg.lower() or "git apply" in output_snippet.lower():
+            if "patch" in error_msg.lower() or "git apply" in raw_output.lower():
                 return GuardResult(
                     passed=False,
                     feedback=(
                         f"Patch could not be applied:\n"
                         f"Target commit: {self._instance.base_commit[:12]}\n"
-                        f"Error: {error_msg}\n"
-                        f"Output:\n{output_snippet}\n\n"
+                        f"Error: {error_msg}\n\n"
+                        f"Output (last {len(output_snippet)} chars):\n{output_snippet}\n\n"
                         "Ensure the patch uses correct file paths and matches "
                         "the exact content at the target commit."
                     ),
                     guard_name="TestGreenGuard",
                 )
 
+            # Extract diagnostic lines for other errors
+            diagnostic_lines = _extract_diagnostic_lines(raw_output)
+            diagnostic_section = (
+                f"\n## Key error lines\n{diagnostic_lines}\n"
+                if diagnostic_lines
+                else ""
+            )
+
             return GuardResult(
                 passed=False,
                 feedback=(
                     f"Test execution failed after patch:\n"
                     f"Error: {error_msg}\n"
-                    f"Output:\n{output_snippet}\n\n"
+                    f"{diagnostic_section}"
+                    f"\nOutput (last {len(output_snippet)} chars):\n{output_snippet}\n\n"
                     "The patch may have introduced syntax errors or broken imports."
                 ),
                 guard_name="TestGreenGuard",
@@ -180,20 +237,41 @@ class TestGreenGuard(GuardInterface):
 
         if result.status == "FAILED":
             # Test still fails after patch - fix didn't work
-            output_snippet = result.output[-800:] if result.output else ""
-            # Extract structured failure details for better feedback
-            failure_details = self._parse_test_failure(result.output or "")
+            raw_output = result.output or ""
+
+            # Build rich, actionable feedback
+            parts = [
+                f"Test still FAILS after patch (exit code {result.exit_code})."
+            ]
+
+            # Extract key diagnostic lines first (most actionable)
+            diagnostic_lines = _extract_diagnostic_lines(raw_output)
+            if diagnostic_lines:
+                parts.append(f"\n## Key failure lines\n{diagnostic_lines}")
+
+            # Add structured failure analysis
+            failure_details = self._parse_test_failure(raw_output)
+            if failure_details and "Could not parse" not in failure_details:
+                parts.append(f"\n{failure_details}")
+
+            # Include broader output (2000 chars for full context)
+            output_snippet = raw_output[-2000:] if raw_output else ""
+            if output_snippet:
+                parts.append(
+                    f"\n## Full test output (last {len(output_snippet)} chars)\n"
+                    f"{output_snippet}"
+                )
+
+            parts.append(
+                "\nAnalyze the test failure and adjust the patch to:\n"
+                "1. Fix the root cause of the bug, not just symptoms\n"
+                "2. Ensure the fix doesn't break other functionality\n"
+                "3. Match the expected behavior asserted in the test"
+            )
+
             return GuardResult(
                 passed=False,
-                feedback=(
-                    "Test still FAILS after patch - the fix didn't work!\n\n"
-                    f"{failure_details}\n\n"
-                    f"Full test output (last 800 chars):\n{output_snippet}\n\n"
-                    "Analyze the test failure and adjust the patch to:\n"
-                    "1. Fix the root cause of the bug, not just symptoms\n"
-                    "2. Ensure the fix doesn't break other functionality\n"
-                    "3. Match the expected behavior asserted in the test"
-                ),
+                feedback="\n".join(parts),
                 guard_name="TestGreenGuard",
             )
 

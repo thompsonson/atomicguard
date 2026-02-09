@@ -12,6 +12,7 @@ from atomicguard.domain.models import Artifact, GuardResult
 
 from ..dataset import SWEBenchProInstance
 from .quick_test_runner import QuickTestRunner
+from .test_green_guard import _extract_diagnostic_lines
 
 logger = logging.getLogger("swe_bench_pro.guards.test_red")
 
@@ -97,13 +98,24 @@ class TestRedGuard(GuardInterface):
         if result.status == "ERROR":
             # Test has syntax errors or couldn't run
             error_msg = result.error_message or "Unknown error"
-            output_snippet = result.output[-500:] if result.output else ""
+            raw_output = result.output or ""
+            output_snippet = raw_output[-2000:] if raw_output else ""
+
+            # Extract diagnostic lines
+            diagnostic_lines = _extract_diagnostic_lines(raw_output)
+            diagnostic_section = (
+                f"\n## Key error lines\n{diagnostic_lines}\n"
+                if diagnostic_lines
+                else ""
+            )
+
             return GuardResult(
                 passed=False,
                 feedback=(
                     f"Test has errors and couldn't execute:\n"
                     f"Error: {error_msg}\n"
-                    f"Output:\n{output_snippet}\n\n"
+                    f"{diagnostic_section}"
+                    f"\nOutput (last {len(output_snippet)} chars):\n{output_snippet}\n\n"
                     "Fix the test syntax and ensure it can be imported."
                 ),
                 guard_name="TestRedGuard",
@@ -111,7 +123,8 @@ class TestRedGuard(GuardInterface):
 
         if result.status == "PASSED":
             # Test passes on buggy code - it doesn't capture the bug!
-            output_snippet = result.output[-500:] if result.output else ""
+            raw_output = result.output or ""
+            output_snippet = raw_output[-1500:] if raw_output else ""
             return GuardResult(
                 passed=False,
                 feedback=(
@@ -124,7 +137,7 @@ class TestRedGuard(GuardInterface):
                     "2. Call the buggy function with those inputs\n"
                     "3. Assert the EXPECTED OUTPUT (what it SHOULD return)\n"
                     "4. This will FAIL because buggy code returns something WRONG\n\n"
-                    f"Test output:\n{output_snippet}\n\n"
+                    f"Test output (last {len(output_snippet)} chars):\n{output_snippet}\n\n"
                     "Example pattern:\n"
                     "  result = buggy_function(trigger_input)\n"
                     "  assert result == expected_correct_value"
