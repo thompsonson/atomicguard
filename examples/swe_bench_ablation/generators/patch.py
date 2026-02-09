@@ -246,6 +246,10 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         if template and template.constraints:
             parts.append(f"\n\n## Constraints\n{template.constraints}")
 
+        # Additional constraints from context (includes stagnation warnings)
+        if context.ambient.constraints:
+            parts.append(f"\n\n{context.ambient.constraints}")
+
         # Add feedback history with guard chain
         if context.feedback_history and template:
             # Show the most recent 3 attempts (most recent first)
