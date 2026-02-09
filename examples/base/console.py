@@ -90,8 +90,28 @@ def print_steps(action_pairs: dict[str, Any]) -> None:
 
 
 def print_provenance(provenance: Sequence[tuple[Artifact, str]]) -> None:
-    """Print attempt history/provenance."""
+    """Print attempt history/provenance with action pair and guard attribution."""
     console.print("\n[bold]Attempt history:[/bold]")
+
+    # Build a rich table: Retry | Action Pair | Guard | Error summary
+    table = Table(show_header=True, box=None)
+    table.add_column("Retry", style="cyan", width=6)
+    table.add_column("Action Pair", style="magenta", width=18)
+    table.add_column("Guard", style="yellow", width=20)
+    table.add_column("Error (summary)", style="red")
+
+    for i, (artifact, feedback) in enumerate(provenance, 1):
+        ap_id = getattr(artifact, "action_pair_id", "unknown")
+        guard_name = ""
+        if hasattr(artifact, "guard_result") and artifact.guard_result:
+            guard_name = artifact.guard_result.guard_name or ""
+        # First line of feedback as summary
+        summary = feedback.split("\n")[0][:80]
+        table.add_row(str(i), ap_id, guard_name, summary)
+
+    console.print(table)
+
+    # Still print full feedback for debugging
     for i, (_, feedback) in enumerate(provenance, 1):
-        console.print(f"\n[cyan]--- Attempt {i} ---[/cyan]")
+        console.print(f"\n[cyan]--- Attempt {i} detail ---[/cyan]")
         console.print(f"Feedback: {feedback}")

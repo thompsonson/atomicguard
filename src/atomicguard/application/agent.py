@@ -5,7 +5,9 @@ Manages only EnvironmentState (the retry loop).
 WorkflowState is managed by Workflow.
 """
 
+import logging
 from dataclasses import replace
+from difflib import SequenceMatcher
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
@@ -17,6 +19,8 @@ from atomicguard.domain.models import (
     Context,
     FeedbackEntry,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DualStateAgent:
@@ -117,8 +121,23 @@ class DualStateAgent:
                 feedback_history.append((artifact, result.feedback))
                 previous_id = artifact.artifact_id  # Track for next iteration
                 retry_count += 1
+
+                # Detect stagnation: same guard, similar feedback repeated
+                stagnation_warning = self._detect_stagnation(feedback_history)
+                if stagnation_warning:
+                    logger.warning(
+                        "[%s] Stagnation detected at retry %d: %s",
+                        self._action_pair_id,
+                        retry_count,
+                        stagnation_warning,
+                    )
+
                 context = self._refine_context(
-                    specification, artifact, feedback_history, dependencies
+                    specification,
+                    artifact,
+                    feedback_history,
+                    dependencies,
+                    stagnation_warning=stagnation_warning,
                 )
 
         raise RmaxExhausted(
@@ -151,11 +170,22 @@ class DualStateAgent:
         artifact: Artifact,
         feedback_history: list[tuple[Artifact, str]],
         dependencies: dict[str, Artifact] | None = None,
+        stagnation_warning: str | None = None,
     ) -> Context:
         """Refine context with feedback from failed attempt."""
         dependencies = dependencies or {}
+
+        constraints = self._constraints
+        if stagnation_warning:
+            constraints = (
+                f"{constraints}\n\n"
+                f"## STAGNATION WARNING\n{stagnation_warning}\n"
+                "Your previous approaches have been producing the same failure. "
+                "You MUST try a fundamentally different fix strategy."
+            )
+
         ambient = AmbientEnvironment(
-            repository=self._artifact_dag, constraints=self._constraints
+            repository=self._artifact_dag, constraints=constraints
         )
         return Context(
             ambient=ambient,
@@ -165,4 +195,37 @@ class DualStateAgent:
             dependency_artifacts=tuple(
                 (k, v.artifact_id) for k, v in dependencies.items()
             ),  # Preserve dependencies on retry
+        )
+
+    @staticmethod
+    def _detect_stagnation(
+        feedback_history: list[tuple[Artifact, str]],
+        similarity_threshold: float = 0.7,
+        min_repeats: int = 2,
+    ) -> str | None:
+        """Detect when the retry loop is stagnating on similar failures.
+
+        Returns a warning message if the last `min_repeats` feedback messages
+        are semantically similar (above `similarity_threshold`), or None
+        if no stagnation is detected.
+        """
+        if len(feedback_history) < min_repeats:
+            return None
+
+        recent = [fb for _, fb in feedback_history[-min_repeats:]]
+
+        # Check pairwise similarity of recent feedback
+        all_similar = True
+        for i in range(len(recent) - 1):
+            ratio = SequenceMatcher(None, recent[i], recent[i + 1]).ratio()
+            if ratio < similarity_threshold:
+                all_similar = False
+                break
+
+        if not all_similar:
+            return None
+
+        return (
+            f"The last {len(recent)} attempts all produced similar failures. "
+            f"Feedback pattern: '{recent[-1][:100]}...'"
         )
