@@ -295,7 +295,20 @@ def build_workflow(
             prompt_template=template,
         )
         requires = tuple(ap_config.get("requires", []))
-        workflow.add_step(ap_id, action_pair, requires=requires)
+
+        # Extension 09: Backtracking parameters
+        r_patience = ap_config.get("r_patience")
+        e_max = ap_config.get("e_max", 1)
+        escalation = tuple(ap_config.get("escalation", []))
+
+        workflow.add_step(
+            ap_id,
+            action_pair,
+            requires=requires,
+            r_patience=r_patience,
+            e_max=e_max,
+            escalation=escalation,
+        )
 
     return workflow
 
