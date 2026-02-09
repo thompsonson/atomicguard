@@ -566,5 +566,78 @@ def list_instances(split: str) -> None:
         click.echo(f"  {repo:40s} {by_repo[repo]:4d}")
 
 
+# =========================================================================
+# analyze-errors
+# =========================================================================
+
+
+@cli.command("analyze-errors")
+@click.option(
+    "--results",
+    default="output/swe_bench_pro/results.jsonl",
+    help="Path to results.jsonl",
+)
+@click.option(
+    "--output-dir",
+    default=None,
+    help="Directory for analysis output (defaults to results directory)",
+)
+def analyze_errors(results: str, output_dir: str | None) -> None:
+    """Analyze final errors from failed benchmark runs.
+
+    Extracts the LAST guard feedback before retry exhaustion for each failed run.
+    This reveals what the agent was "stuck on" when retries were exhausted.
+
+    Output files are timestamped with symlinks to latest:
+    - final_error_analysis_YYYYMMDD_HHMMSS.md
+    - final_errors_YYYYMMDD_HHMMSS.json
+    - final_error_analysis_latest.md (symlink)
+    - final_errors_latest.json (symlink)
+    """
+    from pathlib import Path
+
+    from .final_error_analysis import analyze_final_errors
+
+    results_path = Path(results)
+    if not results_path.exists():
+        click.echo(
+            click.style(f"Results file not found: {results}", fg="red"),
+            err=True,
+        )
+        raise SystemExit(1)
+
+    out_dir = Path(output_dir) if output_dir else results_path.parent
+
+    click.echo(f"Analyzing final errors from {results}")
+    summary = analyze_final_errors(results_path, out_dir)
+
+    if summary.get("total_failures", 0) == 0:
+        click.echo(click.style("No failed runs found.", fg="yellow"))
+        return
+
+    click.echo(
+        click.style(
+            f"\nAnalysis complete: {summary['total_failures']} failed runs",
+            fg="green",
+        )
+    )
+
+    if "by_arm" in summary:
+        click.echo("\nBy arm:")
+        for arm, count in sorted(summary["by_arm"].items()):
+            click.echo(f"  {arm}: {count}")
+
+    if "by_guard" in summary:
+        click.echo("\nBy final guard:")
+        for guard, count in sorted(
+            summary["by_guard"].items(), key=lambda x: -x[1]
+        ):
+            click.echo(f"  {guard}: {count}")
+
+    click.echo(f"\nOutput files in: {out_dir}/")
+    click.echo("  - final_error_analysis_latest.md")
+    click.echo("  - final_errors_latest.json")
+
+
 if __name__ == "__main__":
     cli()
