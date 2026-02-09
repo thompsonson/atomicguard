@@ -4,7 +4,7 @@ import pytest
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.agent import DualStateAgent
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted, StagnationDetected
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import (
     Artifact,
@@ -467,3 +467,131 @@ class TestArtifactMetadataTracking:
         # Should return 3 artifacts in chain
         provenance = memory_dag.get_provenance(final.artifact_id)
         assert len(provenance) == 3
+
+
+class SimilarFeedbackGuard(GuardInterface):
+    """Guard that fails with similar feedback each time (for stagnation testing)."""
+
+    def __init__(self, fail_count: int = 10, base_feedback: str = "Test failed") -> None:
+        self._fail_count = fail_count
+        self._base_feedback = base_feedback
+        self._call_count = 0
+
+    def validate(self, _artifact: Artifact, **_deps: Artifact) -> GuardResult:
+        self._call_count += 1
+        if self._call_count <= self._fail_count:
+            # Similar feedback with slight variation (triggers stagnation detection)
+            return GuardResult(
+                passed=False,
+                feedback=f"{self._base_feedback}: expected 5, got {self._call_count}",
+            )
+        return GuardResult(passed=True, feedback="")
+
+
+class TestStagnationDetectionAndEscalation:
+    """Tests for Extension 09: Stagnation detection and exception separation."""
+
+    def test_stagnation_with_escalation_raises_stagnation_detected(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Agent raises StagnationDetected when r_patience hit and escalation configured."""
+        generator = MockGenerator(responses=[f"code{i}" for i in range(10)])
+        guard = SimilarFeedbackGuard(fail_count=10)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            rmax=5,
+            r_patience=2,  # Trigger after 2 similar failures
+            escalation=["ap_upstream"],
+        )
+
+        with pytest.raises(StagnationDetected) as exc_info:
+            agent.execute("Write something")
+
+        assert exc_info.value.escalate_to == ["ap_upstream"]
+        assert exc_info.value.failure_summary  # Should have summary
+
+    def test_stagnation_without_escalation_continues_retrying(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Agent injects warning and continues when stagnation detected but no escalation."""
+        generator = MockGenerator(responses=["bad1", "bad2", "bad3", "good"])
+        guard = FailThenPassGuard(fail_count=3)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            rmax=5,
+            r_patience=2,  # Would trigger stagnation after 2
+            escalation=[],  # No escalation targets
+        )
+
+        # Should succeed despite stagnation detection (continues retrying)
+        artifact = agent.execute("Write something")
+
+        assert artifact.content == "good"
+        assert generator.call_count == 4
+
+    def test_fatal_guard_raises_escalation_required_not_stagnation(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Fatal guard result raises EscalationRequired regardless of escalation config."""
+        generator = MockGenerator(responses=["code"])
+        pair = ActionPair(
+            generator=generator, guard=FatalGuard("FATAL: Security issue"), prompt_template=_TEMPLATE
+        )
+        # Even with escalation configured, fatal should raise EscalationRequired
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            r_patience=2,
+            escalation=["ap_upstream"],
+        )
+
+        with pytest.raises(EscalationRequired) as exc_info:
+            agent.execute("Write something")
+
+        # Should be EscalationRequired, not StagnationDetected
+        assert exc_info.value.feedback == "FATAL: Security issue"
+
+    def test_stagnation_detected_includes_full_escalation_list(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """StagnationDetected includes all escalation targets, not just the first."""
+        generator = MockGenerator(responses=[f"code{i}" for i in range(10)])
+        guard = SimilarFeedbackGuard(fail_count=10)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            rmax=5,
+            r_patience=2,
+            escalation=["ap_analysis", "ap_test", "ap_config"],  # Multiple targets
+        )
+
+        with pytest.raises(StagnationDetected) as exc_info:
+            agent.execute("Write something")
+
+        # Should include ALL targets
+        assert exc_info.value.escalate_to == ["ap_analysis", "ap_test", "ap_config"]
+
+    def test_no_stagnation_below_r_patience(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """No StagnationDetected raised if failures < r_patience."""
+        generator = MockGenerator(responses=["bad1", "good"])
+        guard = FailThenPassGuard(fail_count=1)
+        pair = ActionPair(generator=generator, guard=guard, prompt_template=_TEMPLATE)
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            rmax=5,
+            r_patience=3,  # Need 3 similar failures
+            escalation=["ap_upstream"],
+        )
+
+        # Should succeed without triggering stagnation
+        artifact = agent.execute("Write something")
+
+        assert artifact.content == "good"

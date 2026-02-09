@@ -81,7 +81,7 @@
   "$defs": {
     "GuardResult": {
       "type": "object",
-      "description": "G(α, C) → {v, φ} (Definition 6)",
+      "description": "G(α, C) → {v, φ} (Definition 6). Stagnation detection is done by the agent, not guards.",
       "properties": {
         "passed": {
           "type": "boolean",

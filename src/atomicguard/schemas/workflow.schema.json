@@ -122,6 +122,22 @@
         "human_prompt_title": {
           "type": "string",
           "description": "Title for human review guard prompts"
+        },
+        "r_patience": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Consecutive similar failures before escalation trigger (invariant: 1 < r_patience < rmax). Extension 09, Definition 44."
+        },
+        "e_max": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Maximum escalation attempts before FAIL (must be >= 1 if escalation configured). Extension 09."
+        },
+        "escalation": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Upstream action_pair_ids to re-invoke on stagnation. Extension 09, Definition 45."
         }
       }
     }

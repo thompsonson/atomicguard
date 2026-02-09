@@ -40,6 +40,9 @@ class GuardResult:
     - v = passed (⊤ or ⊥)
     - φ = feedback signal
     - fatal = ⊥_fatal (non-recoverable, requires escalation)
+
+    Note: Stagnation detection is done by the agent (which sees feedback history),
+    not by guards (which are stateless and validate single artifacts).
     """
 
     passed: bool
@@ -236,6 +239,11 @@ class WorkflowState:
     def satisfy(self, guard_id: str, artifact_id: str) -> None:
         self.guards[guard_id] = True
         self.artifact_ids[guard_id] = artifact_id
+
+    def unsatisfy(self, guard_id: str) -> None:
+        """Mark a guard as unsatisfied (Extension 09: Cascade Invalidation)."""
+        self.guards[guard_id] = False
+        self.artifact_ids.pop(guard_id, None)
 
     def get_artifact_id(self, guard_id: str) -> str | None:
         return self.artifact_ids.get(guard_id)

@@ -1,6 +1,6 @@
 {
   "name": "S1 TDD Behavior",
-  "description": "TDD workflow with behavior-focused test prompts. A/B test variant of 05_s1_tdd_verified.",
+  "description": "TDD workflow with behavior-focused test prompts. A/B test variant of 05_s1_tdd_verified. Extension 09: Includes escalation backtracking.",
   "rmax": 6,
   "action_pairs": {
     "ap_analysis": {
@@ -13,6 +13,9 @@
       "guard": "composite",
       "guards": ["test_syntax", "test_red"],
       "requires": ["ap_analysis"],
+      "r_patience": 2,
+      "e_max": 1,
+      "escalation": ["ap_analysis"],
       "description": "Generate behavior-focused test + verify FAILS on buggy code"
     },
     "ap_gen_patch": {
@@ -24,6 +27,9 @@
         "require_syntax_valid": true
       },
       "requires": ["ap_analysis", "ap_gen_test"],
+      "r_patience": 3,
+      "e_max": 2,
+      "escalation": ["ap_analysis", "ap_gen_test"],
       "description": "Generate patch + verify test PASSES + run full eval"
     }
   }

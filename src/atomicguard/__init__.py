@@ -26,7 +26,11 @@ from atomicguard.application.agent import DualStateAgent
 from atomicguard.application.workflow import Workflow, WorkflowStep
 
 # Domain exceptions
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
+from atomicguard.domain.exceptions import (
+    EscalationRequired,
+    RmaxExhausted,
+    StagnationDetected,
+)
 
 # Domain interfaces (for type hints and custom implementations)
 from atomicguard.domain.interfaces import (
@@ -101,6 +105,7 @@ __all__ = [
     # Domain exceptions
     "RmaxExhausted",
     "EscalationRequired",
+    "StagnationDetected",
     # Application layer
     "ActionPair",
     "DualStateAgent",

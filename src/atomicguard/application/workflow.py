@@ -2,16 +2,25 @@
 Workflow: Orchestrates ActionPair execution across multiple steps.
 
 Owns WorkflowState and infers preconditions from step dependencies.
+
+Extension 09: Supports escalation via informed backtracking when
+stagnation is detected, including cascade invalidation of dependent steps.
 """
 
+import logging
 import uuid
 import warnings
+from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.agent import DualStateAgent
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
+from atomicguard.domain.exceptions import (
+    EscalationRequired,
+    RmaxExhausted,
+    StagnationDetected,
+)
 from atomicguard.domain.interfaces import ArtifactDAGInterface, CheckpointDAGInterface
 from atomicguard.domain.models import (
     AmendmentType,
@@ -28,6 +37,8 @@ from atomicguard.domain.models import (
     WorkflowStatus,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class WorkflowStep:
@@ -37,6 +48,10 @@ class WorkflowStep:
     action_pair: ActionPair
     requires: tuple[str, ...]
     deps: tuple[str, ...]  # Artifacts to pass to guard
+    # Extension 09: Escalation parameters
+    r_patience: int | None = None  # Consecutive similar failures before escalation
+    e_max: int = 1  # Maximum escalation attempts before FAIL
+    escalation: tuple[str, ...] = ()  # Upstream action_pair_ids to re-invoke
 
 
 class Workflow:
@@ -70,6 +85,9 @@ class Workflow:
         self._steps: list[WorkflowStep] = []
         self._workflow_state = WorkflowState()
         self._artifacts: dict[str, Artifact] = {}
+        # Extension 09: Escalation tracking
+        self._escalation_count: dict[str, int] = defaultdict(int)  # step_id -> count
+        self._escalation_context: dict[str, str] = {}  # step_id -> failure_summary
 
     def add_step(
         self,
@@ -77,6 +95,9 @@ class Workflow:
         action_pair: ActionPair,
         requires: tuple[str, ...] = (),
         deps: tuple[str, ...] | None = None,
+        r_patience: int | None = None,
+        e_max: int = 1,
+        escalation: tuple[str, ...] = (),
     ) -> "Workflow":
         """
         Register a step. Precondition inferred from requires.
@@ -86,18 +107,37 @@ class Workflow:
             action_pair: The generator-guard pair for this step
             requires: Guard IDs that must be satisfied before this step
             deps: Artifact dependencies to pass to guard (defaults to requires)
+            r_patience: Consecutive similar failures before escalation (Extension 09).
+                        If None, escalation is disabled for this step.
+            e_max: Maximum escalation attempts before FAIL (Extension 09, default: 1)
+            escalation: Upstream action_pair_ids to re-invoke on stagnation (Extension 09)
 
         Returns:
             Self for fluent chaining
         """
         if deps is None:
             deps = requires
-        self._steps.append(WorkflowStep(guard_id, action_pair, requires, deps))
+        self._steps.append(
+            WorkflowStep(
+                guard_id=guard_id,
+                action_pair=action_pair,
+                requires=requires,
+                deps=deps,
+                r_patience=r_patience,
+                e_max=e_max,
+                escalation=escalation,
+            )
+        )
         return self  # Fluent
 
     def execute(self, specification: str) -> WorkflowResult:
         """
         Execute the workflow until completion or failure.
+
+        Extension 09: Supports escalation via informed backtracking.
+        When stagnation is detected and escalation is configured, the
+        workflow will cascade-invalidate dependent steps and re-invoke
+        the target upstream step with failure context injected.
 
         Args:
             specification: The task specification
@@ -123,14 +163,27 @@ class Workflow:
                 gid: self._artifacts[gid] for gid in step.deps if gid in self._artifacts
             }
 
+            # Extension 09: Get any injected failure context
+            effective_constraints = self._constraints
+            if step.guard_id in self._escalation_context:
+                failure_ctx = self._escalation_context.pop(step.guard_id)
+                effective_constraints = f"{self._constraints}\n\n{failure_ctx}"
+                logger.info(
+                    "[%s] Re-running with injected failure context from escalation",
+                    step.guard_id,
+                )
+
             # Execute via stateless agent
             agent = DualStateAgent(
                 action_pair=step.action_pair,
                 artifact_dag=self._dag,
                 rmax=self._rmax,
-                constraints=self._constraints,
+                constraints=effective_constraints,
                 action_pair_id=step.guard_id,
                 workflow_id=workflow_id,
+                r_patience=step.r_patience,
+                e_max=step.e_max,
+                escalation=list(step.escalation),
             )
 
             try:
@@ -138,7 +191,40 @@ class Workflow:
                 self._artifacts[step.guard_id] = artifact
                 self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
 
+            except StagnationDetected as e:
+                # Level 2: Workflow backtracking
+                if self._escalation_count[step.guard_id] < step.e_max:
+                    logger.info(
+                        "[%s] Escalation %d/%d triggered. Targets: %s",
+                        step.guard_id,
+                        self._escalation_count[step.guard_id] + 1,
+                        step.e_max,
+                        e.escalate_to,
+                    )
+
+                    # Definition 47: Cascade Invalidation - invalidate ALL targets
+                    for target_id in e.escalate_to:
+                        self._invalidate_dependents(target_id)
+                        # Definition 48: Context Injection for each target
+                        if e.failure_summary:
+                            self._inject_failure_context(target_id, e.failure_summary)
+
+                    self._escalation_count[step.guard_id] += 1
+                    continue  # Re-run from earliest invalidated step
+                else:
+                    # e_max exceeded - promote to human escalation
+                    return WorkflowResult(
+                        status=WorkflowStatus.ESCALATION,
+                        artifacts=self._artifacts,
+                        failed_step=step.guard_id,
+                        escalation_feedback=(
+                            f"Automated escalation exhausted ({step.e_max} attempts). "
+                            f"Failure summary: {e.failure_summary}"
+                        ),
+                    )
+
             except EscalationRequired as e:
+                # Level 4: Human intervention (fatal guard)
                 return WorkflowResult(
                     status=WorkflowStatus.ESCALATION,
                     artifacts=self._artifacts,
@@ -156,6 +242,63 @@ class Workflow:
                 )
 
         return WorkflowResult(status=WorkflowStatus.SUCCESS, artifacts=self._artifacts)
+
+    def _invalidate_dependents(self, target_id: str) -> None:
+        """Mark target and all transitive dependents as unsatisfied (Definition 47).
+
+        When escalating to an upstream step, all steps that depend on it
+        (directly or transitively) must be invalidated so they re-execute
+        with fresh artifacts.
+
+        Args:
+            target_id: The action_pair_id to invalidate (and its dependents)
+        """
+        to_invalidate = self._get_transitive_dependents(target_id)
+        to_invalidate.add(target_id)  # Include target itself
+
+        for step_id in to_invalidate:
+            if self._workflow_state.is_satisfied(step_id):
+                logger.debug("[%s] Cascade invalidation", step_id)
+                self._workflow_state.guards[step_id] = False
+                self._artifacts.pop(step_id, None)
+
+    def _get_transitive_dependents(self, target_id: str) -> set[str]:
+        """Find all steps that transitively depend on target_id.
+
+        Args:
+            target_id: The action_pair_id to find dependents for
+
+        Returns:
+            Set of guard_ids that depend on target (directly or transitively)
+        """
+        dependents: set[str] = set()
+        queue = [target_id]
+
+        while queue:
+            current = queue.pop(0)
+            for step in self._steps:
+                if current in step.requires and step.guard_id not in dependents:
+                    dependents.add(step.guard_id)
+                    queue.append(step.guard_id)
+
+        return dependents
+
+    def _inject_failure_context(self, target_id: str, summary: str) -> None:
+        """Add failure summary to constraints for target re-execution (Definition 48).
+
+        The failure summary describes what went wrong in downstream steps,
+        enabling the upstream generator to produce output that avoids
+        the same failure patterns.
+
+        Args:
+            target_id: The action_pair_id to inject context for
+            summary: The failure summary to inject
+        """
+        self._escalation_context[target_id] = summary
+        logger.debug(
+            "[%s] Failure context injected for re-execution",
+            target_id,
+        )
 
     def _precondition_met(self, step: WorkflowStep) -> bool:
         """Precondition: all required guards satisfied."""

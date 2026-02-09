@@ -3,14 +3,19 @@ DualStateAgent: Stateless executor for a single ActionPair.
 
 Manages only EnvironmentState (the retry loop).
 WorkflowState is managed by Workflow.
+
+Extension 09: Supports escalation via informed backtracking when
+stagnation is detected (r_patience consecutive similar failures).
+Raises StagnationDetected for Level 2 (workflow backtracking) and
+EscalationRequired for Level 4 (human intervention).
 """
 
 import logging
 from dataclasses import replace
-from difflib import SequenceMatcher
 
 from atomicguard.application.action_pair import ActionPair
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
+from atomicguard.application.feedback_summarizer import FeedbackSummarizer
+from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted, StagnationDetected
 from atomicguard.domain.interfaces import ArtifactDAGInterface
 from atomicguard.domain.models import (
     AmbientEnvironment,
@@ -43,6 +48,9 @@ class DualStateAgent:
         constraints: str = "",
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
+        r_patience: int | None = None,
+        e_max: int = 1,
+        escalation: list[str] | None = None,
     ):
         """
         Args:
@@ -52,6 +60,10 @@ class DualStateAgent:
             constraints: Global constraints for the ambient environment
             action_pair_id: Identifier for this action pair (e.g., 'g_test')
             workflow_id: UUID of the workflow execution instance
+            r_patience: Consecutive similar failures before escalation (Extension 09).
+                        If None, escalation is disabled. Must be < rmax.
+            e_max: Maximum escalation attempts before FAIL (Extension 09, default: 1)
+            escalation: Upstream action_pair_ids to re-invoke on stagnation (Extension 09)
         """
         self._action_pair = action_pair
         self._artifact_dag = artifact_dag
@@ -59,6 +71,11 @@ class DualStateAgent:
         self._constraints = constraints
         self._action_pair_id = action_pair_id
         self._workflow_id = workflow_id
+        # Extension 09: Escalation parameters
+        self._r_patience = r_patience
+        self._e_max = e_max
+        self._escalation = escalation or []
+        self._feedback_summarizer = FeedbackSummarizer()
 
     def execute(
         self,
@@ -78,6 +95,7 @@ class DualStateAgent:
 
         Raises:
             RmaxExhausted: If all retries fail
+            EscalationRequired: If stagnation detected and escalation configured
         """
         dependencies = dependencies or {}
         context = self._compose_context(specification, dependencies)
@@ -122,15 +140,39 @@ class DualStateAgent:
                 previous_id = artifact.artifact_id  # Track for next iteration
                 retry_count += 1
 
-                # Detect stagnation: same guard, similar feedback repeated
-                stagnation_warning = self._detect_stagnation(feedback_history)
-                if stagnation_warning:
-                    logger.warning(
-                        "[%s] Stagnation detected at retry %d: %s",
-                        self._action_pair_id,
-                        retry_count,
-                        stagnation_warning,
+                # Extension 09: Check for stagnation and escalation
+                stagnation_warning = None
+                if self._r_patience is not None:
+                    stagnation = self._feedback_summarizer.detect_stagnation(
+                        feedback_history, self._r_patience
                     )
+                    if stagnation.detected:
+                        if self._escalation:
+                            # Level 2: Workflow backtracking - raise StagnationDetected
+                            logger.warning(
+                                "[%s] Stagnation detected after %d similar failures. "
+                                "Triggering escalation to %s",
+                                self._action_pair_id,
+                                stagnation.similar_count,
+                                self._escalation,
+                            )
+                            raise StagnationDetected(
+                                artifact=artifact,
+                                feedback=result.feedback,
+                                escalate_to=list(self._escalation),  # Full list
+                                failure_summary=stagnation.failure_summary,
+                            )
+                        else:
+                            # No escalation targets - inject warning and continue retrying
+                            stagnation_warning = (
+                                f"Stagnation detected: {stagnation.similar_count} similar failures. "
+                                f"Pattern: {stagnation.error_signature}"
+                            )
+                            logger.warning(
+                                "[%s] %s (no escalation targets configured)",
+                                self._action_pair_id,
+                                stagnation_warning,
+                            )
 
                 context = self._refine_context(
                     specification,
@@ -197,35 +239,3 @@ class DualStateAgent:
             ),  # Preserve dependencies on retry
         )
 
-    @staticmethod
-    def _detect_stagnation(
-        feedback_history: list[tuple[Artifact, str]],
-        similarity_threshold: float = 0.7,
-        min_repeats: int = 2,
-    ) -> str | None:
-        """Detect when the retry loop is stagnating on similar failures.
-
-        Returns a warning message if the last `min_repeats` feedback messages
-        are semantically similar (above `similarity_threshold`), or None
-        if no stagnation is detected.
-        """
-        if len(feedback_history) < min_repeats:
-            return None
-
-        recent = [fb for _, fb in feedback_history[-min_repeats:]]
-
-        # Check pairwise similarity of recent feedback
-        all_similar = True
-        for i in range(len(recent) - 1):
-            ratio = SequenceMatcher(None, recent[i], recent[i + 1]).ratio()
-            if ratio < similarity_threshold:
-                all_similar = False
-                break
-
-        if not all_similar:
-            return None
-
-        return (
-            f"The last {len(recent)} attempts all produced similar failures. "
-            f"Feedback pattern: '{recent[-1][:100]}...'"
-        )
