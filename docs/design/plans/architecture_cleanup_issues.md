@@ -11,10 +11,10 @@ Anti-patterns identified during architectural review (2026-02-10). Each issue is
 | 2: Remove Extension 10 (WorkflowEventStore/Emitter) | DONE | `e27d20a` |
 | 3: Fix dependency inversion in application/workflow.py | DONE | `7e7ccea` |
 | 4: Fix silent exception swallowing in domain/ | DONE | `e44e170` |
-| 5: Remove CheckpointDAG (DAG is the checkpoint) | PLANNED | ~3,500 lines across 24 files |
+| 5: Remove CheckpointDAG (DAG is the checkpoint) | DONE | `969330b` |
 | 6: Deduplicate experiment runner workflow construction | PLANNED | extract to `examples/swe_bench_common/` |
 
-**Test results after all changes**: 384 passed, 44 skipped, 0 xfailed. All 3 architecture layer rules pass. All convention tests pass.
+**Test results after all changes**: 285 passed, 44 skipped (core). 65 extension tests pass. All 3 architecture layer rules pass. All convention tests pass.
 
 ---
 
@@ -25,7 +25,7 @@ Issue 1 (move to domain/) ──────────────── stand
 Issue 2 (remove Extension 10) ──────────── standalone       ✓ DONE
 Issue 3 (DI fix) ───────────────────────── standalone       ✓ DONE
 Issue 4 (domain purity) ────────────────── standalone       ✓ DONE
-Issue 5 (remove checkpoint) ────────────── after Issue 4    📋 PLANNED
+Issue 5 (remove checkpoint) ────────────── after Issue 4    ✓ DONE
 Issue 6 (runner dedup) ─────────────────── after Issues 1,2 📋 PLANNED (after Issue 5)
 ```
 
@@ -143,7 +143,7 @@ Swallows all exceptions during feedback history reconstruction. Masks bugs compl
 
 ## Issue 5: Remove `CheckpointDAG` — the artifact DAG IS the checkpoint
 
-**Status**: PLANNED
+**Status**: DONE — commit `969330b` (9,888 lines removed across 51 files)
 
 **Depends on**: Issue 4 (silent exception cleanup) — DONE
 
