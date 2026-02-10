@@ -6,9 +6,6 @@ Owns WorkflowState and infers preconditions from step dependencies.
 Extension 09: Supports escalation via informed backtracking when
 stagnation is detected, including cascade invalidation of dependent steps.
 Supports guard-specific escalation routing via escalation_by_guard (Definition 45).
-
-Extension 10: Workflow Execution Trace — emits structured events for
-observability and debugging when an event_store is provided.
 """
 
 import logging
@@ -29,7 +26,6 @@ from atomicguard.domain.exceptions import (
 from atomicguard.domain.interfaces import (
     ArtifactDAGInterface,
     CheckpointDAGInterface,
-    WorkflowEventStoreInterface,
 )
 from atomicguard.domain.models import (
     AmendmentType,
@@ -78,14 +74,12 @@ class Workflow:
         artifact_dag: ArtifactDAGInterface | None = None,
         rmax: int = 3,
         constraints: str = "",
-        event_store: WorkflowEventStoreInterface | None = None,
     ):
         """
         Args:
             artifact_dag: Repository for storing artifacts (creates InMemory if None)
             rmax: Maximum retries per step
             constraints: Global constraints for the ambient environment
-            event_store: Optional event store for workflow execution trace (Extension 10)
         """
         # Lazy import to avoid circular dependency
         if artifact_dag is None:
@@ -96,7 +90,6 @@ class Workflow:
         self._dag = artifact_dag
         self._rmax = rmax
         self._constraints = constraints
-        self._event_store = event_store
         self._steps: list[WorkflowStep] = []
         self._workflow_state = WorkflowState()
         self._artifacts: dict[str, Artifact] = {}
@@ -161,7 +154,6 @@ class Workflow:
         Execute the workflow until completion or failure.
 
         Extension 09: Supports escalation via informed backtracking.
-        Extension 10: Emits workflow events when event_store is provided.
 
         Args:
             specification: The task specification
@@ -171,16 +163,6 @@ class Workflow:
         """
         # Generate a unique workflow_id for this execution
         workflow_id = str(uuid.uuid4())
-
-        # Extension 10: Create emitter if event store provided
-        emitter = None
-        if self._event_store:
-            from atomicguard.application.workflow_event_emitter import (
-                WorkflowEventEmitter,
-            )
-            from atomicguard.domain.workflow_event import EscalationEventRecord
-
-            emitter = WorkflowEventEmitter(self._event_store, workflow_id)
 
         # Extension 09: Validate escalation targets exist before execution
         step_ids = {s.guard_id for s in self._steps}
@@ -200,13 +182,6 @@ class Workflow:
                     artifacts=self._artifacts,
                     failed_step="No applicable step",
                 )
-
-            # Track attempt number per step
-            attempt = self._escalation_count.get(step.guard_id, 0) + 1
-
-            # Extension 10: Emit STEP_START
-            if emitter:
-                emitter.step_start(step.guard_id, attempt)
 
             # Extract dependencies (keys match action_pair_ids from workflow.json)
             dependencies = {
@@ -244,22 +219,7 @@ class Workflow:
                 self._artifacts[step.guard_id] = artifact
                 self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
 
-                # Extension 10: Emit STEP_PASS
-                if emitter:
-                    guard_name = (
-                        artifact.guard_result.guard_name
-                        if artifact.guard_result
-                        else None
-                    )
-                    emitter.step_pass(step.guard_id, guard_name, attempt)
-
             except StagnationDetected as e:
-                # Extension 10: Emit STAGNATION event
-                if emitter:
-                    emitter.stagnation(
-                        step.guard_id, e.stagnant_guard, e.failure_summary
-                    )
-
                 # Level 2: Workflow backtracking
                 if self._escalation_count[step.guard_id] < step.e_max:
                     logger.info(
@@ -271,34 +231,13 @@ class Workflow:
                     )
 
                     # Definition 47: Cascade Invalidation - invalidate ALL targets
-                    invalidated: list[str] = []
                     for target_id in e.escalate_to:
-                        self._invalidate_dependents(target_id, emitter)
-                        invalidated.append(target_id)
-                        # Also collect transitive dependents for event record
-                        for dep_id in self._get_transitive_dependents(target_id):
-                            if dep_id not in invalidated:
-                                invalidated.append(dep_id)
+                        self._invalidate_dependents(target_id)
                         # Definition 48: Context Injection for each target
                         if e.failure_summary:
                             self._inject_failure_context(target_id, e.failure_summary)
 
                     self._escalation_count[step.guard_id] += 1
-
-                    # Extension 10: Emit ESCALATE event
-                    if emitter:
-                        from atomicguard.domain.workflow_event import EscalationEventRecord
-
-                        record = EscalationEventRecord(
-                            targets=tuple(e.escalate_to),
-                            invalidated=tuple(invalidated),
-                            e_count=self._escalation_count[step.guard_id],
-                            e_max=step.e_max,
-                            failure_summary=e.failure_summary,
-                            trigger="STAGNATION",
-                            stagnant_guard=e.stagnant_guard,
-                        )
-                        emitter.escalate(step.guard_id, record)
 
                     continue  # Re-run from earliest invalidated step
                 else:
@@ -314,15 +253,6 @@ class Workflow:
                     )
 
             except EscalationRequired as e:
-                # Extension 10: Emit STEP_FAIL for fatal
-                if emitter:
-                    guard_name = (
-                        e.artifact.guard_result.guard_name
-                        if e.artifact.guard_result
-                        else None
-                    )
-                    emitter.step_fail(step.guard_id, guard_name, attempt, e.feedback)
-
                 # Level 4: Human intervention (fatal guard)
                 return WorkflowResult(
                     status=WorkflowStatus.ESCALATION,
@@ -333,18 +263,6 @@ class Workflow:
                 )
 
             except RmaxExhausted as e:
-                # Extension 10: Emit STEP_FAIL
-                if emitter and e.provenance:
-                    last_artifact = e.provenance[-1][0]
-                    guard_name = (
-                        last_artifact.guard_result.guard_name
-                        if last_artifact.guard_result
-                        else None
-                    )
-                    emitter.step_fail(
-                        step.guard_id, guard_name, attempt, str(e)
-                    )
-
                 return WorkflowResult(
                     status=WorkflowStatus.FAILED,
                     artifacts=self._artifacts,
@@ -354,7 +272,7 @@ class Workflow:
 
         return WorkflowResult(status=WorkflowStatus.SUCCESS, artifacts=self._artifacts)
 
-    def _invalidate_dependents(self, target_id: str, emitter=None) -> None:
+    def _invalidate_dependents(self, target_id: str) -> None:
         """Mark target and all transitive dependents as unsatisfied (Definition 47).
 
         When escalating to an upstream step, all steps that depend on it
@@ -363,7 +281,6 @@ class Workflow:
 
         Args:
             target_id: The action_pair_id to invalidate (and its dependents)
-            emitter: Optional WorkflowEventEmitter for CASCADE_INVALIDATE events
         """
         to_invalidate = self._get_transitive_dependents(target_id)
         to_invalidate.add(target_id)  # Include target itself
@@ -373,9 +290,6 @@ class Workflow:
                 logger.debug("[%s] Cascade invalidation", step_id)
                 self._workflow_state.unsatisfy(step_id)
                 self._artifacts.pop(step_id, None)
-                # Extension 10: Emit CASCADE_INVALIDATE
-                if emitter:
-                    emitter.cascade_invalidate(step_id)
 
     def _get_transitive_dependents(self, target_id: str) -> set[str]:
         """Find all steps that transitively depend on target_id (Definition 47).

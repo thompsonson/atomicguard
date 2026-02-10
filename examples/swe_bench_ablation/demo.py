@@ -14,7 +14,6 @@ from typing import Any
 import click
 
 from atomicguard import ActionPair, Workflow, WorkflowStatus
-from atomicguard.domain.interfaces import WorkflowEventStoreInterface
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
@@ -108,7 +107,6 @@ def build_workflow(
     repo_root: str | None = None,
     api_key: str = "ollama",
     provider: str = "ollama",
-    event_store: WorkflowEventStoreInterface | None = None,
 ) -> Workflow:
     """Build a Workflow from configuration.
 
@@ -120,7 +118,6 @@ def build_workflow(
         artifact_dag: Persistent artifact storage
         repo_root: Repository root for file validation
         provider: LLM provider identifier
-        event_store: Optional event store for workflow execution trace (Extension 10).
 
     Returns:
         Configured Workflow instance
@@ -129,7 +126,7 @@ def build_workflow(
     guard_registry = get_guard_registry()
 
     rmax = config.get("rmax", 3)
-    workflow = Workflow(artifact_dag=artifact_dag, rmax=rmax, event_store=event_store)
+    workflow = Workflow(artifact_dag=artifact_dag, rmax=rmax)
 
     action_pairs = config.get("action_pairs", {})
 

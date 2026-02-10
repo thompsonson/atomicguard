@@ -23,9 +23,6 @@ from examples.swe_bench_ablation.experiment_runner import ArmResult
 from atomicguard import ActionPair, CompositeGuard, Workflow
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
-from atomicguard.infrastructure.persistence.workflow_events import (
-    FilesystemWorkflowEventStore,
-)
 
 from .dataset import SWEBenchProInstance, load_swe_bench_pro
 from .generators import (
@@ -189,7 +186,6 @@ def build_workflow(
     api_key: str = "ollama",
     provider: str = "ollama",
     instance: SWEBenchProInstance | None = None,
-    event_store: FilesystemWorkflowEventStore | None = None,
 ) -> Workflow:
     """Build a :class:`Workflow` with language-aware registries.
 
@@ -207,7 +203,6 @@ def build_workflow(
         api_key: API key for LLM provider.
         provider: LLM provider name.
         instance: SWE-Bench Pro instance (required for Docker-based guards).
-        event_store: Optional event store for workflow execution trace (Extension 10).
 
     Returns:
         Configured Workflow ready for execution.
@@ -216,7 +211,7 @@ def build_workflow(
     guard_registry = _get_guard_registry(lang_config)
 
     rmax = config.get("rmax", 3)
-    workflow = Workflow(artifact_dag=artifact_dag, rmax=rmax, event_store=event_store)
+    workflow = Workflow(artifact_dag=artifact_dag, rmax=rmax)
 
     action_pairs = config.get("action_pairs")
     if not action_pairs:
@@ -655,11 +650,6 @@ class SWEBenchProRunner:
             dag_dir.mkdir(parents=True, exist_ok=True)
             artifact_dag = FilesystemArtifactDAG(str(dag_dir))
 
-            # Extension 10: Workflow execution trace
-            trace_dir = self._output_dir / "traces" / instance.instance_id / arm
-            trace_dir.mkdir(parents=True, exist_ok=True)
-            event_store = FilesystemWorkflowEventStore(trace_dir)
-
             workflow = build_workflow(
                 config=config,
                 prompts=prompts,
@@ -671,7 +661,6 @@ class SWEBenchProRunner:
                 api_key=self._api_key,
                 provider=self._provider,
                 instance=instance,
-                event_store=event_store,
             )
 
             repo_files = _list_repo_files(

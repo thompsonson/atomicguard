@@ -14,9 +14,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
-from atomicguard.infrastructure.persistence.workflow_events import (
-    FilesystemWorkflowEventStore,
-)
 
 from .dataset import SWEInstance, load_swe_polybench
 from .demo import build_workflow, load_prompts, load_workflow_config
@@ -108,11 +105,6 @@ class ExperimentRunner:
             dag_dir.mkdir(parents=True, exist_ok=True)
             artifact_dag = FilesystemArtifactDAG(str(dag_dir))
 
-            # Extension 10: Workflow execution trace
-            trace_dir = self._output_dir / "traces" / instance.instance_id / arm
-            trace_dir.mkdir(parents=True, exist_ok=True)
-            event_store = FilesystemWorkflowEventStore(trace_dir)
-
             # Build workflow
             workflow = build_workflow(
                 config=config,
@@ -123,7 +115,6 @@ class ExperimentRunner:
                 repo_root=repo_root,
                 api_key=self._api_key,
                 provider=self._provider,
-                event_store=event_store,
             )
 
             init_time = time.time() - init_start

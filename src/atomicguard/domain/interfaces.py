@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         WorkflowCheckpoint,
     )
     from atomicguard.domain.prompts import PromptTemplate
-    from atomicguard.domain.workflow_event import WorkflowEvent, WorkflowEventType
 
 
 class GeneratorInterface(ABC):
@@ -266,52 +265,3 @@ class CheckpointDAGInterface(ABC):
         pass
 
 
-class WorkflowEventStoreInterface(ABC):
-    """Port for workflow event persistence (Definition 50).
-
-    Provides storage for workflow execution trace events,
-    enabling observability and debugging of workflow runs.
-    """
-
-    @abstractmethod
-    def store_event(self, event: "WorkflowEvent") -> str:
-        """Store event and return its ID.
-
-        Args:
-            event: The workflow event to store
-
-        Returns:
-            The event_id
-        """
-        pass
-
-    @abstractmethod
-    def get_events(
-        self,
-        workflow_id: str,
-        event_type: "WorkflowEventType | None" = None,
-        action_pair_id: str | None = None,
-    ) -> list["WorkflowEvent"]:
-        """Get events for workflow, ordered by created_at.
-
-        Args:
-            workflow_id: The workflow to get events for
-            event_type: Optional filter by event type
-            action_pair_id: Optional filter by action pair
-
-        Returns:
-            List of events ordered by created_at
-        """
-        pass
-
-    @abstractmethod
-    def get_escalation_events(self, workflow_id: str) -> list["WorkflowEvent"]:
-        """Get all escalation events for a workflow.
-
-        Args:
-            workflow_id: The workflow to get escalation events for
-
-        Returns:
-            List of ESCALATE events for the workflow
-        """
-        pass
