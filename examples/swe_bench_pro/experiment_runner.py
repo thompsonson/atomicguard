@@ -18,10 +18,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from atomicguard import ActionPair, CompositeGuard, Workflow
-from atomicguard.domain.prompts import PromptTemplate
-from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
-
 from examples.swe_bench_common import (
     ArmResult,
     load_existing_results,
@@ -29,6 +25,10 @@ from examples.swe_bench_common import (
 )
 from examples.swe_bench_common import load_prompts as _load_prompts
 from examples.swe_bench_common import load_workflow_config as _load_workflow_config
+
+from atomicguard import ActionPair, CompositeGuard, Workflow
+from atomicguard.domain.prompts import PromptTemplate
+from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
 from .dataset import SWEBenchProInstance, load_swe_bench_pro
 from .generators import (
@@ -275,11 +275,11 @@ def build_workflow(
         # Extension 09: Backtracking parameters
         r_patience = ap_config.get("r_patience")
         e_max = ap_config.get("e_max", 1)
-        escalation = tuple(ap_config.get("escalation", []))
+        escalate_feedback_to = tuple(ap_config.get("escalate_feedback_to", []))
 
-        # Extension 09: Guard-specific escalation routing
-        raw_ebg = ap_config.get("escalation_by_guard")
-        escalation_by_guard = (
+        # Extension 09: Guard-specific feedback routing
+        raw_ebg = ap_config.get("escalate_feedback_by_guard")
+        escalate_feedback_by_guard = (
             {k: tuple(v) for k, v in raw_ebg.items()} if raw_ebg else None
         )
 
@@ -289,8 +289,8 @@ def build_workflow(
             requires=requires,
             r_patience=r_patience,
             e_max=e_max,
-            escalation=escalation,
-            escalation_by_guard=escalation_by_guard,
+            escalate_feedback_to=escalate_feedback_to,
+            escalate_feedback_by_guard=escalate_feedback_by_guard,
         )
 
     return workflow

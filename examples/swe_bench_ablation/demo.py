@@ -12,14 +12,13 @@ from pathlib import Path
 from typing import Any
 
 import click
+from examples.swe_bench_common import load_prompts as _load_prompts
+from examples.swe_bench_common import load_workflow_config as _load_workflow_config
+from examples.swe_bench_common import topological_sort
 
 from atomicguard import ActionPair, Workflow, WorkflowStatus
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
-
-from examples.swe_bench_common import topological_sort
-from examples.swe_bench_common import load_prompts as _load_prompts
-from examples.swe_bench_common import load_workflow_config as _load_workflow_config
 
 from .generators import (
     AnalysisGenerator,
@@ -169,11 +168,11 @@ def build_workflow(
         # Extension 09: Backtracking parameters
         r_patience = ap_config.get("r_patience")
         e_max = ap_config.get("e_max", 1)
-        escalation = tuple(ap_config.get("escalation", []))
+        escalate_feedback_to = tuple(ap_config.get("escalate_feedback_to", []))
 
-        # Extension 09: Guard-specific escalation routing
-        raw_ebg = ap_config.get("escalation_by_guard")
-        escalation_by_guard = (
+        # Extension 09: Guard-specific feedback routing
+        raw_ebg = ap_config.get("escalate_feedback_by_guard")
+        escalate_feedback_by_guard = (
             {k: tuple(v) for k, v in raw_ebg.items()} if raw_ebg else None
         )
 
@@ -184,8 +183,8 @@ def build_workflow(
             requires=requires,
             r_patience=r_patience,
             e_max=e_max,
-            escalation=escalation,
-            escalation_by_guard=escalation_by_guard,
+            escalate_feedback_to=escalate_feedback_to,
+            escalate_feedback_by_guard=escalate_feedback_by_guard,
         )
 
     return workflow

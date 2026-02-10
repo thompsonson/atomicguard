@@ -476,7 +476,9 @@ class TestArtifactMetadataTracking:
 class SimilarFeedbackGuard(GuardInterface):
     """Guard that fails with similar feedback each time (for stagnation testing)."""
 
-    def __init__(self, fail_count: int = 10, base_feedback: str = "Test failed") -> None:
+    def __init__(
+        self, fail_count: int = 10, base_feedback: str = "Test failed"
+    ) -> None:
         self._fail_count = fail_count
         self._base_feedback = base_feedback
         self._call_count = 0
@@ -507,7 +509,7 @@ class TestStagnationDetectionAndEscalation:
             artifact_dag=memory_dag,
             rmax=5,
             r_patience=2,  # Trigger after 2 similar failures
-            escalation=["ap_upstream"],
+            escalate_feedback_to=["ap_upstream"],
         )
 
         with pytest.raises(StagnationDetected) as exc_info:
@@ -528,7 +530,7 @@ class TestStagnationDetectionAndEscalation:
             artifact_dag=memory_dag,
             rmax=5,
             r_patience=2,  # Would trigger stagnation after 2
-            escalation=[],  # No escalation targets
+            escalate_feedback_to=[],  # No escalation targets
         )
 
         # Should succeed despite stagnation detection (continues retrying)
@@ -543,14 +545,16 @@ class TestStagnationDetectionAndEscalation:
         """Fatal guard result raises EscalationRequired regardless of escalation config."""
         generator = MockGenerator(responses=["code"])
         pair = ActionPair(
-            generator=generator, guard=FatalGuard("FATAL: Security issue"), prompt_template=_TEMPLATE
+            generator=generator,
+            guard=FatalGuard("FATAL: Security issue"),
+            prompt_template=_TEMPLATE,
         )
         # Even with escalation configured, fatal should raise EscalationRequired
         agent = DualStateAgent(
             action_pair=pair,
             artifact_dag=memory_dag,
             r_patience=2,
-            escalation=["ap_upstream"],
+            escalate_feedback_to=["ap_upstream"],
         )
 
         with pytest.raises(EscalationRequired) as exc_info:
@@ -571,7 +575,11 @@ class TestStagnationDetectionAndEscalation:
             artifact_dag=memory_dag,
             rmax=5,
             r_patience=2,
-            escalation=["ap_analysis", "ap_test", "ap_config"],  # Multiple targets
+            escalate_feedback_to=[
+                "ap_analysis",
+                "ap_test",
+                "ap_config",
+            ],  # Multiple targets
         )
 
         with pytest.raises(StagnationDetected) as exc_info:
@@ -592,7 +600,7 @@ class TestStagnationDetectionAndEscalation:
             artifact_dag=memory_dag,
             rmax=5,
             r_patience=3,  # Need 3 similar failures
-            escalation=["ap_upstream"],
+            escalate_feedback_to=["ap_upstream"],
         )
 
         # Should succeed without triggering stagnation
