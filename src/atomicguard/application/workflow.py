@@ -71,22 +71,16 @@ class Workflow:
 
     def __init__(
         self,
-        artifact_dag: ArtifactDAGInterface | None = None,
+        artifact_dag: ArtifactDAGInterface,
         rmax: int = 3,
         constraints: str = "",
     ):
         """
         Args:
-            artifact_dag: Repository for storing artifacts (creates InMemory if None)
+            artifact_dag: Repository for storing artifacts
             rmax: Maximum retries per step
             constraints: Global constraints for the ambient environment
         """
-        # Lazy import to avoid circular dependency
-        if artifact_dag is None:
-            from atomicguard.infrastructure.persistence import InMemoryArtifactDAG
-
-            artifact_dag = InMemoryArtifactDAG()
-
         self._dag = artifact_dag
         self._rmax = rmax
         self._constraints = constraints
@@ -407,8 +401,8 @@ class ResumableWorkflow(Workflow):
 
     def __init__(
         self,
-        artifact_dag: ArtifactDAGInterface | None = None,
-        checkpoint_dag: CheckpointDAGInterface | None = None,
+        artifact_dag: ArtifactDAGInterface,
+        checkpoint_dag: CheckpointDAGInterface,
         rmax: int = 3,
         constraints: str = "",
         auto_checkpoint: bool = True,
@@ -416,7 +410,7 @@ class ResumableWorkflow(Workflow):
         """
         Args:
             artifact_dag: Repository for storing artifacts
-            checkpoint_dag: Repository for storing checkpoints (creates InMemory if None)
+            checkpoint_dag: Repository for storing checkpoints
             rmax: Maximum retries per step
             constraints: Global constraints for the ambient environment
             auto_checkpoint: Create checkpoint on failure (default True)
@@ -428,11 +422,6 @@ class ResumableWorkflow(Workflow):
             stacklevel=2,
         )
         super().__init__(artifact_dag, rmax, constraints)
-
-        if checkpoint_dag is None:
-            from atomicguard.infrastructure.persistence import InMemoryCheckpointDAG
-
-            checkpoint_dag = InMemoryCheckpointDAG()
 
         self._checkpoint_dag = checkpoint_dag
         self._auto_checkpoint = auto_checkpoint

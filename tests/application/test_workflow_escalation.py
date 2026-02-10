@@ -64,7 +64,7 @@ class TestWorkflowStepWithEscalation:
         """add_step stores r_patience parameter."""
         gen = MockGenerator(responses=["x = 1"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=5)  # rmax > r_patience for valid config
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)  # rmax > r_patience for valid config
 
         workflow.add_step("g_test", pair, r_patience=3)
 
@@ -74,7 +74,7 @@ class TestWorkflowStepWithEscalation:
         """add_step stores e_max parameter."""
         gen = MockGenerator(responses=["x = 1"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_test", pair, e_max=2)
 
@@ -84,7 +84,7 @@ class TestWorkflowStepWithEscalation:
         """add_step stores escalation targets."""
         gen = MockGenerator(responses=["x = 1"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_impl", pair, escalation=("g_test", "g_analysis"))
 
@@ -94,7 +94,7 @@ class TestWorkflowStepWithEscalation:
         """add_step defaults e_max to 1."""
         gen = MockGenerator(responses=["x = 1"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_test", pair)
 
@@ -108,7 +108,7 @@ class TestCascadeInvalidation:
         """_get_transitive_dependents finds direct dependents."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_analysis", pair)
         workflow.add_step("ap_test", pair, requires=("ap_analysis",))
 
@@ -120,7 +120,7 @@ class TestCascadeInvalidation:
         """_get_transitive_dependents finds transitive dependents."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_analysis", pair)
         workflow.add_step("ap_test", pair, requires=("ap_analysis",))
         workflow.add_step("ap_patch", pair, requires=("ap_test",))
@@ -134,7 +134,7 @@ class TestCascadeInvalidation:
         """_invalidate_dependents marks target as unsatisfied."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_analysis", pair)
 
         # Satisfy the step
@@ -150,7 +150,7 @@ class TestCascadeInvalidation:
         """_invalidate_dependents removes artifacts from cache."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_analysis", pair)
         workflow.add_step("ap_test", pair, requires=("ap_analysis",))
 
@@ -172,7 +172,7 @@ class TestContextInjection:
 
     def test_inject_failure_context_stores_summary(self) -> None:
         """_inject_failure_context stores summary for target step."""
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow._inject_failure_context("ap_analysis", "## Failure Summary\nTest failed")
 
@@ -188,7 +188,7 @@ class TestContextInjection:
         pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
         pair2 = ActionPair(generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
 
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step("ap_test", pair2, requires=("ap_analysis",))
 
@@ -215,7 +215,7 @@ class TestEscalationTrigger:
         guard2 = FailNTimesThenPassGuard(fail_count=2)
         pair2 = ActionPair(generator=gen2, guard=guard2, prompt_template=_TEMPLATE)
 
-        workflow = Workflow(rmax=5)  # High enough to allow retries
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)  # High enough to allow retries
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step(
             "ap_test",
@@ -240,7 +240,7 @@ class TestEscalationTrigger:
         guard2 = FailNTimesThenPassGuard(fail_count=3)
         pair2 = ActionPair(generator=gen2, guard=guard2, prompt_template=_TEMPLATE)
 
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step(
             "ap_test",
@@ -269,7 +269,7 @@ class TestEscalationTrigger:
 
         pair2 = ActionPair(generator=gen2, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE)
 
-        workflow = Workflow(rmax=3)  # Low rmax
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=3)  # Low rmax
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step(
             "ap_test",
@@ -332,7 +332,7 @@ class TestMultiTargetCascadeInvalidation:
         """Invalidating multiple targets invalidates union of dependency trees."""
         gen = MockGenerator(responses=["x"] * 10)
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_config", pair)
         workflow.add_step("ap_analysis", pair, requires=("ap_config",))
         workflow.add_step("ap_test", pair, requires=("ap_analysis",))
@@ -355,7 +355,7 @@ class TestMultiTargetCascadeInvalidation:
 
     def test_context_injected_to_all_targets(self) -> None:
         """Failure context is injected to all escalation targets."""
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         targets = ["ap_analysis", "ap_test", "ap_config"]
 
         for target_id in targets:
@@ -378,7 +378,7 @@ class TestStagnationVsFatalEscalation:
         guard2 = FailNTimesThenPassGuard(fail_count=4)  # Will fail enough to trigger stagnation
         pair2 = ActionPair(generator=gen2, guard=guard2, prompt_template=_TEMPLATE)
 
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step(
             "ap_test",
@@ -406,7 +406,7 @@ class TestStagnationVsFatalEscalation:
         pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
         pair2 = ActionPair(generator=gen2, guard=FatalGuard(), prompt_template=_TEMPLATE)
 
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step(
             "ap_test",
@@ -435,7 +435,7 @@ class TestStagnationVsFatalEscalation:
         pair1 = ActionPair(generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
         pair2 = ActionPair(generator=gen2, guard=AlwaysSimilarFailGuard(), prompt_template=_TEMPLATE)
 
-        workflow = Workflow(rmax=3)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=3)
         workflow.add_step("ap_analysis", pair1)
         workflow.add_step(
             "ap_test",
@@ -461,7 +461,7 @@ class TestEscalationBudgetEnforcement:
         gen = MockGenerator(responses=["x"] * 20)
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
 
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("ap_step1", pair, r_patience=2, e_max=3, escalation=())
         workflow.add_step("ap_step2", pair, r_patience=2, e_max=5, escalation=())
 
@@ -481,7 +481,7 @@ class TestInvariantValidation:
         """r_patience >= rmax raises ValueError (Definition 44 invariant)."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=3)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=3)
 
         with pytest.raises(ValueError, match="r_patience.*must be < rmax"):
             workflow.add_step("test", pair, r_patience=3)
@@ -490,7 +490,7 @@ class TestInvariantValidation:
         """r_patience > rmax raises ValueError."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=3)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=3)
 
         with pytest.raises(ValueError, match="r_patience.*must be < rmax"):
             workflow.add_step("test", pair, r_patience=5)
@@ -499,7 +499,7 @@ class TestInvariantValidation:
         """r_patience < rmax is valid."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=6)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=6)
 
         # Should not raise
         workflow.add_step("test", pair, r_patience=2)
@@ -510,7 +510,7 @@ class TestInvariantValidation:
         """r_patience=None (disabled) is always valid."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=3)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=3)
 
         # Should not raise
         workflow.add_step("test", pair, r_patience=None)
@@ -521,7 +521,7 @@ class TestInvariantValidation:
         """Escalation target not in workflow steps raises ValueError."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
         workflow.add_step("step1", pair, escalation=("nonexistent",))
 
         with pytest.raises(ValueError, match="not found in workflow"):
@@ -531,7 +531,7 @@ class TestInvariantValidation:
         """Valid escalation targets do not raise."""
         gen = MockGenerator(responses=["x", "y"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
         workflow.add_step("step1", pair)
         workflow.add_step("step2", pair, requires=("step1",), escalation=("step1",))
 
@@ -646,7 +646,7 @@ class TestGuardSpecificEscalation:
         """add_step accepts escalation_by_guard parameter."""
         gen = MockGenerator(responses=["x"])
         pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step(
             guard_id="test_step",

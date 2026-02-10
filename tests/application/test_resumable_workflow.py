@@ -93,7 +93,7 @@ class TestResumableWorkflowInit:
 
     def test_init_creates_default_checkpoint_dag(self) -> None:
         """ResumableWorkflow creates InMemoryCheckpointDAG if none provided."""
-        workflow = ResumableWorkflow()
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG())
 
         assert workflow._checkpoint_dag is not None
         assert isinstance(workflow._checkpoint_dag, InMemoryCheckpointDAG)
@@ -101,19 +101,19 @@ class TestResumableWorkflowInit:
     def test_init_uses_provided_checkpoint_dag(self) -> None:
         """ResumableWorkflow uses provided checkpoint DAG."""
         checkpoint_dag = InMemoryCheckpointDAG()
-        workflow = ResumableWorkflow(checkpoint_dag=checkpoint_dag)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=checkpoint_dag)
 
         assert workflow._checkpoint_dag is checkpoint_dag
 
     def test_init_default_auto_checkpoint_true(self) -> None:
         """auto_checkpoint defaults to True."""
-        workflow = ResumableWorkflow()
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG())
 
         assert workflow._auto_checkpoint is True
 
     def test_init_auto_checkpoint_false(self) -> None:
         """auto_checkpoint can be set to False."""
-        workflow = ResumableWorkflow(auto_checkpoint=False)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), auto_checkpoint=False)
 
         assert workflow._auto_checkpoint is False
 
@@ -132,7 +132,7 @@ class TestResumableWorkflowCheckpointCreation:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = ResumableWorkflow(rmax=2)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), rmax=2)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -148,7 +148,7 @@ class TestResumableWorkflowCheckpointCreation:
         pair = ActionPair(
             generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
         )
-        workflow = ResumableWorkflow()
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG())
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -164,7 +164,7 @@ class TestResumableWorkflowCheckpointCreation:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = ResumableWorkflow(auto_checkpoint=False, rmax=2)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), auto_checkpoint=False, rmax=2)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -183,7 +183,7 @@ class TestResumableWorkflowCheckpointCreation:
             generator=gen2, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
 
-        workflow = ResumableWorkflow(rmax=2)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), rmax=2)
         workflow.add_step("g_config", pair1)
         workflow.add_step("g_impl", pair2, requires=("g_config",))
 
@@ -205,7 +205,7 @@ class TestResumableWorkflowCheckpointCreation:
             generator=gen2, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
 
-        workflow = ResumableWorkflow(rmax=2)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), rmax=2)
         workflow.add_step("g_config", pair1)
         workflow.add_step("g_impl", pair2, requires=("g_config",))
 
@@ -221,7 +221,7 @@ class TestResumableWorkflowCheckpointCreation:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = ResumableWorkflow(rmax=1)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), rmax=1)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("My specific task")
@@ -235,7 +235,7 @@ class TestResumableWorkflowCheckpointCreation:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = ResumableWorkflow(rmax=1, constraints="No imports")
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG(), rmax=1, constraints="No imports")
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write code")
@@ -250,7 +250,7 @@ class TestResumableWorkflowCheckpointCreation:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = ResumableWorkflow(checkpoint_dag=checkpoint_dag, rmax=1)
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=checkpoint_dag, rmax=1)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write code")
@@ -841,7 +841,7 @@ class TestResumableWorkflowErrors:
 
     def test_resume_invalid_checkpoint_raises(self) -> None:
         """Resume with invalid checkpoint ID raises KeyError."""
-        workflow = ResumableWorkflow()
+        workflow = ResumableWorkflow(artifact_dag=InMemoryArtifactDAG(), checkpoint_dag=InMemoryCheckpointDAG())
         workflow.add_step(
             "g_test",
             ActionPair(

@@ -8,7 +8,6 @@ Permanent tests enforcing dependency direction between layers:
 These rules use PyTestArch's LayerRule API for declarative enforcement.
 """
 
-import pytest
 from pytestarch import LayerRule
 
 
@@ -41,10 +40,6 @@ class TestDDDLayerRules:
         )
         rule.assert_applies(evaluable)
 
-    @pytest.mark.xfail(
-        reason="Issue 3: application/workflow.py lazy-imports InMemoryArtifactDAG",
-        strict=True,
-    )
     def test_application_does_not_access_infrastructure(self, evaluable, layers):
         """Application depends on domain ports, not concrete adapters."""
         rule = (

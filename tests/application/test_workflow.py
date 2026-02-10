@@ -39,11 +39,12 @@ class FatalGuard(GuardInterface):
 class TestWorkflowInit:
     """Tests for Workflow initialization."""
 
-    def test_init_creates_default_dag(self) -> None:
-        """Workflow creates InMemoryArtifactDAG if none provided."""
-        workflow = Workflow()
+    def test_init_requires_artifact_dag(self) -> None:
+        """Workflow requires artifact_dag parameter."""
+        dag = InMemoryArtifactDAG()
+        workflow = Workflow(artifact_dag=dag)
 
-        assert workflow._dag is not None
+        assert workflow._dag is dag
 
     def test_init_uses_provided_dag(self, memory_dag: InMemoryArtifactDAG) -> None:
         """Workflow uses provided artifact DAG."""
@@ -53,25 +54,25 @@ class TestWorkflowInit:
 
     def test_init_default_rmax(self) -> None:
         """Default rmax is 3."""
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         assert workflow._rmax == 3
 
     def test_init_custom_rmax(self) -> None:
         """Custom rmax is stored."""
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
 
         assert workflow._rmax == 5
 
     def test_init_with_constraints(self) -> None:
         """Constraints are stored."""
-        workflow = Workflow(constraints="No external imports")
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), constraints="No external imports")
 
         assert workflow._constraints == "No external imports"
 
     def test_init_empty_steps(self) -> None:
         """Workflow starts with no steps."""
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         assert len(workflow._steps) == 0
 
@@ -85,7 +86,7 @@ class TestWorkflowAddStep:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_test", pair)
 
@@ -98,7 +99,7 @@ class TestWorkflowAddStep:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         result = workflow.add_step("g_test", pair)
 
@@ -110,7 +111,7 @@ class TestWorkflowAddStep:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_impl", pair, requires=("g_test",))
 
@@ -122,7 +123,7 @@ class TestWorkflowAddStep:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_impl", pair, requires=("g_test",))
 
@@ -134,7 +135,7 @@ class TestWorkflowAddStep:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_impl", pair, requires=("g_test",), deps=("g_other",))
 
@@ -150,7 +151,7 @@ class TestWorkflowAddStep:
         pair2 = ActionPair(
             generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
@@ -170,7 +171,7 @@ class TestWorkflowExecute:
         pair = ActionPair(
             generator=generator, guard=SyntaxGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write a function")
@@ -188,7 +189,7 @@ class TestWorkflowExecute:
         pair2 = ActionPair(
             generator=gen2, guard=SyntaxGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
         )
@@ -205,7 +206,7 @@ class TestWorkflowExecute:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow(rmax=2)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=2)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -233,7 +234,7 @@ class TestWorkflowExecute:
         pair2 = ActionPair(
             generator=gen2, guard=TrackingGuard("g_impl"), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
         )
@@ -244,7 +245,7 @@ class TestWorkflowExecute:
 
     def test_execute_empty_workflow_success(self) -> None:
         """execute() succeeds immediately with no steps."""
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         result = workflow.execute("Do nothing")
 
@@ -257,7 +258,7 @@ class TestWorkflowExecute:
         pair = ActionPair(
             generator=generator, guard=AlwaysFailGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow(rmax=2)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=2)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -272,7 +273,7 @@ class TestWorkflowExecute:
         pair = ActionPair(
             generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -289,7 +290,7 @@ class TestWorkflowExecute:
         pair = ActionPair(
             generator=generator, guard=FatalGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow(rmax=5)
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)
         workflow.add_step("g_test", pair)
 
         result = workflow.execute("Write something")
@@ -308,7 +309,7 @@ class TestWorkflowInternalMethods:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair)
 
         step = workflow._steps[0]
@@ -324,7 +325,7 @@ class TestWorkflowInternalMethods:
         pair2 = ActionPair(
             generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
         )
@@ -345,7 +346,7 @@ class TestWorkflowInternalMethods:
         pair2 = ActionPair(
             generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
         )
@@ -359,7 +360,7 @@ class TestWorkflowInternalMethods:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair)
 
         step = workflow._find_applicable()
@@ -377,7 +378,7 @@ class TestWorkflowInternalMethods:
         pair2 = ActionPair(
             generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair1).add_step(
             "g_impl", pair2, requires=("g_test",)
         )
@@ -396,7 +397,7 @@ class TestWorkflowInternalMethods:
         pair2 = ActionPair(
             generator=gen2, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         # Add g_impl first (depends on g_test which doesn't exist yet)
         workflow.add_step("g_impl", pair2, requires=("g_test",))
 
@@ -406,7 +407,7 @@ class TestWorkflowInternalMethods:
 
     def test_is_goal_state_empty_workflow(self) -> None:
         """_is_goal_state returns True for empty workflow."""
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
 
         assert workflow._is_goal_state() is True
 
@@ -416,7 +417,7 @@ class TestWorkflowInternalMethods:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair)
 
         workflow._workflow_state.satisfy("g_test", "artifact-001")
@@ -429,7 +430,7 @@ class TestWorkflowInternalMethods:
         pair = ActionPair(
             generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
-        workflow = Workflow()
+        workflow = Workflow(artifact_dag=InMemoryArtifactDAG())
         workflow.add_step("g_test", pair)
 
         assert workflow._is_goal_state() is False
