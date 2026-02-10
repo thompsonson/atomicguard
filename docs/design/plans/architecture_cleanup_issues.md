@@ -11,8 +11,8 @@ Anti-patterns identified during architectural review (2026-02-10). Each issue is
 | 2: Remove Extension 10 (WorkflowEventStore/Emitter) | DONE | `e27d20a` |
 | 3: Fix dependency inversion in application/workflow.py | DONE | `7e7ccea` |
 | 4: Fix silent exception swallowing in domain/ | DONE | `e44e170` |
-| 5: Evaluate and remove CheckpointDAG | DEFERRED | see evaluation below |
-| 6: Deduplicate experiment runner workflow construction | DEFERRED | example-level, low priority |
+| 5: Remove CheckpointDAG (DAG is the checkpoint) | PLANNED | ~3,500 lines across 24 files |
+| 6: Deduplicate experiment runner workflow construction | PLANNED | extract to `examples/shared/` |
 
 **Test results after all changes**: 384 passed, 44 skipped, 0 xfailed. All 3 architecture layer rules pass. All convention tests pass.
 
@@ -25,8 +25,8 @@ Issue 1 (move to domain/) ──────────────── stand
 Issue 2 (remove Extension 10) ──────────── standalone       ✓ DONE
 Issue 3 (DI fix) ───────────────────────── standalone       ✓ DONE
 Issue 4 (domain purity) ────────────────── standalone       ✓ DONE
-Issue 5 (checkpoint eval) ──────────────── after Issue 4    ⏸ DEFERRED
-Issue 6 (runner dedup) ─────────────────── after Issues 1,2 ⏸ DEFERRED
+Issue 5 (remove checkpoint) ────────────── after Issue 4    📋 PLANNED
+Issue 6 (runner dedup) ─────────────────── after Issues 1,2 📋 PLANNED (after Issue 5)
 ```
 
 ---
@@ -141,57 +141,254 @@ Swallows all exceptions during feedback history reconstruction. Masks bugs compl
 
 ---
 
-## Issue 5: Evaluate and remove `CheckpointDAG`
+## Issue 5: Remove `CheckpointDAG` — the artifact DAG IS the checkpoint
 
-**Status**: DEFERRED
+**Status**: PLANNED
 
-**Evaluation (2026-02-10)**: CheckpointDAG is NOT redundant with the artifact DAG. It stores workflow-level orchestration metadata that the artifact DAG does not track:
+**Depends on**: Issue 4 (silent exception cleanup) — DONE
 
-- `WorkflowCheckpoint`: which step failed, failure type (escalation vs rmax_exhausted), completed steps, specification/constraints at time of failure
-- `HumanAmendment`: human-provided corrections with amendment type (artifact/feedback/skip), links to parent artifacts
+### Analysis
 
-This metadata enables the resume-from-checkpoint pattern used by `ResumableWorkflow` (deprecated but functional) and `CheckpointService`/`WorkflowResumeService`. The 4 checkpoint example demos (`examples/checkpoint/01-04`) depend on this functionality.
+The CheckpointDAG is redundant. Every piece of data it stores is either directly in the artifact DAG or derivable from it:
 
-**Recommendation**: Keep checkpoint infrastructure. Consider migrating to DAG-based checkpointing in a future issue where checkpoint metadata is stored as special artifact types in the main DAG.
+| WorkflowCheckpoint field | Already in Artifact DAG? |
+|---|---|
+| `workflow_id` | Yes — every `artifact.workflow_id` |
+| `specification` | Yes — `artifact.context.specification` (immutable per workflow) |
+| `constraints` | Yes — `artifact.context.constraints` (immutable per workflow) |
+| `rmax` | Yes — inferrable from max `artifact.attempt_number` |
+| `completed_steps` | Yes — query artifacts where `status=ACCEPTED` and group by `action_pair_id` |
+| `artifact_ids` | Yes — direct mapping `action_pair_id → artifact_id` for accepted artifacts |
+| `failure_type` | Derivable — `guard_result.fatal` → ESCALATION, else RMAX_EXHAUSTED |
+| `failed_step` | Yes — `action_pair_id` of the last rejected artifact |
+| `failed_artifact_id` | Yes — the artifact itself exists in the DAG |
+| `failure_feedback` | Yes — `artifact.guard_result.feedback` |
+| `provenance_ids` | Yes — `artifact.previous_attempt_id` chain |
+| `workflow_ref` | Yes — `artifact.workflow_ref` (already on every Artifact, models.py:128) |
 
-**Original analysis**:
+**WorkflowCheckpoint is a denormalized snapshot of derivable data.** To resume, reconstruct `WorkflowState` from the DAG: accepted artifacts = completed steps.
 
-**Problem**: `WorkflowCheckpoint` captures `completed_steps`, `artifact_ids`, `failure_feedback`, `provenance_ids` — some derivable from the artifact DAG. The DAG IS the checkpoint: to resume, reconstruct `WorkflowState` from accepted artifacts.
+This is the same reasoning that justified removing Extension 10 (Issue 2): the event store was a materialized view of data already in the DAG. The checkpoint system is the same pattern — redundant derived data stored separately, creating two sources of truth.
 
-**Depends on**: Issue 4 (HumanAmendmentProcessor cleanup)
+**HumanAmendment** content becomes an `Artifact` with `source=HUMAN`. Amendment metadata (`amendment_type`, `created_by`, `context`, `additional_rmax`) maps to `artifact.metadata`.
 
-**Risk**: Medium. Need to verify no active workflows depend on checkpoint resume.
+### Scope: ~3,500 lines across 24 files
+
+| Category | Files | ~Lines |
+|---|---|---|
+| Domain (models, interfaces, workflow) | 3 | 610 |
+| Application (checkpoint_service, resume_service, workflow) | 4 | 700 |
+| Infrastructure (persistence/checkpoint.py) | 2 | 380 |
+| Tests | 6 | 700+ |
+| Examples (checkpoint/01-04, base/checkpoint) | 6 | 600+ |
+| Docs | 3 | 500+ |
+
+### Files to remove entirely
+
+| File | What it contains | Lines |
+|---|---|---|
+| `src/atomicguard/application/checkpoint_service.py` | `CheckpointService` — creates denormalized snapshots | ~131 |
+| `src/atomicguard/application/resume_service.py` | `WorkflowResumeService`, `ResumeResult` — reads denormalized snapshots | ~243 |
+| `src/atomicguard/infrastructure/persistence/checkpoint.py` | `InMemoryCheckpointDAG`, `FilesystemCheckpointDAG` | ~362 |
+| `tests/application/test_checkpoint_service.py` | Tests for CheckpointService | ~100+ |
+| `tests/application/test_resume_service.py` | Tests for WorkflowResumeService | ~100+ |
+| `tests/application/test_resumable_workflow.py` | Tests for deprecated ResumableWorkflow | ~500+ |
+| `tests/infrastructure/persistence/test_checkpoint.py` | Tests for checkpoint DAG implementations | ~100+ |
+| `examples/base/checkpoint.py` | Shared checkpoint CLI utilities | ~80+ |
+| `examples/checkpoint/01_basic/demo.py` | Basic checkpoint demo | ~80+ |
+| `examples/checkpoint/02_tdd/demo.py` | TDD checkpoint demo | ~80+ |
+| `examples/checkpoint/03_llm/demo.py` | LLM checkpoint demo | ~50+ |
+| `examples/checkpoint/04_sdlc/demo.py` | SDLC checkpoint demo | ~80+ |
+
+### Files to modify
+
+| File | Changes |
+|---|---|
+| `src/atomicguard/domain/interfaces.py` | Remove `CheckpointDAGInterface` (lines 171-266) |
+| `src/atomicguard/domain/models.py` | Remove `WorkflowCheckpoint`, `HumanAmendment`, `FailureType`, `AmendmentType` (lines 274-350). Remove `checkpoint` field from `WorkflowResult`. |
+| `src/atomicguard/domain/workflow.py` | Remove `WorkflowResumer`, `HumanAmendmentProcessor`, `ResumeResult`, `RestoredWorkflowState`, `ProcessResult` (lines 211-648). Keep `WorkflowRegistry`, `compute_workflow_ref`, `resolve_workflow_ref`, `compute_config_ref`. |
+| `src/atomicguard/application/workflow.py` | Remove `ResumableWorkflow` class (lines 387-845). Remove checkpoint-related imports (`CheckpointDAGInterface`, `HumanAmendment`, `AmendmentType`, `FailureType`, `WorkflowCheckpoint`). |
+| `src/atomicguard/application/__init__.py` | Remove `CheckpointService`, `WorkflowResumeService`, `ResumeResult` exports |
+| `src/atomicguard/infrastructure/persistence/__init__.py` | Remove `InMemoryCheckpointDAG`, `FilesystemCheckpointDAG` exports |
+| `src/atomicguard/domain/__init__.py` | No changes needed (doesn't export checkpoint types) |
+| `src/atomicguard/__init__.py` | No changes needed (doesn't export checkpoint types) |
+| `tests/conftest.py` | Remove `sample_checkpoint`, `sample_amendment` fixtures and checkpoint-related imports |
+| `tests/domain/test_models.py` | Remove tests for `WorkflowCheckpoint`, `HumanAmendment`, `FailureType`, `AmendmentType` |
+| `tests/extensions/test_ext01_versioned_env.py` | Remove tests that use `WorkflowResumer` or `WorkflowCheckpoint`; keep `compute_workflow_ref` tests |
+| `tests/architecture/test_gate10_infrastructure.py` | Remove references to `CheckpointDAGInterface` |
+
+### Implementation order
+
+1. **Remove ResumableWorkflow** from `application/workflow.py` — it's deprecated and the biggest consumer
+2. **Remove CheckpointService and WorkflowResumeService** — application services that only exist for checkpoint operations
+3. **Remove WorkflowResumer and HumanAmendmentProcessor** from `domain/workflow.py` — domain classes that read from checkpoint
+4. **Remove domain models** — `WorkflowCheckpoint`, `HumanAmendment`, `FailureType`, `AmendmentType` from `models.py`; `CheckpointDAGInterface` from `interfaces.py`; `checkpoint` field from `WorkflowResult`
+5. **Remove infrastructure** — `persistence/checkpoint.py`
+6. **Remove checkpoint tests and examples** — all test files and example demos
+7. **Clean up re-exports and fixtures** — `__init__.py` files, `conftest.py`
+
+### What stays
+
+- `compute_workflow_ref()`, `resolve_workflow_ref()`, `WorkflowRegistry` — W_ref is a domain concept (Definition 11), independent of checkpoints
+- `compute_config_ref()` — Extension 07 config fingerprinting, unrelated
+- `WorkflowIntegrityError` — needed by W_ref verification
+- `Artifact.workflow_ref` field — already on every artifact
+- `Artifact.source` with `ArtifactSource.HUMAN` — stays for human-provided artifacts
+
+### Risk
+
+Medium. Removes ~3,500 lines but all checkpoint functionality is either unused by core workflows or redundant. The `Workflow.execute()` method (the non-deprecated path) never creates checkpoints — it returns `WorkflowResult` with `ESCALATION` or `FAILED` status. Checkpoint creation only happens in the deprecated `ResumableWorkflow`.
+
+### Acceptance criteria
+
+- All architecture layer rules pass
+- All convention tests pass
+- No `CheckpointDAG`, `WorkflowCheckpoint`, `HumanAmendment` references in `src/`
+- `WorkflowResult.checkpoint` field removed
+- Tests pass (count will decrease as checkpoint tests are removed)
+- No regression in `Workflow.execute()` behavior
 
 ---
 
 ## Issue 6: Deduplicate experiment runner workflow construction
 
-**Status**: DEFERRED — example-level duplication, not a core library issue. The two `build_workflow` functions have different signatures (pro version has `lang_config`, `instance` params for multi-language Docker guards). Extracting a shared base would add coupling between examples without clear benefit to the library.
+**Status**: PLANNED
 
-**Problem**: ~400 lines of identical logic duplicated between `swe_bench_pro/experiment_runner.py` and `swe_bench_ablation/demo.py`:
-- `build_workflow()` — workflow assembly from JSON config
-- `_topological_sort()` — identical implementation
-- Generator/guard registry construction — overlapping registries
-- `ArmResult` imported cross-example (`swe_bench_pro` imports from `swe_bench_ablation`)
+**Depends on**: Issues 1, 2 (DONE). Issue 5 recommended first (removes checkpoint wiring from examples).
 
-Additionally, domain models are scattered across example scripts:
-- `ArmResult` in `swe_bench_ablation/experiment_runner.py`
-- `ArmStats`, `GuardFailureStats` in `swe_bench_pro/experiment_runner.py`
-- `ExperimentOverview`, `FinalError`, `RetryError`, `EscalationInfo` in `swe_bench_pro/final_error_analysis.py`
+### Analysis
 
-Both runners also import `FilesystemArtifactDAG` directly instead of using `ArtifactDAGInterface`.
+Two experiment runners with significant duplication:
 
-**Proposed changes**:
-- Create `src/atomicguard/application/workflow_builder.py` — shared `build_workflow()`, topological sort, registry construction
-- Move shared models (`ArmResult`, etc.) to `domain/` or a shared location
-- Both runners import from the shared location
-- Use `ArtifactDAGInterface` port in runner signatures (concrete type injected at CLI entry point)
+| Runner | File | Lines | Purpose |
+|---|---|---|---|
+| Ablation | `examples/swe_bench_ablation/experiment_runner.py` | 353 | Sequential single-language benchmark runner |
+| Pro | `examples/swe_bench_pro/experiment_runner.py` | 1251 | Parallel multi-language runner with Docker, progress tracking |
 
-**Depends on**: Issues 1 (StagnationInfo moved), 2 (event_store removed from build_workflow signatures)
+Pro is a **language-aware, Docker-capable superset** of Ablation. Key divergences:
+- Language config handling (`LanguageConfig`, language-aware registries)
+- `ThreadPoolExecutor` for parallel execution
+- `ProgressTracker` with ETA and per-arm stats
+- Test infrastructure extraction (`_get_test_infrastructure`, `_find_sample_test`)
+- Enhanced error handling with `_run_git()` helper
 
-**Risk**: Medium-high. Largest change, touches active experiment code. Needs careful testing with both runners.
+### Duplication map
 
-**Acceptance criteria**: No cross-example imports. No duplicated `build_workflow()`. Runners use port interfaces, not concrete types. Both runners produce identical results to before. All tests pass.
+| Function | Ablation | Pro | Overlap |
+|---|---|---|---|
+| `_topological_sort()` | imported from `.demo` | lines 119-134 | **100% identical** |
+| `load_prompts()` | imported from `.demo` | lines 98-116 | **100% identical** (redefined) |
+| `load_workflow_config()` | imported from `.demo` | lines 90-95 | **90%** (same logic, different `_WORKFLOW_DIR`) |
+| `_load_existing_results()` | lines 322-352 | lines 1221-1250 | **100% identical** |
+| `__init__()` | lines 46-73 | lines 607-624 | **95%** (same params) |
+| `run_instance()` | lines 75-185 | lines 630-792 | **70%** (same 4-phase structure; Pro adds language context) |
+| `_prepare_repo()` | lines 259-320 | lines 992-1080 | **80%** (same core; Pro adds `_run_git()` helper) |
+| `run_all()` | lines 187-257 | lines 798-986 | **40%** (Ablation=sequential, Pro=parallel+progress) |
+
+### Cross-imports (smell)
+
+`ArmResult` defined in ablation, imported by pro at line 21:
+```python
+from examples.swe_bench_ablation.experiment_runner import ArmResult
+```
+
+### Proposed extraction: `examples/shared/runner_base.py`
+
+Extract shared code to `examples/shared/` (NOT `src/atomicguard/` — these are experiment utilities, not core library):
+
+```
+examples/shared/
+├── __init__.py
+├── runner_base.py     # BaseRunner class, shared utils
+├── models.py          # ArmResult (moved from ablation)
+└── workflow_utils.py  # _topological_sort, load_prompts, load_workflow_config
+```
+
+#### `runner_base.py` — `BaseRunner` class (~100 lines)
+
+```python
+class BaseRunner:
+    """Shared base for experiment runners."""
+
+    def __init__(self, model, provider, base_url, api_key, output_dir, clone_dir): ...
+    def _prepare_repo(self, instance) -> str: ...          # Core clone/reset logic
+    def _load_existing_results(self, results_dir) -> ...:  # JSONL parsing
+```
+
+#### `workflow_utils.py` — shared functions (~80 lines)
+
+```python
+def topological_sort(action_pairs: dict) -> list[str]: ...  # Identical in both
+def load_prompts(prompts_dir: Path) -> dict[str, PromptTemplate]: ...
+def load_workflow_config(workflow_dir: Path, variant: str) -> dict: ...
+```
+
+#### `models.py` — shared data models (~30 lines)
+
+```python
+@dataclass
+class ArmResult:
+    """Result of running one arm on one instance."""
+    instance_id: str
+    arm: str
+    patch_content: str | None = None
+    # ... (moved from ablation/experiment_runner.py)
+```
+
+### Refactored runners
+
+**Ablation** (~200 lines, down from 353):
+```python
+from examples.shared.runner_base import BaseRunner
+from examples.shared.models import ArmResult
+from examples.shared.workflow_utils import topological_sort, load_prompts, load_workflow_config
+
+class ExperimentRunner(BaseRunner):
+    def run_instance(self, instance, arm) -> ArmResult: ...  # Simplified
+    def run_all(self, arms, ...) -> list[ArmResult]: ...     # Sequential
+```
+
+**Pro** (~900 lines, down from 1251):
+```python
+from examples.shared.runner_base import BaseRunner
+from examples.shared.models import ArmResult
+from examples.shared.workflow_utils import topological_sort, load_prompts, load_workflow_config
+
+class SWEBenchProRunner(BaseRunner):
+    def run_instance(self, instance, arm) -> ArmResult: ...  # Language-aware
+    def run_all(self, arms, ...) -> list[ArmResult]: ...     # Parallel + progress
+    def _get_test_infrastructure(self, ...): ...              # Pro-specific
+    def _find_sample_test(self, ...): ...                     # Pro-specific
+```
+
+### Pro-specific models stay in pro
+
+- `ArmStats`, `GuardFailureStats`, `ProgressTracker` — progress tracking only used by Pro
+- `ExperimentOverview`, `FinalError`, etc. in `final_error_analysis.py` — analysis-specific
+
+### Implementation order
+
+1. Create `examples/shared/` directory with `__init__.py`
+2. Move `ArmResult` to `examples/shared/models.py`
+3. Extract `topological_sort`, `load_prompts`, `load_workflow_config` to `examples/shared/workflow_utils.py`
+4. Extract `BaseRunner` with `__init__`, `_prepare_repo`, `_load_existing_results` to `examples/shared/runner_base.py`
+5. Refactor ablation runner to inherit from `BaseRunner` and import shared functions
+6. Refactor pro runner to inherit from `BaseRunner` and import shared functions
+7. Remove cross-import from pro → ablation
+8. Verify both runners still produce identical results
+
+### Risk
+
+Medium. Touches active experiment code. Both runners must produce identical output after refactoring. Pro's enhanced `_prepare_repo()` (with `_run_git()` wrapper) must not regress.
+
+### Acceptance criteria
+
+- No cross-example imports (pro does not import from ablation)
+- No duplicated `_topological_sort()`, `_load_existing_results()`, `load_prompts()`
+- `ArmResult` defined in one place (`examples/shared/models.py`)
+- Both runners use shared `BaseRunner` for common initialization
+- Estimated ~250 lines of duplication eliminated
+- All existing tests pass
 
 ---
 
