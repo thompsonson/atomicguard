@@ -347,3 +347,24 @@ class HumanAmendment:
 
     # Resume Options
     additional_rmax: int = 0  # Extra retries beyond original budget
+
+
+# =============================================================================
+# STAGNATION INFO (Definition 44)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class StagnationInfo:
+    """Result of stagnation detection (Definition 44).
+
+    Captures whether consecutive failures are similar enough to trigger
+    escalation, along with summary information for context injection.
+    """
+
+    detected: bool  # True if r_patience consecutive similar failures
+    similar_count: int  # Number of consecutive similar failures
+    error_signature: str  # Deduplicated error type/pattern
+    approaches_tried: tuple[str, ...]  # Summary of what was attempted
+    failure_summary: str  # Full summary for context injection (Definition 48)
+    stagnant_guard: str | None = None  # Sub-guard that caused stagnation (composite guards)
