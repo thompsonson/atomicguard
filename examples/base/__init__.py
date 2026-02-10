@@ -11,15 +11,11 @@ Provides reusable utilities for building example runners:
   - BaseRunner (ABC) - abstract base for all runners
   - WorkflowRunner - multi-step orchestration via Workflow
   - AgentRunner - single-step execution via DualStateAgent
+
+Note: Checkpoint/resume functionality was removed as part of architecture cleanup.
+The artifact DAG serves as the single source of truth for execution history.
 """
 
-from .checkpoint import (
-    create_amendment,
-    create_checkpoint_commands,
-    display_checkpoint_result,
-    find_checkpoint_by_prefix,
-    write_checkpoint_output,
-)
 from .cli import add_options, common_options
 from .config import (
     load_prompts,
@@ -91,10 +87,4 @@ __all__ = [
     # Result utilities
     "save_workflow_results",
     "display_workflow_result",
-    # Checkpoint utilities
-    "create_amendment",
-    "create_checkpoint_commands",
-    "display_checkpoint_result",
-    "find_checkpoint_by_prefix",
-    "write_checkpoint_output",
 ]

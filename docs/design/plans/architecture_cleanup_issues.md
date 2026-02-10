@@ -156,7 +156,7 @@ The CheckpointDAG is redundant. Nearly every piece of data it stores is either d
 | `workflow_id` | Yes — every `artifact.workflow_id` |
 | `specification` | Yes — `artifact.context.specification` (immutable per workflow) |
 | `constraints` | Yes — `artifact.context.constraints` (immutable per workflow) |
-| `rmax` | **No** — not in artifacts. But it IS a workflow config param (in JSON config, in W_ref hash). See caveat below. |
+| `rmax` | Not in artifacts — but this is a **workflow config parameter**, not historical data. The caller provides it. See note below. |
 | `completed_steps` | Yes — query artifacts where `status=ACCEPTED` and group by `action_pair_id` |
 | `artifact_ids` | Yes — direct mapping `action_pair_id → artifact_id` for accepted artifacts |
 | `failure_type` | Derivable — `guard_result.fatal` → ESCALATION, else RMAX_EXHAUSTED |
@@ -170,9 +170,9 @@ The CheckpointDAG is redundant. Nearly every piece of data it stores is either d
 
 This is the same reasoning that justified removing Extension 10 (Issue 2): the event store was a materialized view of data already in the DAG. The checkpoint system is the same pattern — redundant derived data stored separately, creating two sources of truth.
 
-**Caveat — `rmax` (retry budget)**: The one field NOT in artifacts is `rmax`. It's a workflow configuration parameter set on the Workflow constructor (and included in the W_ref hash at `application/workflow.py:365`). The caller always knows `rmax` from the workflow config. However, this means we are removing the **resume capability entirely**, not just redundant data. If resume is needed in the future, it would need to be redesigned (e.g., store `rmax` in artifact context/metadata, or accept it as a parameter on resume).
+**Note on `rmax`, `r_patience`, `e_max`**: These are workflow **configuration parameters** — they describe how the workflow is configured to run *now*, not what happened in the past. They belong to the workflow definition (and are included in the W_ref hash), not to the execution trace. The artifact DAG captures historical data (what happened); the workflow config captures operational parameters (how to run). On resume, the caller provides the current workflow config — these values don't need to be stored in a checkpoint.
 
-**Verdict**: Proceed with removal. `ResumableWorkflow` is deprecated, `Workflow.execute()` never creates checkpoints, and the "recommended" replacement (`CheckpointService` + `WorkflowResumeService`) has no real-world usage outside tests.
+**Verdict**: Proceed with removal. The redundancy is effectively 100% for historical data. `ResumableWorkflow` is deprecated, `Workflow.execute()` never creates checkpoints, and the "recommended" replacement (`CheckpointService` + `WorkflowResumeService`) has no real-world usage outside tests.
 
 **HumanAmendment** content becomes an `Artifact` with `source=HUMAN`. Amendment metadata (`amendment_type`, `created_by`, `context`, `additional_rmax`) maps to `artifact.metadata`.
 
@@ -243,7 +243,7 @@ This is the same reasoning that justified removing Extension 10 (Issue 2): the e
 
 Medium. Removes ~3,500 lines but all checkpoint functionality is either unused by core workflows or redundant. The `Workflow.execute()` method (the non-deprecated path) never creates checkpoints — it returns `WorkflowResult` with `ESCALATION` or `FAILED` status. Checkpoint creation only happens in the deprecated `ResumableWorkflow`.
 
-**Accepted trade-off**: Resume capability is removed entirely. If needed in the future, it can be redesigned on top of the artifact DAG (store `rmax` in artifact metadata, reconstruct `WorkflowState` from accepted artifacts).
+**Accepted trade-off**: Resume capability is removed entirely. If needed in the future, it can be redesigned on top of the artifact DAG (reconstruct `WorkflowState` from accepted artifacts, accept config params from the caller).
 
 ### Verification
 

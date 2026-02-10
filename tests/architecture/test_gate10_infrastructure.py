@@ -3,8 +3,8 @@ Gate 10: Infrastructure Validation Tests.
 
 TDD tests that validate architectural constraints:
 - Gate 10A: Dependency Direction (domain must not import infrastructure)
-- Gate 10B: Container Injects Abstractions (type hints use interfaces)
 - Gate 10C: ACL Pattern Compliance (domain uses only interface methods)
+- Gate 10D: Abstraction Naming (interfaces end with 'Interface')
 - Gate 10F: Infrastructure Testability (services accept mocked dependencies)
 
 These tests enforce clean architecture and prevent ACL violations.
@@ -12,7 +12,6 @@ These tests enforce clean architecture and prevent ACL violations.
 
 import importlib
 import inspect
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -61,43 +60,6 @@ class TestGate10A_DependencyDirection:
             )
         except ModuleNotFoundError:
             pytest.skip("extraction module not found")
-
-
-class TestGate10B_ContainerAbstractions:
-    """Gate 10B: Container must inject interfaces, not concrete classes."""
-
-    def test_workflow_resumer_accepts_interface_type(self):
-        """Verify WorkflowResumer uses interface type hints."""
-        try:
-            from atomicguard.domain.workflow import WorkflowResumer
-
-            # Check raw annotations (avoids forward reference resolution issues)
-            annotations = WorkflowResumer.__init__.__annotations__
-            checkpoint_dag_hint = annotations.get("checkpoint_dag", "")
-
-            # The hint should reference the interface
-            hint_str = str(checkpoint_dag_hint)
-            assert "CheckpointDAGInterface" in hint_str, (
-                f"checkpoint_dag should be typed as CheckpointDAGInterface, got {hint_str}"
-            )
-        except ModuleNotFoundError:
-            pytest.skip("Required modules not found")
-
-    def test_human_amendment_processor_accepts_interface_type(self):
-        """Verify HumanAmendmentProcessor uses interface type hints."""
-        try:
-            from atomicguard.domain.workflow import HumanAmendmentProcessor
-
-            # Check raw annotations (avoids forward reference resolution issues)
-            annotations = HumanAmendmentProcessor.__init__.__annotations__
-            checkpoint_dag_hint = annotations.get("checkpoint_dag", "")
-
-            hint_str = str(checkpoint_dag_hint)
-            assert "CheckpointDAGInterface" in hint_str, (
-                f"checkpoint_dag should be typed as CheckpointDAGInterface, got {hint_str}"
-            )
-        except ModuleNotFoundError:
-            pytest.skip("Required modules not found")
 
 
 class TestGate10C_ACLCompliance:
@@ -162,33 +124,6 @@ class TestGate10D_AbstractionNaming:
 
 class TestGate10F_InfrastructureTestability:
     """Gate 10F: Services must accept mocked dependencies."""
-
-    def test_workflow_resumer_accepts_mock_dag(self):
-        """WorkflowResumer works with any CheckpointDAGInterface impl."""
-        try:
-            from atomicguard.domain.interfaces import CheckpointDAGInterface
-            from atomicguard.domain.workflow import WorkflowResumer
-
-            mock_dag = MagicMock(spec=CheckpointDAGInterface)
-            resumer = WorkflowResumer(checkpoint_dag=mock_dag)
-
-            # Should have stored the mock
-            assert resumer._checkpoint_dag is mock_dag
-        except ModuleNotFoundError:
-            pytest.skip("Required modules not found")
-
-    def test_human_amendment_processor_accepts_mock_dag(self):
-        """HumanAmendmentProcessor works with any CheckpointDAGInterface impl."""
-        try:
-            from atomicguard.domain.interfaces import CheckpointDAGInterface
-            from atomicguard.domain.workflow import HumanAmendmentProcessor
-
-            mock_dag = MagicMock(spec=CheckpointDAGInterface)
-            processor = HumanAmendmentProcessor(checkpoint_dag=mock_dag)
-
-            assert processor._checkpoint_dag is mock_dag
-        except ModuleNotFoundError:
-            pytest.skip("Required modules not found")
 
     def test_in_memory_dag_implements_interface(self):
         """InMemoryArtifactDAG implements all ArtifactDAGInterface methods."""
