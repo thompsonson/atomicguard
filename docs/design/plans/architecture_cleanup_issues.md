@@ -149,14 +149,14 @@ Swallows all exceptions during feedback history reconstruction. Masks bugs compl
 
 ### Analysis
 
-The CheckpointDAG is redundant. Every piece of data it stores is either directly in the artifact DAG or derivable from it:
+The CheckpointDAG is redundant. Nearly every piece of data it stores is either directly in the artifact DAG or derivable from it:
 
 | WorkflowCheckpoint field | Already in Artifact DAG? |
 |---|---|
 | `workflow_id` | Yes — every `artifact.workflow_id` |
 | `specification` | Yes — `artifact.context.specification` (immutable per workflow) |
 | `constraints` | Yes — `artifact.context.constraints` (immutable per workflow) |
-| `rmax` | Yes — inferrable from max `artifact.attempt_number` |
+| `rmax` | **No** — not in artifacts. But it IS a workflow config param (in JSON config, in W_ref hash). See caveat below. |
 | `completed_steps` | Yes — query artifacts where `status=ACCEPTED` and group by `action_pair_id` |
 | `artifact_ids` | Yes — direct mapping `action_pair_id → artifact_id` for accepted artifacts |
 | `failure_type` | Derivable — `guard_result.fatal` → ESCALATION, else RMAX_EXHAUSTED |
@@ -169,6 +169,10 @@ The CheckpointDAG is redundant. Every piece of data it stores is either directly
 **WorkflowCheckpoint is a denormalized snapshot of derivable data.** To resume, reconstruct `WorkflowState` from the DAG: accepted artifacts = completed steps.
 
 This is the same reasoning that justified removing Extension 10 (Issue 2): the event store was a materialized view of data already in the DAG. The checkpoint system is the same pattern — redundant derived data stored separately, creating two sources of truth.
+
+**Caveat — `rmax` (retry budget)**: The one field NOT in artifacts is `rmax`. It's a workflow configuration parameter set on the Workflow constructor (and included in the W_ref hash at `application/workflow.py:365`). The caller always knows `rmax` from the workflow config. However, this means we are removing the **resume capability entirely**, not just redundant data. If resume is needed in the future, it would need to be redesigned (e.g., store `rmax` in artifact context/metadata, or accept it as a parameter on resume).
+
+**Verdict**: Proceed with removal. `ResumableWorkflow` is deprecated, `Workflow.execute()` never creates checkpoints, and the "recommended" replacement (`CheckpointService` + `WorkflowResumeService`) has no real-world usage outside tests.
 
 **HumanAmendment** content becomes an `Artifact` with `source=HUMAN`. Amendment metadata (`amendment_type`, `created_by`, `context`, `additional_rmax`) maps to `artifact.metadata`.
 
@@ -239,13 +243,46 @@ This is the same reasoning that justified removing Extension 10 (Issue 2): the e
 
 Medium. Removes ~3,500 lines but all checkpoint functionality is either unused by core workflows or redundant. The `Workflow.execute()` method (the non-deprecated path) never creates checkpoints — it returns `WorkflowResult` with `ESCALATION` or `FAILED` status. Checkpoint creation only happens in the deprecated `ResumableWorkflow`.
 
+**Accepted trade-off**: Resume capability is removed entirely. If needed in the future, it can be redesigned on top of the artifact DAG (store `rmax` in artifact metadata, reconstruct `WorkflowState` from accepted artifacts).
+
+### Verification
+
+```bash
+# Run full test suite (expect ~104 fewer tests: 384 → ~280, 0 failures)
+PYTHONPATH=src python -m pytest tests/ -v
+
+# Check architecture rules pass
+PYTHONPATH=src python -m pytest tests/architecture/ -v
+
+# Verify no lingering references
+grep -r "CheckpointDAG\|WorkflowCheckpoint\|HumanAmendment\|ResumableWorkflow" src/
+
+# Smoke test core workflow
+PYTHONPATH=src python -m examples.basics.01_mock
+```
+
+### Commit strategy
+
+Single atomic commit — all removals in one commit to keep the tree green at every point:
+```
+Remove checkpoint infrastructure (Issue 5)
+
+Remove deprecated ResumableWorkflow, CheckpointService, WorkflowResumeService,
+CheckpointDAGInterface, WorkflowCheckpoint, HumanAmendment, and all related
+infrastructure, tests, and examples (~3,500 lines across 24 files).
+
+The checkpoint system was a denormalized snapshot of data already in the artifact
+DAG. Core Workflow.execute() never used checkpoints. Resume capability can be
+redesigned on top of ArtifactDAG if needed in the future.
+```
+
 ### Acceptance criteria
 
 - All architecture layer rules pass
 - All convention tests pass
 - No `CheckpointDAG`, `WorkflowCheckpoint`, `HumanAmendment` references in `src/`
 - `WorkflowResult.checkpoint` field removed
-- Tests pass (count will decrease as checkpoint tests are removed)
+- Tests pass (~280 pass, ~104 fewer than before, 0 failures)
 - No regression in `Workflow.execute()` behavior
 
 ---
