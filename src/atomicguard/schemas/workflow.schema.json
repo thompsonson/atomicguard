@@ -134,14 +134,14 @@
           "default": 1,
           "description": "Maximum escalation attempts before FAIL (must be >= 1 if escalation configured). Extension 09."
         },
-        "escalation": {
+        "escalate_feedback_to": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Default upstream action_pair_ids to re-invoke on stagnation. Extension 09, Definition 45."
+          "description": "Upstream action_pair_ids to receive failure context on stagnation (Extension 09, Definition 48). These steps will be re-run with injected failure summary. Note: cascade invalidation automatically re-runs all dependent steps; this field controls WHICH steps receive the failure context for informed regeneration."
         },
-        "escalation_by_guard": {
+        "escalate_feedback_by_guard": {
           "type": "object",
-          "description": "Per-guard escalation targets (Definition 45). Keys are guard names, values are arrays of upstream action_pair_ids.",
+          "description": "Per-guard feedback escalation targets (Definition 45). Keys are guard names, values are arrays of upstream action_pair_ids to receive failure context. Overrides escalate_feedback_to for specific guards.",
           "additionalProperties": {
             "type": "array",
             "items": { "type": "string" }

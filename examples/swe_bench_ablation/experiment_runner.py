@@ -10,34 +10,17 @@ import os
 import subprocess
 import tempfile
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
 
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
+
+from examples.swe_bench_common import ArmResult, load_existing_results
 
 from .dataset import SWEInstance, load_swe_polybench
 from .demo import build_workflow, load_prompts, load_workflow_config
 
 logger = logging.getLogger("swe_bench_ablation.experiment")
-
-
-@dataclass
-class ArmResult:
-    """Result of running one arm on one instance."""
-
-    instance_id: str
-    arm: str
-    patch_content: str = ""
-    total_tokens: int = 0
-    per_step_tokens: dict[str, int] = field(default_factory=dict)
-    wall_time_seconds: float = 0.0
-    init_time_seconds: float = 0.0  # Repo clone + checkout time
-    workflow_time_seconds: float = 0.0  # Action pair execution time
-    error: str | None = None
-    resolved: bool | None = None  # Evaluation result (None = not evaluated)
-    failed_step: str | None = None  # Which action pair failed (None = success)
-    failed_guard: str | None = None  # Which guard in the step failed (for composite)
-    retry_count: int = 0  # How many retries before failure
 
 
 class ExperimentRunner:
@@ -219,7 +202,7 @@ class ExperimentRunner:
         results: list[ArmResult] = []
 
         if resume_from:
-            results, completed = self._load_existing_results(resume_from)
+            results, completed = load_existing_results(resume_from)
             logger.info("Resuming: %d runs already completed", len(completed))
 
         # Ensure output directory exists
@@ -318,35 +301,3 @@ class ExperimentRunner:
             )
 
         return str(repo_dir)
-
-    def _load_existing_results(
-        self,
-        results_dir: str,
-    ) -> tuple[list[ArmResult], set[tuple[str, str]]]:
-        """Load existing results from JSONL for resume support."""
-        results_path = Path(results_dir) / "results.jsonl"
-        results: list[ArmResult] = []
-        completed: set[tuple[str, str]] = set()
-
-        if not results_path.exists():
-            return results, completed
-
-        # Get valid field names from the dataclass
-        valid_fields = {f.name for f in ArmResult.__dataclass_fields__.values()}
-
-        with open(results_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    # Filter out unknown fields (backward compatibility)
-                    filtered_data = {k: v for k, v in data.items() if k in valid_fields}
-                    arm_result = ArmResult(**filtered_data)
-                    results.append(arm_result)
-                    completed.add((arm_result.instance_id, arm_result.arm))
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning("Skipping malformed result line: %s", e)
-
-        return results, completed

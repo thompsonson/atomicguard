@@ -57,8 +57,8 @@ class DualStateAgent:
         workflow_id: str = "unknown",
         r_patience: int | None = None,
         e_max: int = 1,
-        escalation: list[str] | None = None,
-        escalation_by_guard: dict[str, list[str]] | None = None,
+        escalate_feedback_to: list[str] | None = None,
+        escalate_feedback_by_guard: dict[str, list[str]] | None = None,
     ):
         """
         Args:
@@ -71,9 +71,11 @@ class DualStateAgent:
             r_patience: Consecutive similar failures before escalation (Extension 09).
                         If None, escalation is disabled. Must be < rmax.
             e_max: Maximum escalation attempts before FAIL (Extension 09, default: 1)
-            escalation: Upstream action_pair_ids to re-invoke on stagnation (Extension 09)
-            escalation_by_guard: Per-guard escalation targets (Definition 45).
-                                Maps guard_name -> list of upstream action_pair_ids.
+            escalate_feedback_to: Upstream steps to receive failure context on stagnation.
+                Cascade invalidation automatically re-runs dependent steps; this controls
+                WHICH steps receive the failure summary for informed regeneration.
+            escalate_feedback_by_guard: Per-guard feedback routing (Definition 45).
+                Maps guard_name -> list of upstream steps to receive failure context.
         """
         self._action_pair = action_pair
         self._artifact_dag = artifact_dag
@@ -84,8 +86,8 @@ class DualStateAgent:
         # Extension 09: Escalation parameters
         self._r_patience = r_patience
         self._e_max = e_max
-        self._escalation = escalation or []
-        self._escalation_by_guard = escalation_by_guard or {}
+        self._escalate_feedback_to = escalate_feedback_to or []
+        self._escalate_feedback_by_guard = escalate_feedback_by_guard or {}
         self._feedback_summarizer = FeedbackSummarizer()
 
     def execute(
@@ -152,11 +154,11 @@ class DualStateAgent:
                 previous_id = artifact.artifact_id  # Track for next iteration
                 retry_count += 1
 
-                # Extension 09: Check for stagnation and escalation
+                # Extension 09: Check for stagnation and feedback escalation
                 stagnation_warning = None
                 if self._r_patience is not None:
-                    # Try per-guard detection first if escalation_by_guard configured
-                    if self._escalation_by_guard:
+                    # Try per-guard detection first if escalate_feedback_by_guard configured
+                    if self._escalate_feedback_by_guard:
                         stagnation = (
                             self._feedback_summarizer.detect_stagnation_by_guard(
                                 feedback_history, self._r_patience
@@ -171,19 +173,20 @@ class DualStateAgent:
                         # Resolve guard-specific targets first, then fallback
                         if (
                             stagnation.stagnant_guard
-                            and stagnation.stagnant_guard in self._escalation_by_guard
+                            and stagnation.stagnant_guard
+                            in self._escalate_feedback_by_guard
                         ):
-                            targets = self._escalation_by_guard[
+                            targets = self._escalate_feedback_by_guard[
                                 stagnation.stagnant_guard
                             ]
                         else:
-                            targets = self._escalation
+                            targets = self._escalate_feedback_to
 
                         if targets:
                             # Level 2: Workflow backtracking - raise StagnationDetected
                             logger.warning(
                                 "[%s] Stagnation detected after %d similar failures. "
-                                "Triggering escalation to %s",
+                                "Escalating feedback to %s",
                                 self._action_pair_id,
                                 stagnation.similar_count,
                                 targets,
@@ -196,13 +199,13 @@ class DualStateAgent:
                                 stagnant_guard=stagnation.stagnant_guard,
                             )
                         else:
-                            # No escalation targets - inject warning and continue retrying
+                            # No feedback targets - inject warning and continue retrying
                             stagnation_warning = (
                                 f"Stagnation detected: {stagnation.similar_count} similar failures. "
                                 f"Pattern: {stagnation.error_signature}"
                             )
                             logger.warning(
-                                "[%s] %s (no escalation targets configured)",
+                                "[%s] %s (no escalate_feedback_to targets configured)",
                                 self._action_pair_id,
                                 stagnation_warning,
                             )

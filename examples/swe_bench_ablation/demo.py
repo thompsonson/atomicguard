@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import click
+from examples.swe_bench_common import load_prompts as _load_prompts
+from examples.swe_bench_common import load_workflow_config as _load_workflow_config
+from examples.swe_bench_common import topological_sort
 
 from atomicguard import ActionPair, Workflow, WorkflowStatus
 from atomicguard.domain.prompts import PromptTemplate
@@ -69,33 +72,13 @@ def get_guard_registry() -> dict[str, type]:
 def load_workflow_config(variant: str) -> dict[str, Any]:
     """Load workflow configuration from JSON file."""
     workflow_dir = Path(__file__).parent / "workflows"
-    workflow_file = workflow_dir / f"{variant}.json"
-
-    if not workflow_file.exists():
-        raise FileNotFoundError(f"Workflow not found: {workflow_file}")
-
-    return json.loads(workflow_file.read_text())
+    return _load_workflow_config(workflow_dir, variant)
 
 
 def load_prompts() -> dict[str, PromptTemplate]:
     """Load prompt templates from prompts.json."""
     prompts_file = Path(__file__).parent / "prompts.json"
-
-    if not prompts_file.exists():
-        return {}
-
-    data = json.loads(prompts_file.read_text())
-
-    templates = {}
-    for key, value in data.items():
-        templates[key] = PromptTemplate(
-            role=value.get("role", ""),
-            constraints=value.get("constraints", ""),
-            task=value.get("task", ""),
-            feedback_wrapper=value.get("feedback_wrapper", "Feedback: {feedback}"),
-        )
-
-    return templates
+    return _load_prompts(prompts_file)
 
 
 def build_workflow(
@@ -131,7 +114,7 @@ def build_workflow(
     action_pairs = config.get("action_pairs", {})
 
     # Sort by dependencies (topological sort)
-    sorted_pairs = _topological_sort(action_pairs)
+    sorted_pairs = topological_sort(action_pairs)
 
     for ap_id in sorted_pairs:
         ap_config = action_pairs[ap_id]
@@ -185,11 +168,11 @@ def build_workflow(
         # Extension 09: Backtracking parameters
         r_patience = ap_config.get("r_patience")
         e_max = ap_config.get("e_max", 1)
-        escalation = tuple(ap_config.get("escalation", []))
+        escalate_feedback_to = tuple(ap_config.get("escalate_feedback_to", []))
 
-        # Extension 09: Guard-specific escalation routing
-        raw_ebg = ap_config.get("escalation_by_guard")
-        escalation_by_guard = (
+        # Extension 09: Guard-specific feedback routing
+        raw_ebg = ap_config.get("escalate_feedback_by_guard")
+        escalate_feedback_by_guard = (
             {k: tuple(v) for k, v in raw_ebg.items()} if raw_ebg else None
         )
 
@@ -200,33 +183,11 @@ def build_workflow(
             requires=requires,
             r_patience=r_patience,
             e_max=e_max,
-            escalation=escalation,
-            escalation_by_guard=escalation_by_guard,
+            escalate_feedback_to=escalate_feedback_to,
+            escalate_feedback_by_guard=escalate_feedback_by_guard,
         )
 
     return workflow
-
-
-def _topological_sort(action_pairs: dict[str, Any]) -> list[str]:
-    """Sort action pairs by dependencies."""
-    result: list[str] = []
-    visited: set[str] = set()
-
-    def visit(ap_id: str) -> None:
-        if ap_id in visited:
-            return
-        visited.add(ap_id)
-
-        ap_config = action_pairs.get(ap_id, {})
-        for dep in ap_config.get("requires", []):
-            visit(dep)
-
-        result.append(ap_id)
-
-    for ap_id in action_pairs:
-        visit(ap_id)
-
-    return result
 
 
 # =============================================================================

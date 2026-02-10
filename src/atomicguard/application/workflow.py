@@ -43,10 +43,12 @@ class WorkflowStep:
     # Extension 09: Escalation parameters
     r_patience: int | None = None  # Consecutive similar failures before escalation
     e_max: int = 1  # Maximum escalation attempts before FAIL
-    escalation: tuple[str, ...] = ()  # Default upstream action_pair_ids to re-invoke
-    escalation_by_guard: MappingProxyType[str, tuple[str, ...]] = field(
+    escalate_feedback_to: tuple[
+        str, ...
+    ] = ()  # Upstream steps to receive failure context
+    escalate_feedback_by_guard: MappingProxyType[str, tuple[str, ...]] = field(
         default_factory=lambda: MappingProxyType({})
-    )  # Definition 45: guard-specific routing
+    )  # Definition 45: guard-specific feedback routing
 
 
 class Workflow:
@@ -86,8 +88,8 @@ class Workflow:
         deps: tuple[str, ...] | None = None,
         r_patience: int | None = None,
         e_max: int = 1,
-        escalation: tuple[str, ...] = (),
-        escalation_by_guard: dict[str, tuple[str, ...]] | None = None,
+        escalate_feedback_to: tuple[str, ...] = (),
+        escalate_feedback_by_guard: dict[str, tuple[str, ...]] | None = None,
     ) -> "Workflow":
         """
         Register a step. Precondition inferred from requires.
@@ -100,8 +102,11 @@ class Workflow:
             r_patience: Consecutive similar failures before escalation (Extension 09).
                         If None, escalation is disabled for this step.
             e_max: Maximum escalation attempts before FAIL (Extension 09, default: 1)
-            escalation: Default upstream action_pair_ids to re-invoke on stagnation
-            escalation_by_guard: Per-guard escalation targets (Definition 45)
+            escalate_feedback_to: Upstream steps to receive failure context on stagnation.
+                Cascade invalidation automatically re-runs all dependent steps; this
+                controls WHICH steps receive the failure summary for informed regeneration.
+            escalate_feedback_by_guard: Per-guard feedback routing (Definition 45).
+                Overrides escalate_feedback_to for specific guards.
 
         Returns:
             Self for fluent chaining
@@ -124,8 +129,10 @@ class Workflow:
                 deps=deps,
                 r_patience=r_patience,
                 e_max=e_max,
-                escalation=escalation,
-                escalation_by_guard=MappingProxyType(escalation_by_guard or {}),
+                escalate_feedback_to=escalate_feedback_to,
+                escalate_feedback_by_guard=MappingProxyType(
+                    escalate_feedback_by_guard or {}
+                ),
             )
         )
         return self  # Fluent
@@ -145,13 +152,13 @@ class Workflow:
         # Generate a unique workflow_id for this execution
         workflow_id = str(uuid.uuid4())
 
-        # Extension 09: Validate escalation targets exist before execution
+        # Extension 09: Validate escalate_feedback_to targets exist before execution
         step_ids = {s.guard_id for s in self._steps}
         for s in self._steps:
-            for target in s.escalation:
+            for target in s.escalate_feedback_to:
                 if target not in step_ids:
                     raise ValueError(
-                        f"Escalation target '{target}' not found in workflow steps"
+                        f"Escalate feedback target '{target}' not found in workflow steps"
                     )
 
         while not self._is_goal_state():
@@ -189,9 +196,9 @@ class Workflow:
                 workflow_id=workflow_id,
                 r_patience=step.r_patience,
                 e_max=step.e_max,
-                escalation=list(step.escalation),
-                escalation_by_guard={
-                    k: list(v) for k, v in step.escalation_by_guard.items()
+                escalate_feedback_to=list(step.escalate_feedback_to),
+                escalate_feedback_by_guard={
+                    k: list(v) for k, v in step.escalate_feedback_by_guard.items()
                 },
             )
 
