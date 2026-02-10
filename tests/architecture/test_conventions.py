@@ -128,10 +128,6 @@ class TestImmutableCollections:
 class TestNoSilentExceptionSwallowing:
     """No bare 'except: pass' or 'except Exception: pass' in src/."""
 
-    @pytest.mark.xfail(
-        reason="Issue 4: 3 silent except:pass in domain/prompts.py and domain/workflow.py",
-        strict=True,
-    )
     def test_no_bare_except_pass(self):
         """No silent exception swallowing in src/atomicguard/."""
         violations = []

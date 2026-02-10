@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 from atomicguard.domain.models import (
     AmbientEnvironment,
@@ -276,8 +279,10 @@ class WorkflowResumer:
                         f"Workflow integrity check failed: hash mismatch for {checkpoint_id}"
                     )
             except KeyError:
-                # Workflow not in registry - cannot verify, but don't fail
-                pass
+                logger.debug(
+                    "Workflow ref %s not in registry, skipping integrity check",
+                    checkpoint.workflow_ref,
+                )
 
     def resume(self, checkpoint_id: str, current_workflow_ref: str) -> ResumeResult:
         """Resume workflow from checkpoint with W_ref verification.
@@ -415,8 +420,8 @@ class WorkflowResumer:
                         and artifact.guard_result.feedback
                     ):
                         history.append((artifact_id, artifact.guard_result.feedback))
-                except Exception:
-                    pass
+                except KeyError:
+                    logger.debug("Artifact %s not found during feedback reconstruction", artifact_id)
 
         # Add the failure feedback
         if checkpoint.failed_artifact_id and checkpoint.failure_feedback:

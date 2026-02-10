@@ -10,8 +10,11 @@ These are domain structures (schemas) only. Actual task content should be
 defined by the calling application (e.g., benchmarks), not hardcoded here.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from atomicguard.domain.models import Context
@@ -49,8 +52,8 @@ class PromptTemplate:
                 try:
                     artifact = context.ambient.repository.get_artifact(artifact_id)
                     dep_parts.append(f"## {key}\n{artifact.content}")
-                except (KeyError, Exception):
-                    pass
+                except KeyError:
+                    logger.debug("Dependency artifact %s not found, skipping", artifact_id)
             if dep_parts:
                 parts.append("# DEPENDENCIES\n" + "\n\n".join(dep_parts))
 
