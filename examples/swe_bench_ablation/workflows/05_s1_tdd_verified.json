@@ -1,6 +1,6 @@
 {
   "name": "S1 TDD Verified",
-  "description": "TDD workflow with Docker verification using explicit CompositeGuards. Verifies: (1) test FAILS on buggy code (red phase), (2) test PASSES after patch (green phase), (3) full evaluation suite passes. Extension 09: Includes escalation backtracking.",
+  "description": "TDD workflow with Docker verification using explicit CompositeGuards. Verifies: (1) test FAILS on buggy code (red phase), (2) test PASSES after patch (green phase), (3) full evaluation suite passes. Extension 09: Includes escalation backtracking with guard-specific routing.",
   "rmax": 6,
   "action_pairs": {
     "ap_analysis": {
@@ -16,6 +16,9 @@
       "r_patience": 2,
       "e_max": 1,
       "escalation": ["ap_analysis"],
+      "escalation_by_guard": {
+        "TestRedGuard": ["ap_analysis"]
+      },
       "description": "Generate test + verify it FAILS on buggy code (red phase)"
     },
     "ap_gen_patch": {
@@ -30,6 +33,12 @@
       "r_patience": 3,
       "e_max": 2,
       "escalation": ["ap_analysis", "ap_gen_test"],
+      "escalation_by_guard": {
+        "PatchGuard": ["ap_analysis"],
+        "LintGuard": ["ap_analysis"],
+        "TestGreenGuard": ["ap_analysis", "ap_gen_test"],
+        "FullEvalGuard": ["ap_analysis", "ap_gen_test"]
+      },
       "description": "Generate patch + verify test PASSES + run full eval"
     }
   }
