@@ -15,7 +15,7 @@ from examples.swe_bench_ablation.evaluation import (
     EvalResult,
     write_eval_logs,
 )
-from examples.swe_bench_ablation.experiment_runner import ArmResult
+from examples.swe_bench_common import ArmResult
 
 logger = logging.getLogger("swe_bench_pro.evaluation")
 

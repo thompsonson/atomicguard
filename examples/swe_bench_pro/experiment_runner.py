@@ -18,11 +18,17 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from examples.swe_bench_ablation.experiment_runner import ArmResult
-
 from atomicguard import ActionPair, CompositeGuard, Workflow
 from atomicguard.domain.prompts import PromptTemplate
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
+
+from examples.swe_bench_common import (
+    ArmResult,
+    load_existing_results,
+    topological_sort,
+)
+from examples.swe_bench_common import load_prompts as _load_prompts
+from examples.swe_bench_common import load_workflow_config as _load_workflow_config
 
 from .dataset import SWEBenchProInstance, load_swe_bench_pro
 from .generators import (
@@ -89,10 +95,7 @@ def _list_repo_files(
 
 def load_workflow_config(variant: str) -> dict[str, Any]:
     """Load a workflow configuration JSON from the ablation workflows dir."""
-    workflow_file = _WORKFLOW_DIR / f"{variant}.json"
-    if not workflow_file.exists():
-        raise FileNotFoundError(f"Workflow not found: {workflow_file}")
-    return json.loads(workflow_file.read_text())
+    return _load_workflow_config(_WORKFLOW_DIR, variant)
 
 
 def load_prompts() -> dict[str, PromptTemplate]:
@@ -104,34 +107,7 @@ def load_prompts() -> dict[str, PromptTemplate]:
     prompts_file = Path(__file__).parent / "prompts.json"
     if not prompts_file.exists():
         raise FileNotFoundError(f"Prompts file not found: {prompts_file}")
-    data = json.loads(prompts_file.read_text())
-    return {
-        key: PromptTemplate(
-            role=val.get("role", ""),
-            constraints=val.get("constraints", ""),
-            task=val.get("task", ""),
-            feedback_wrapper=val.get("feedback_wrapper", "Feedback: {feedback}"),
-        )
-        for key, val in data.items()
-    }
-
-
-def _topological_sort(action_pairs: dict[str, Any]) -> list[str]:
-    """Sort action pairs by their ``requires`` dependencies."""
-    result: list[str] = []
-    visited: set[str] = set()
-
-    def visit(ap_id: str) -> None:
-        if ap_id in visited:
-            return
-        visited.add(ap_id)
-        for dep in action_pairs.get(ap_id, {}).get("requires", []):
-            visit(dep)
-        result.append(ap_id)
-
-    for ap_id in action_pairs:
-        visit(ap_id)
-    return result
+    return _load_prompts(prompts_file)
 
 
 def _get_generator_registry(
@@ -216,7 +192,7 @@ def build_workflow(
     action_pairs = config.get("action_pairs")
     if not action_pairs:
         raise ValueError("Workflow config has no 'action_pairs' section")
-    sorted_pairs = _topological_sort(action_pairs)
+    sorted_pairs = topological_sort(action_pairs)
 
     def _build_guard(guard_name: str, guard_config: dict[str, Any]) -> Any:
         """Build a single guard instance with proper configuration."""
@@ -836,7 +812,7 @@ class SWEBenchProRunner:
         results: list[ArmResult] = []
 
         if resume_from:
-            results, completed = self._load_existing_results(resume_from)
+            results, completed = load_existing_results(resume_from)
             logger.info("Resuming: %d runs already completed", len(completed))
 
         work_items: list[tuple[int, SWEBenchProInstance, str]] = []
@@ -1213,38 +1189,3 @@ class SWEBenchProRunner:
                                 except Exception:
                                     pass
         return None
-
-    # -----------------------------------------------------------------
-    # Resume helpers
-    # -----------------------------------------------------------------
-
-    def _load_existing_results(
-        self,
-        results_dir: str,
-    ) -> tuple[list[ArmResult], set[tuple[str, str]]]:
-        results_path = Path(results_dir) / "results.jsonl"
-        results: list[ArmResult] = []
-        completed: set[tuple[str, str]] = set()
-
-        if not results_path.exists():
-            return results, completed
-
-        # Get valid field names from the dataclass
-        valid_fields = {f.name for f in ArmResult.__dataclass_fields__.values()}
-
-        with open(results_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    # Filter out unknown fields (backward compatibility)
-                    filtered_data = {k: v for k, v in data.items() if k in valid_fields}
-                    arm_result = ArmResult(**filtered_data)
-                    results.append(arm_result)
-                    completed.add((arm_result.instance_id, arm_result.arm))
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning("Skipping malformed result line: %s", e)
-
-        return results, completed
