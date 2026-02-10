@@ -39,7 +39,6 @@ dependencies = [
     "openhands-ai>=0.27.0",
     "pydantic-ai>=1.0.0",
     "pyflakes>=3.0",
-    "pytestarch>=4.0.1",
 ]
 
 [project.urls]
@@ -202,6 +201,7 @@ dev = [
 test = [
     "pytest>=8.0.0",
     "pytest-cov>=6.0.0",
+    "pytestarch>=4.0.1",
 ]
 examples = [
     "click>=8.1.0",
