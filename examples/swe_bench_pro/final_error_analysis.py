@@ -6,6 +6,8 @@ guard feedback before the agent gave up (retry exhaustion).
 This analysis reveals what the agent was "stuck on" when retries were exhausted,
 identifies "brick wall" guards that block all attempts, and helps understand
 what improvements would help progress.
+
+Extension 10: Includes workflow execution trace support for escalation analysis.
 """
 
 from __future__ import annotations
@@ -17,6 +19,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+from atomicguard.infrastructure.persistence.workflow_events import (
+    FilesystemWorkflowEventStore,
+)
 
 logger = logging.getLogger("swe_bench_pro.final_error_analysis")
 
@@ -60,6 +66,67 @@ class FinalError:
     final_feedback: str
     error_summary: str
     all_retries: list[RetryError] = field(default_factory=list)
+
+
+@dataclass
+class EscalationInfo:
+    """Escalation event extracted from workflow trace."""
+
+    action_pair_id: str
+    targets: tuple[str, ...]
+    invalidated: tuple[str, ...]
+    e_count: int
+    e_max: int
+    failure_summary: str
+    trigger: str
+    stagnant_guard: str | None
+
+
+def load_trace_escalations(
+    trace_dir: Path,
+    instance_id: str,
+    arm: str,
+) -> list[EscalationInfo]:
+    """Load escalation events from the workflow execution trace.
+
+    Args:
+        trace_dir: Base directory for workflow traces.
+        instance_id: Instance ID.
+        arm: Arm name.
+
+    Returns:
+        List of EscalationInfo objects from the trace.
+    """
+    store_path = trace_dir / instance_id / arm
+    if not store_path.exists():
+        return []
+
+    store = FilesystemWorkflowEventStore(store_path)
+
+    # Find all workflow IDs by scanning JSONL files
+    escalations: list[EscalationInfo] = []
+    for jsonl_file in store_path.glob("*.jsonl"):
+        workflow_id = jsonl_file.stem
+        events = store.get_escalation_events(workflow_id)
+
+        for event in events:
+            esc = event.escalation
+            if esc is None:
+                continue
+            escalations.append(
+                EscalationInfo(
+                    action_pair_id=event.action_pair_id,
+                    targets=esc.targets,
+                    invalidated=esc.invalidated,
+                    e_count=esc.e_count,
+                    e_max=esc.e_max,
+                    failure_summary=esc.failure_summary,
+                    trigger=esc.trigger,
+                    stagnant_guard=esc.stagnant_guard,
+                )
+            )
+
+    return escalations
 
 
 def extract_error_summary(feedback: str, guard: str) -> str:
@@ -419,6 +486,7 @@ def generate_final_error_report(
     errors: list[FinalError],
     output_dir: str | Path,
     overview: ExperimentOverview | None = None,
+    trace_dir: Path | None = None,
 ) -> str:
     """Generate Markdown report organized by arm.
 
@@ -426,6 +494,7 @@ def generate_final_error_report(
         errors: List of FinalError objects
         output_dir: Directory to write report
         overview: Optional experiment overview to include at top
+        trace_dir: Optional trace directory for escalation analysis (Extension 10)
 
     Returns:
         Report text as string
@@ -522,6 +591,58 @@ def generate_final_error_report(
         lines.append(f"| {arm} | {len(arm_errors)} | {breakdown} |")
 
     lines.append("")
+
+    # Extension 10: Escalation summary from traces
+    if trace_dir and trace_dir.exists():
+        all_escalations: dict[str, list[EscalationInfo]] = defaultdict(list)
+        for err in errors:
+            escs = load_trace_escalations(trace_dir, err.instance_id, err.arm)
+            if escs:
+                all_escalations[err.arm].extend(escs)
+
+        if all_escalations:
+            lines.extend([
+                "## Escalation Summary (Extension 10)",
+                "",
+            ])
+
+            # Aggregate: which guards trigger escalations most
+            guard_escalation_counts: dict[str, int] = defaultdict(int)
+            target_counts: dict[str, int] = defaultdict(int)
+            total_escalations = 0
+
+            for arm_name, escs in all_escalations.items():
+                total_escalations += len(escs)
+                for esc in escs:
+                    if esc.stagnant_guard:
+                        guard_escalation_counts[esc.stagnant_guard] += 1
+                    for target in esc.targets:
+                        target_counts[target] += 1
+
+            lines.append(f"Total escalations across failed runs: {total_escalations}")
+            lines.append("")
+
+            if guard_escalation_counts:
+                lines.extend([
+                    "| Stagnant Guard | Escalation Count |",
+                    "|----------------|-----------------|",
+                ])
+                for guard, count in sorted(
+                    guard_escalation_counts.items(), key=lambda x: -x[1]
+                ):
+                    lines.append(f"| {guard} | {count} |")
+                lines.append("")
+
+            if target_counts:
+                lines.extend([
+                    "| Escalation Target | Times Invalidated |",
+                    "|-------------------|------------------|",
+                ])
+                for target, count in sorted(
+                    target_counts.items(), key=lambda x: -x[1]
+                ):
+                    lines.append(f"| {target} | {count} |")
+                lines.append("")
 
     # Detailed tables by arm
     for arm in sorted(by_arm.keys()):
@@ -655,8 +776,15 @@ def analyze_final_errors(
         logger.warning("No failed runs found in %s", results_path)
         return {"total_failures": 0}
 
-    # Generate report with overview
-    generate_final_error_report(errors, out_dir, overview=overview)
+    # Extension 10: Look for trace directory
+    trace_dir = results_path.parent / "traces"
+    if not trace_dir.exists():
+        trace_dir = None
+
+    # Generate report with overview and trace data
+    generate_final_error_report(
+        errors, out_dir, overview=overview, trace_dir=trace_dir
+    )
 
     # Save JSON
     save_final_errors_json(errors, out_dir)
