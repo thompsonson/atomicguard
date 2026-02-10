@@ -12,7 +12,7 @@ Anti-patterns identified during architectural review (2026-02-10). Each issue is
 | 3: Fix dependency inversion in application/workflow.py | DONE | `7e7ccea` |
 | 4: Fix silent exception swallowing in domain/ | DONE | `e44e170` |
 | 5: Remove CheckpointDAG (DAG is the checkpoint) | PLANNED | ~3,500 lines across 24 files |
-| 6: Deduplicate experiment runner workflow construction | PLANNED | use existing `examples/base/` |
+| 6: Deduplicate experiment runner workflow construction | PLANNED | extract to `examples/swe_bench_common/` |
 
 **Test results after all changes**: 384 passed, 44 skipped, 0 xfailed. All 3 architecture layer rules pass. All convention tests pass.
 
@@ -276,9 +276,9 @@ Pro is a **language-aware, Docker-capable superset** of Ablation. Key divergence
 
 | Function | Ablation | Pro | Overlap |
 |---|---|---|---|
-| `_topological_sort()` | imported from `.demo` | lines 119-134 | **100% identical** |
-| `load_prompts()` | imported from `.demo` | lines 98-116 | **100% identical** (redefined) |
-| `load_workflow_config()` | imported from `.demo` | lines 90-95 | **90%** (same logic, different `_WORKFLOW_DIR`) |
+| `_topological_sort()` | in `demo.py` | lines 119-134 | **100% identical** |
+| `load_prompts()` | in `demo.py` | lines 98-116 | **100% identical** (redefined) |
+| `load_workflow_config()` | in `demo.py` | lines 90-95 | **90%** (same logic, different `_WORKFLOW_DIR`) |
 | `_load_existing_results()` | lines 322-352 | lines 1221-1250 | **100% identical** |
 | `__init__()` | lines 46-73 | lines 607-624 | **95%** (same params) |
 | `run_instance()` | lines 75-185 | lines 630-792 | **70%** (same 4-phase structure; Pro adds language context) |
@@ -292,48 +292,37 @@ Pro is a **language-aware, Docker-capable superset** of Ablation. Key divergence
 from examples.swe_bench_ablation.experiment_runner import ArmResult
 ```
 
-### `examples/base/` already exists!
+### Why `examples/base/` cannot be used directly
 
-`examples/base/` already provides the shared infrastructure that both runners redefine:
+`examples/base/` provides shared CLI demo infrastructure (`BaseRunner`, `load_prompts`, `load_workflow_config`, `build_guard`), but its abstractions are **fundamentally incompatible** with the SWE-bench runners:
+
+| Aspect | `examples/base/` | SWE runners need |
+|---|---|---|
+| Execution model | Single `.execute()` → one result | Batch `.run_all(arms, instances)` → many results |
+| Config loading | `load_prompts(path: Path)` — explicit path | `load_prompts()` — embedded discovery from `__file__` parent |
+| Workflow config | `load_workflow_config(path: Path)` — explicit path | `load_workflow_config(variant: str)` — variant-based |
+| BaseRunner | ABC with `.get_specification()` abstract | Dataset-driven: `instance.problem_statement` |
+| Guard building | Generic `build_guard(config)` registry | Language-aware with Docker guards, instance context |
+| Result type | `ExecutionResult` (single workflow run) | `ArmResult` (batch metadata: tokens, timing, patches) |
+| Persistence | One-off `save_workflow_results()` | Incremental JSONL with resume logic |
+| Repository | No concept of repo management | `_prepare_repo()` with git clone/checkout/reset |
+
+The SWE runners are **batch experiment harnesses** built around datasets, not CLI demo wrappers. The duplication is between the two SWE runners themselves, not between the runners and `examples/base/`.
+
+### Approach: extract shared SWE-bench utilities
+
+Create `examples/swe_bench_common/` for code shared between ablation and pro runners. This is distinct from `examples/base/` (which serves CLI demos).
 
 ```
-examples/base/
-├── __init__.py          # Re-exports everything
-├── workflow.py          # BaseRunner (ABC), WorkflowRunner, AgentRunner
-├── config.py            # load_prompts(), load_workflow_config()
-├── guards.py            # GUARD_REGISTRY, build_guard()
-├── generators.py        # PydanticAIGenerator
-├── checkpoint.py        # Checkpoint CLI utilities (removed in Issue 5)
-├── cli.py               # CLI option helpers
-├── console.py           # Rich console output
-├── logging_setup.py     # Logging configuration
-└── exceptions.py        # ConfigurationError
+examples/swe_bench_common/
+├── __init__.py
+├── models.py          # ArmResult (moved from ablation)
+├── config.py          # topological_sort, load_prompts, load_workflow_config
+├── git.py             # prepare_repo (core clone/checkout logic)
+└── results.py         # load_existing_results (JSONL resume logic)
 ```
 
-**Current usage:**
-- Ablation imports `PydanticAIGenerator` from `examples.base` but **not** `BaseRunner`, `load_prompts`, `load_workflow_config`
-- Pro imports **nothing** from `examples/base/`
-
-Both runners redefine `load_prompts()`, `load_workflow_config()`, `_topological_sort()`, and their own runner `__init__`/`_prepare_repo`/`_load_existing_results` instead of using `examples/base/`.
-
-### Approach: use `examples/base/`, don't create `examples/shared/`
-
-The fix is to make the swe_bench runners import from `examples/base/` instead of redefining things. Where `examples/base/` is missing functionality (e.g. `_topological_sort`, `_prepare_repo`, `_load_existing_results`, `ArmResult`), add it there.
-
-#### Add to `examples/base/config.py`
-
-```python
-def topological_sort(action_pairs: dict) -> list[str]: ...  # Currently duplicated
-```
-
-#### Add to `examples/base/workflow.py`
-
-```python
-def prepare_repo(clone_dir, repo_url, base_commit) -> str: ...  # Core clone/reset
-def load_existing_results(results_dir) -> tuple[list, set]: ...  # JSONL resume
-```
-
-#### Move `ArmResult` to `examples/base/models.py` (new file, ~30 lines)
+#### `models.py` — shared data models (~30 lines)
 
 ```python
 @dataclass
@@ -345,61 +334,99 @@ class ArmResult:
     # ... (moved from ablation/experiment_runner.py)
 ```
 
+#### `config.py` — shared config utilities (~60 lines)
+
+```python
+def topological_sort(action_pairs: dict) -> list[str]: ...  # Identical in both
+def load_prompts(prompts_dir: Path) -> dict[str, PromptTemplate]: ...  # Shared discovery logic
+def load_workflow_config(workflow_dir: Path, variant: str) -> dict: ...  # Variant-based loading
+```
+
+#### `git.py` — shared repo management (~50 lines)
+
+```python
+def prepare_repo(clone_dir: str, repo_url: str, base_commit: str, instance_id: str) -> str:
+    """Clone or reset repo to base commit. Core logic shared by both runners."""
+    ...
+```
+
+Pro overrides this with its enhanced `_run_git()` wrapper for better error handling.
+
+#### `results.py` — shared JSONL persistence (~30 lines)
+
+```python
+def load_existing_results(results_dir: Path) -> tuple[list[ArmResult], set[str]]:
+    """Load existing JSONL results for resume. Identical in both runners."""
+    ...
+```
+
 ### Refactored runners
 
 **Ablation** (~200 lines, down from 353):
 ```python
-from examples.base import load_prompts, load_workflow_config
-from examples.base.config import topological_sort
-from examples.base.models import ArmResult
-from examples.base.workflow import prepare_repo, load_existing_results
+from examples.swe_bench_common.models import ArmResult
+from examples.swe_bench_common.config import topological_sort, load_prompts, load_workflow_config
+from examples.swe_bench_common.git import prepare_repo
+from examples.swe_bench_common.results import load_existing_results
 
 class ExperimentRunner:
-    def run_instance(self, instance, arm) -> ArmResult: ...  # Simplified
+    def run_instance(self, instance, arm) -> ArmResult: ...  # Core run logic
     def run_all(self, arms, ...) -> list[ArmResult]: ...     # Sequential
 ```
 
 **Pro** (~900 lines, down from 1251):
 ```python
-from examples.base import load_prompts, load_workflow_config
-from examples.base.config import topological_sort
-from examples.base.models import ArmResult
-from examples.base.workflow import prepare_repo, load_existing_results
+from examples.swe_bench_common.models import ArmResult
+from examples.swe_bench_common.config import topological_sort, load_prompts, load_workflow_config
+from examples.swe_bench_common.results import load_existing_results
+# Pro overrides prepare_repo with _run_git() wrapper
 
 class SWEBenchProRunner:
     def run_instance(self, instance, arm) -> ArmResult: ...  # Language-aware
     def run_all(self, arms, ...) -> list[ArmResult]: ...     # Parallel + progress
+    def _prepare_repo(self, instance) -> str: ...            # Enhanced with _run_git()
     def _get_test_infrastructure(self, ...): ...              # Pro-specific
     def _find_sample_test(self, ...): ...                     # Pro-specific
 ```
 
-### Pro-specific models stay in pro
+### What stays in each runner (not shared)
 
-- `ArmStats`, `GuardFailureStats`, `ProgressTracker` — progress tracking only used by Pro
-- `ExperimentOverview`, `FinalError`, etc. in `final_error_analysis.py` — analysis-specific
+**Ablation-specific:**
+- `get_generator_registry()`, `get_guard_registry()` — hardcoded ablation generators/guards
+- `build_workflow()` — ablation-specific workflow assembly
+- `ExperimentRunner.run_instance()` — ablation execution flow
+- `ExperimentRunner.run_all()` — sequential execution
+
+**Pro-specific:**
+- `_get_generator_registry(lang_config)`, `_get_guard_registry(lang_config)` — language-aware registries
+- `build_workflow(config, prompts, lang_config, ...)` — language-aware workflow assembly with Docker guards
+- `ProgressTracker`, `ArmStats`, `GuardFailureStats` — progress tracking
+- `SWEBenchProRunner._get_test_infrastructure()`, `_find_sample_test()` — test infrastructure extraction
+- `SWEBenchProRunner.run_all()` — parallel execution with `ThreadPoolExecutor`
 
 ### Implementation order
 
-1. Add `topological_sort()` to `examples/base/config.py`
-2. Add `prepare_repo()`, `load_existing_results()` to `examples/base/workflow.py`
-3. Create `examples/base/models.py` with `ArmResult` (moved from ablation)
-4. Refactor ablation runner to import from `examples/base/` instead of redefining
-5. Refactor pro runner to import from `examples/base/` instead of redefining
-6. Remove cross-import from pro → ablation
-7. Update `examples/base/__init__.py` to export new symbols
-8. Verify both runners still produce identical results
+1. Create `examples/swe_bench_common/` with `__init__.py`
+2. Move `ArmResult` to `examples/swe_bench_common/models.py`
+3. Extract `topological_sort`, `load_prompts`, `load_workflow_config` to `examples/swe_bench_common/config.py`
+4. Extract `prepare_repo` core logic to `examples/swe_bench_common/git.py`
+5. Extract `load_existing_results` to `examples/swe_bench_common/results.py`
+6. Refactor ablation runner to import from `examples/swe_bench_common/`
+7. Refactor pro runner to import from `examples/swe_bench_common/`
+8. Remove cross-import from pro → ablation
+9. Verify both runners still produce identical results
 
 ### Risk
 
-Medium. Touches active experiment code. Both runners must produce identical output after refactoring. Pro's enhanced `_prepare_repo()` (with `_run_git()` wrapper) may need the base version to accept hooks or Pro may override it.
+Medium. Touches active experiment code. Both runners must produce identical output after refactoring. Pro's enhanced `_prepare_repo()` (with `_run_git()` wrapper) keeps its own version, importing only the base git logic if useful.
 
 ### Acceptance criteria
 
 - No cross-example imports (pro does not import from ablation)
 - No duplicated `_topological_sort()`, `_load_existing_results()`, `load_prompts()`
-- `ArmResult` defined in one place (`examples/base/models.py`)
-- Both runners import shared functions from `examples/base/`
-- Estimated ~250 lines of duplication eliminated
+- `ArmResult` defined in one place (`examples/swe_bench_common/models.py`)
+- Both runners import shared functions from `examples/swe_bench_common/`
+- Estimated ~200 lines of duplication eliminated
 - All existing tests pass
 
 ---
