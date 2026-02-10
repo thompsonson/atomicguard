@@ -9,8 +9,10 @@ Tests the separation between:
 
 import pytest
 
+from types import MappingProxyType
+
 from atomicguard.application.action_pair import ActionPair
-from atomicguard.application.workflow import Workflow
+from atomicguard.application.workflow import Workflow, WorkflowStep
 from atomicguard.domain.exceptions import StagnationDetected
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult, WorkflowStatus
@@ -537,3 +539,126 @@ class TestInvariantValidation:
         result = workflow.execute("Spec")
 
         assert result.status == WorkflowStatus.SUCCESS
+
+
+class TestGuardSpecificEscalation:
+    """Tests for escalation_by_guard (Definition 45)."""
+
+    def test_stagnation_detected_carries_stagnant_guard(self) -> None:
+        """StagnationDetected exception includes stagnant_guard field."""
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        artifact = Artifact(
+            artifact_id="test-id",
+            workflow_id="w-1",
+            content="test",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="ap-1",
+            created_at="2025-01-01T00:00:00Z",
+            attempt_number=1,
+            status=ArtifactStatus.REJECTED,
+            guard_result=GuardResult(passed=False, feedback="error"),
+            context=ContextSnapshot(
+                workflow_id="w-1",
+                specification="spec",
+                constraints="",
+                feedback_history=(),
+            ),
+        )
+
+        exc = StagnationDetected(
+            artifact=artifact,
+            feedback="Test failure",
+            escalate_to=["upstream_step"],
+            failure_summary="Repeated failure pattern",
+            stagnant_guard="SyntaxGuard",
+        )
+
+        assert exc.stagnant_guard == "SyntaxGuard"
+        assert exc.artifact is artifact
+        assert exc.escalate_to == ["upstream_step"]
+
+    def test_stagnation_detected_without_stagnant_guard(self) -> None:
+        """StagnationDetected works without stagnant_guard (backwards compat)."""
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        artifact = Artifact(
+            artifact_id="test-id",
+            workflow_id="w-1",
+            content="test",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="ap-1",
+            created_at="2025-01-01T00:00:00Z",
+            attempt_number=1,
+            status=ArtifactStatus.REJECTED,
+            guard_result=None,
+            context=ContextSnapshot(
+                workflow_id="w-1",
+                specification="spec",
+                constraints="",
+                feedback_history=(),
+            ),
+        )
+
+        exc = StagnationDetected(
+            artifact=artifact,
+            feedback="Test",
+            escalate_to=["step1", "step2"],
+            failure_summary="Summary",
+        )
+
+        assert exc.stagnant_guard is None
+
+    def test_workflow_step_escalation_by_guard(self) -> None:
+        """WorkflowStep supports escalation_by_guard mapping."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+
+        escalation_map = MappingProxyType(
+            {
+                "SyntaxGuard": ("syntax_fix",),
+                "TypeGuard": ("type_fix",),
+            }
+        )
+
+        step = WorkflowStep(
+            guard_id="test",
+            action_pair=pair,
+            requires=(),
+            deps=(),
+            escalation_by_guard=escalation_map,
+        )
+
+        assert step.escalation_by_guard["SyntaxGuard"] == ("syntax_fix",)
+        assert step.escalation_by_guard["TypeGuard"] == ("type_fix",)
+
+    def test_add_step_with_escalation_by_guard(self) -> None:
+        """add_step accepts escalation_by_guard parameter."""
+        gen = MockGenerator(responses=["x"])
+        pair = ActionPair(generator=gen, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE)
+        workflow = Workflow()
+
+        workflow.add_step(
+            guard_id="test_step",
+            action_pair=pair,
+            r_patience=2,
+            e_max=2,
+            escalation=("upstream",),
+            escalation_by_guard={"Guard1": ("target1",)},
+        )
+
+        step = workflow.get_step("test_step")
+        assert step.r_patience == 2
+        assert step.e_max == 2
+        assert step.escalation == ("upstream",)
+        assert step.escalation_by_guard["Guard1"] == ("target1",)

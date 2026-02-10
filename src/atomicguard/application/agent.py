@@ -8,6 +8,9 @@ Extension 09: Supports escalation via informed backtracking when
 stagnation is detected (r_patience consecutive similar failures).
 Raises StagnationDetected for Level 2 (workflow backtracking) and
 EscalationRequired for Level 4 (human intervention).
+
+Supports guard-specific escalation routing via escalation_by_guard
+(Definition 45) for composite guards.
 """
 
 import logging
@@ -51,6 +54,7 @@ class DualStateAgent:
         r_patience: int | None = None,
         e_max: int = 1,
         escalation: list[str] | None = None,
+        escalation_by_guard: dict[str, list[str]] | None = None,
     ):
         """
         Args:
@@ -64,6 +68,8 @@ class DualStateAgent:
                         If None, escalation is disabled. Must be < rmax.
             e_max: Maximum escalation attempts before FAIL (Extension 09, default: 1)
             escalation: Upstream action_pair_ids to re-invoke on stagnation (Extension 09)
+            escalation_by_guard: Per-guard escalation targets (Definition 45).
+                                Maps guard_name -> list of upstream action_pair_ids.
         """
         self._action_pair = action_pair
         self._artifact_dag = artifact_dag
@@ -75,6 +81,7 @@ class DualStateAgent:
         self._r_patience = r_patience
         self._e_max = e_max
         self._escalation = escalation or []
+        self._escalation_by_guard = escalation_by_guard or {}
         self._feedback_summarizer = FeedbackSummarizer()
 
     def execute(
@@ -95,7 +102,8 @@ class DualStateAgent:
 
         Raises:
             RmaxExhausted: If all retries fail
-            EscalationRequired: If stagnation detected and escalation configured
+            StagnationDetected: If stagnation detected and escalation configured
+            EscalationRequired: If guard returns fatal
         """
         dependencies = dependencies or {}
         context = self._compose_context(specification, dependencies)
@@ -143,24 +151,45 @@ class DualStateAgent:
                 # Extension 09: Check for stagnation and escalation
                 stagnation_warning = None
                 if self._r_patience is not None:
-                    stagnation = self._feedback_summarizer.detect_stagnation(
-                        feedback_history, self._r_patience
-                    )
+                    # Try per-guard detection first if escalation_by_guard configured
+                    if self._escalation_by_guard:
+                        stagnation = (
+                            self._feedback_summarizer.detect_stagnation_by_guard(
+                                feedback_history, self._r_patience
+                            )
+                        )
+                    else:
+                        stagnation = self._feedback_summarizer.detect_stagnation(
+                            feedback_history, self._r_patience
+                        )
+
                     if stagnation.detected:
-                        if self._escalation:
+                        # Resolve guard-specific targets first, then fallback
+                        if (
+                            stagnation.stagnant_guard
+                            and stagnation.stagnant_guard in self._escalation_by_guard
+                        ):
+                            targets = self._escalation_by_guard[
+                                stagnation.stagnant_guard
+                            ]
+                        else:
+                            targets = self._escalation
+
+                        if targets:
                             # Level 2: Workflow backtracking - raise StagnationDetected
                             logger.warning(
                                 "[%s] Stagnation detected after %d similar failures. "
                                 "Triggering escalation to %s",
                                 self._action_pair_id,
                                 stagnation.similar_count,
-                                self._escalation,
+                                targets,
                             )
                             raise StagnationDetected(
                                 artifact=artifact,
                                 feedback=result.feedback,
-                                escalate_to=list(self._escalation),  # Full list
+                                escalate_to=list(targets),
                                 failure_summary=stagnation.failure_summary,
+                                stagnant_guard=stagnation.stagnant_guard,
                             )
                         else:
                             # No escalation targets - inject warning and continue retrying
@@ -238,4 +267,3 @@ class DualStateAgent:
                 (k, v.artifact_id) for k, v in dependencies.items()
             ),  # Preserve dependencies on retry
         )
-

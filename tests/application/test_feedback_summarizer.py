@@ -6,7 +6,7 @@ Extension 09: Escalation via Informed Backtracking (Definitions 44, 48).
 import pytest
 
 from atomicguard.application.feedback_summarizer import FeedbackSummarizer, StagnationInfo
-from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot
+from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot, GuardResult
 
 
 def _make_artifact(content: str = "test", artifact_id: str = "a-001") -> Artifact:
@@ -341,3 +341,134 @@ class TestStagnationEdgeCases:
         # At r_patience=4, only 3 similar should not trigger
         result = summarizer.detect_stagnation(history, r_patience=4)
         assert result.detected is False
+
+
+# =============================================================================
+# Per-Guard Stagnation Detection (Definition 44, escalation_by_guard)
+# =============================================================================
+
+
+def _make_artifact_with_guard(
+    content: str = "test",
+    artifact_id: str = "a-001",
+    guard_name: str | None = None,
+    passed: bool = False,
+) -> Artifact:
+    """Create a minimal artifact with guard result for per-guard testing."""
+    return Artifact(
+        artifact_id=artifact_id,
+        workflow_id="w-001",
+        content=content,
+        previous_attempt_id=None,
+        parent_action_pair_id=None,
+        action_pair_id="ap-001",
+        created_at="2025-01-01T00:00:00Z",
+        attempt_number=1,
+        status=ArtifactStatus.REJECTED if not passed else ArtifactStatus.ACCEPTED,
+        guard_result=GuardResult(passed=passed, feedback="test", guard_name=guard_name),
+        context=ContextSnapshot(
+            workflow_id="w-001",
+            specification="test spec",
+            constraints="",
+            feedback_history=(),
+            dependency_artifacts=(),
+        ),
+    )
+
+
+class TestDetectStagnationByGuard:
+    """Tests for per-guard stagnation detection (Definition 44)."""
+
+    def test_groups_feedback_by_guard_name(self) -> None:
+        """Per-guard detection groups feedback by guard_name."""
+        summarizer = FeedbackSummarizer()
+        history = [
+            (_make_artifact_with_guard(guard_name="SyntaxGuard"), "Syntax error"),
+            (_make_artifact_with_guard(guard_name="TypeGuard"), "Type error"),
+            (_make_artifact_with_guard(guard_name="SyntaxGuard"), "Syntax error"),
+            (_make_artifact_with_guard(guard_name="TypeGuard"), "Type error"),
+            (_make_artifact_with_guard(guard_name="SyntaxGuard"), "Syntax error similar"),
+        ]
+
+        # With r_patience=3, only SyntaxGuard has 3 entries
+        result = summarizer.detect_stagnation_by_guard(history, r_patience=3)
+
+        assert result.detected
+        assert result.stagnant_guard == "SyntaxGuard"
+
+    def test_catches_oscillation_pattern(self) -> None:
+        """Detects stagnation hidden by alternating guard failures."""
+        summarizer = FeedbackSummarizer()
+        # Alternating failures that hide stagnation in global view
+        history = [
+            (_make_artifact_with_guard(guard_name="Guard1"), "Same error A"),
+            (_make_artifact_with_guard(guard_name="Guard2"), "Different error B"),
+            (_make_artifact_with_guard(guard_name="Guard1"), "Same error A"),
+            (_make_artifact_with_guard(guard_name="Guard2"), "Another error C"),
+            (_make_artifact_with_guard(guard_name="Guard1"), "Same error A similar"),
+        ]
+
+        # Global detection would not find stagnation
+        global_result = summarizer.detect_stagnation(history, r_patience=3)
+        assert not global_result.detected
+
+        # Per-guard detection finds Guard1 stagnation
+        per_guard_result = summarizer.detect_stagnation_by_guard(history, r_patience=3)
+        assert per_guard_result.detected
+        assert per_guard_result.stagnant_guard == "Guard1"
+
+    def test_no_stagnation_when_guard_streams_short(self) -> None:
+        """No stagnation when each guard's stream is below r_patience."""
+        summarizer = FeedbackSummarizer()
+        history = [
+            (_make_artifact_with_guard(guard_name="Guard1"), "Error 1"),
+            (_make_artifact_with_guard(guard_name="Guard2"), "Error 2"),
+            (_make_artifact_with_guard(guard_name="Guard3"), "Error 3"),
+        ]
+
+        result = summarizer.detect_stagnation_by_guard(history, r_patience=2)
+
+        assert not result.detected
+
+    def test_stagnation_info_includes_stagnant_guard(self) -> None:
+        """StagnationInfo carries which guard stagnated."""
+        summarizer = FeedbackSummarizer()
+        history = [
+            (_make_artifact_with_guard(guard_name="TestGuard"), "Same error"),
+            (_make_artifact_with_guard(guard_name="TestGuard"), "Same error"),
+        ]
+
+        result = summarizer.detect_stagnation_by_guard(history, r_patience=2)
+
+        assert result.detected
+        assert result.stagnant_guard == "TestGuard"
+
+
+class TestStagnationInfoImmutability:
+    """Tests for StagnationInfo dataclass properties."""
+
+    def test_stagnation_info_is_frozen(self) -> None:
+        """StagnationInfo is immutable."""
+        info = StagnationInfo(
+            detected=True,
+            similar_count=3,
+            error_signature="test",
+            approaches_tried=("a", "b"),
+            failure_summary="summary",
+            stagnant_guard="Guard1",
+        )
+
+        with pytest.raises(AttributeError):
+            info.detected = False  # type: ignore
+
+    def test_stagnation_info_approaches_is_tuple(self) -> None:
+        """StagnationInfo.approaches_tried is a tuple (immutable)."""
+        info = StagnationInfo(
+            detected=False,
+            similar_count=0,
+            error_signature="",
+            approaches_tried=("a", "b", "c"),
+            failure_summary="",
+        )
+
+        assert isinstance(info.approaches_tried, tuple)

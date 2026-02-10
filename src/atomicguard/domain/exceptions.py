@@ -64,6 +64,7 @@ class StagnationDetected(Exception):
         feedback: str,
         escalate_to: list[str],
         failure_summary: str,
+        stagnant_guard: str | None = None,
     ):
         """
         Args:
@@ -71,9 +72,11 @@ class StagnationDetected(Exception):
             feedback: Latest guard feedback
             escalate_to: ALL target action_pair_ids to re-invoke (Definition 45)
             failure_summary: Summarized failure context for injection (Definition 48)
+            stagnant_guard: Name of the sub-guard that caused stagnation (for composite guards)
         """
         super().__init__(feedback)
         self.artifact = artifact
         self.feedback = feedback
         self.escalate_to = escalate_to  # List of all targets to invalidate
         self.failure_summary = failure_summary
+        self.stagnant_guard = stagnant_guard

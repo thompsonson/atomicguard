@@ -8,10 +8,16 @@ from atomicguard.infrastructure.persistence.checkpoint import (
 )
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
+from atomicguard.infrastructure.persistence.workflow_events import (
+    FilesystemWorkflowEventStore,
+    InMemoryWorkflowEventStore,
+)
 
 __all__ = [
     "InMemoryArtifactDAG",
     "FilesystemArtifactDAG",
     "InMemoryCheckpointDAG",
     "FilesystemCheckpointDAG",
+    "InMemoryWorkflowEventStore",
+    "FilesystemWorkflowEventStore",
 ]

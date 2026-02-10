@@ -137,7 +137,15 @@
         "escalation": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Upstream action_pair_ids to re-invoke on stagnation. Extension 09, Definition 45."
+          "description": "Default upstream action_pair_ids to re-invoke on stagnation. Extension 09, Definition 45."
+        },
+        "escalation_by_guard": {
+          "type": "object",
+          "description": "Per-guard escalation targets (Definition 45). Keys are guard names, values are arrays of upstream action_pair_ids.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
         }
       }
     }

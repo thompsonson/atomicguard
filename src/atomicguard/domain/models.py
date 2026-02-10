@@ -248,6 +248,10 @@ class WorkflowState:
     def get_artifact_id(self, guard_id: str) -> str | None:
         return self.artifact_ids.get(guard_id)
 
+    def get_satisfied_guards(self) -> tuple[str, ...]:
+        """Return tuple of all currently satisfied guard IDs."""
+        return tuple(gid for gid, satisfied in self.guards.items() if satisfied)
+
 
 @dataclass(frozen=True)
 class WorkflowResult:
