@@ -5,8 +5,16 @@ Extension 09: Escalation via Informed Backtracking (Definitions 44, 48).
 
 import pytest
 
-from atomicguard.application.feedback_summarizer import FeedbackSummarizer, StagnationInfo
-from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot, GuardResult
+from atomicguard.application.feedback_summarizer import (
+    FeedbackSummarizer,
+    StagnationInfo,
+)
+from atomicguard.domain.models import (
+    Artifact,
+    ArtifactStatus,
+    ContextSnapshot,
+    GuardResult,
+)
 
 
 def _make_artifact(content: str = "test", artifact_id: str = "a-001") -> Artifact:

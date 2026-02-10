@@ -18,7 +18,11 @@ from dataclasses import replace
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.feedback_summarizer import FeedbackSummarizer
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted, StagnationDetected
+from atomicguard.domain.exceptions import (
+    EscalationRequired,
+    RmaxExhausted,
+    StagnationDetected,
+)
 from atomicguard.domain.interfaces import ArtifactDAGInterface
 from atomicguard.domain.models import (
     AmbientEnvironment,

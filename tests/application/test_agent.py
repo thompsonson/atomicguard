@@ -4,7 +4,11 @@ import pytest
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.agent import DualStateAgent
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted, StagnationDetected
+from atomicguard.domain.exceptions import (
+    EscalationRequired,
+    RmaxExhausted,
+    StagnationDetected,
+)
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import (
     Artifact,

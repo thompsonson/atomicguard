@@ -3,7 +3,11 @@
 import os
 
 import pytest
-from pytestarch import EvaluableArchitecture, LayeredArchitecture, get_evaluable_architecture
+from pytestarch import (
+    EvaluableArchitecture,
+    LayeredArchitecture,
+    get_evaluable_architecture,
+)
 
 
 @pytest.fixture(scope="session")

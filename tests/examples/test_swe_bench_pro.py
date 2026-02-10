@@ -2714,7 +2714,7 @@ class TestQuickTestRunner:
         runner = QuickTestRunner(instance=mock_instance)
         assert runner._get_test_filename() == "test_atomicguard.py"
 
-    def test_get_test_filename_go(self, mock_instance):
+    def test_get_test_filename_go(self):
         from examples.swe_bench_pro.dataset import SWEBenchProInstance
         from examples.swe_bench_pro.guards import QuickTestRunner
 
@@ -2835,7 +2835,7 @@ class TestTestRedGuard:
 
         guard = TestRedGuard(instance=mock_instance)
         guard._runner.ensure_image_available = lambda: (True, "Image available")
-        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
             status="PASSED",
             output="test passed",
             exit_code=0,
@@ -2854,7 +2854,7 @@ class TestTestRedGuard:
 
         guard = TestRedGuard(instance=mock_instance)
         guard._runner.ensure_image_available = lambda: (True, "Image available")
-        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
             status="FAILED",
             output="AssertionError: expected 1 got 0",
             exit_code=1,
@@ -2950,7 +2950,7 @@ class TestTestGreenGuard:
 
         guard = TestGreenGuard(instance=mock_instance)
         guard._runner.ensure_image_available = lambda: (True, "Image available")
-        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
             status="PASSED",
             output="test passed",
             exit_code=0,
@@ -2971,7 +2971,7 @@ class TestTestGreenGuard:
 
         guard = TestGreenGuard(instance=mock_instance)
         guard._runner.ensure_image_available = lambda: (True, "Image available")
-        guard._runner.run_test = lambda *args, **kwargs: QuickTestResult(
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
             status="FAILED",
             output="AssertionError",
             exit_code=1,
@@ -3041,16 +3041,16 @@ class TestCompositeGuardWorkflow:
 
     def test_build_workflow_with_composite_guard(self, tmp_path):
         """build_workflow should correctly parse composite guard config."""
-        from atomicguard import CompositeGuard
-        from atomicguard.infrastructure.persistence.filesystem import (
-            FilesystemArtifactDAG,
-        )
-
         from examples.swe_bench_pro.dataset import SWEBenchProInstance
         from examples.swe_bench_pro.experiment_runner import (
             build_workflow,
             load_prompts,
             load_workflow_config,
+        )
+
+        from atomicguard import CompositeGuard
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
         )
 
         config = load_workflow_config("05_s1_tdd_verified")
@@ -3099,13 +3099,13 @@ class TestCompositeGuardWorkflow:
 
     def test_composite_guard_requires_guards_array(self, tmp_path):
         """build_workflow should raise if composite guard has no guards array."""
-        from atomicguard.infrastructure.persistence.filesystem import (
-            FilesystemArtifactDAG,
-        )
-
         from examples.swe_bench_pro.experiment_runner import (
             build_workflow,
             load_prompts,
+        )
+
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
         )
 
         config = {
@@ -3135,13 +3135,13 @@ class TestCompositeGuardWorkflow:
 
     def test_composite_guard_unknown_subguard_raises(self, tmp_path):
         """build_workflow should raise if composite guard has unknown sub-guard."""
-        from atomicguard.infrastructure.persistence.filesystem import (
-            FilesystemArtifactDAG,
-        )
-
         from examples.swe_bench_pro.experiment_runner import (
             build_workflow,
             load_prompts,
+        )
+
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
         )
 
         config = {

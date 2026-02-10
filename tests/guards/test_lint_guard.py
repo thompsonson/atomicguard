@@ -1,13 +1,12 @@
 """Tests for LintGuard."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
+from examples.swe_bench_ablation.guards.lint_guard import LintGuard
 
 from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot
-from examples.swe_bench_ablation.guards.lint_guard import LintGuard
 
 
 @pytest.fixture

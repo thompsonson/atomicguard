@@ -160,8 +160,8 @@ class Workflow:
 
         # Extension 09: Validate escalation targets exist before execution
         step_ids = {s.guard_id for s in self._steps}
-        for step in self._steps:
-            for target in step.escalation:
+        for s in self._steps:
+            for target in s.escalation:
                 if target not in step_ids:
                     raise ValueError(
                         f"Escalation target '{target}' not found in workflow steps"

@@ -8,9 +8,7 @@ silent exception swallowing, and interface contracts.
 
 import ast
 import inspect
-import sys
 from pathlib import Path
-from typing import get_type_hints
 
 import pytest
 
@@ -120,7 +118,7 @@ class TestImmutableCollections:
                         )
 
         assert not violations, (
-            f"Frozen dataclass fields should use tuple, not list:\n"
+            "Frozen dataclass fields should use tuple, not list:\n"
             + "\n".join(f"  - {v}" for v in violations)
         )
 
@@ -162,7 +160,7 @@ class TestNoSilentExceptionSwallowing:
                         )
 
         assert not violations, (
-            f"Silent exception swallowing found:\n"
+            "Silent exception swallowing found:\n"
             + "\n".join(f"  - {v}" for v in violations)
         )
 
@@ -211,7 +209,9 @@ class TestInterfaceConventions:
     def test_implementations_satisfy_interfaces(self):
         """All infrastructure implementations must implement all abstract methods."""
         from atomicguard.domain.interfaces import ArtifactDAGInterface
-        from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
         from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
 
         abstract_methods = {

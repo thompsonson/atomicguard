@@ -7,9 +7,9 @@ Tests the separation between:
 - EscalationRequired: Level 4 recovery (human intervention)
 """
 
-import pytest
-
 from types import MappingProxyType
+
+import pytest
 
 from atomicguard.application.action_pair import ActionPair
 from atomicguard.application.workflow import Workflow, WorkflowStep

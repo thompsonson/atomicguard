@@ -15,8 +15,6 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-logger = logging.getLogger(__name__)
-
 from atomicguard.domain.models import (
     AmbientEnvironment,
     Artifact,
@@ -33,6 +31,8 @@ if TYPE_CHECKING:
         ArtifactDAGInterface,
         CheckpointDAGInterface,
     )
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

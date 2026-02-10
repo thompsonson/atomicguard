@@ -103,7 +103,7 @@ class FeedbackSummarizer:
         for artifact, feedback in feedback_history:
             guard_name = (
                 artifact.guard_result.guard_name
-                if artifact.guard_result
+                if artifact.guard_result and artifact.guard_result.guard_name
                 else "unknown"
             )
             by_guard[guard_name].append((artifact, feedback))

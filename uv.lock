@@ -305,7 +305,6 @@ dependencies = [
     { name = "openhands-ai" },
     { name = "pydantic-ai" },
     { name = "pyflakes" },
-    { name = "pytestarch" },
 ]
 
 [package.optional-dependencies]
@@ -333,6 +332,7 @@ examples = [
 test = [
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pytestarch" },
 ]
 
 [package.metadata]
@@ -344,7 +344,6 @@ requires-dist = [
     { name = "openhands-ai", specifier = ">=0.27.0" },
     { name = "pydantic-ai", specifier = ">=1.0.0" },
     { name = "pyflakes", specifier = ">=3.0" },
-    { name = "pytestarch", specifier = ">=4.0.1" },
     { name = "swebench", marker = "extra == 'experiment'", specifier = ">=2.0.0" },
 ]
 provides-extras = ["experiment"]
@@ -366,6 +365,7 @@ examples = [
 test = [
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pytestarch", specifier = ">=4.0.1" },
 ]
 
 [[package]]
