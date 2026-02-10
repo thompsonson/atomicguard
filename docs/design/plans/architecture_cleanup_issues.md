@@ -2,20 +2,32 @@
 
 Anti-patterns identified during architectural review (2026-02-10). Each issue is self-contained — tests pass before and after. Ordered by dependency and risk.
 
+## Status Summary (2026-02-10)
+
+| Issue | Status | Commit |
+|-------|--------|--------|
+| 0: Architecture test infrastructure | DONE | `2c3f98d` |
+| 1: Move StagnationInfo/FeedbackSummarizer to domain/ | DONE | `fd50863` |
+| 2: Remove Extension 10 (WorkflowEventStore/Emitter) | DONE | `e27d20a` |
+| 3: Fix dependency inversion in application/workflow.py | DONE | `7e7ccea` |
+| 4: Fix silent exception swallowing in domain/ | DONE | `e44e170` |
+| 5: Evaluate and remove CheckpointDAG | DEFERRED | see evaluation below |
+| 6: Deduplicate experiment runner workflow construction | DEFERRED | example-level, low priority |
+
+**Test results after all changes**: 384 passed, 44 skipped, 0 xfailed. All 3 architecture layer rules pass. All convention tests pass.
+
 ---
 
 ## Dependency Graph
 
 ```
-Issue 1 (move to domain/) ──────────────── standalone
-Issue 2 (remove Extension 10) ──────────── standalone
-Issue 3 (DI fix) ───────────────────────── standalone
-Issue 4 (domain purity) ────────────────── standalone
-Issue 5 (checkpoint eval) ──────────────── after Issue 4
-Issue 6 (runner dedup) ─────────────────── after Issues 1, 2
+Issue 1 (move to domain/) ──────────────── standalone       ✓ DONE
+Issue 2 (remove Extension 10) ──────────── standalone       ✓ DONE
+Issue 3 (DI fix) ───────────────────────── standalone       ✓ DONE
+Issue 4 (domain purity) ────────────────── standalone       ✓ DONE
+Issue 5 (checkpoint eval) ──────────────── after Issue 4    ⏸ DEFERRED
+Issue 6 (runner dedup) ─────────────────── after Issues 1,2 ⏸ DEFERRED
 ```
-
-Issues 1-4 are independent and can be done in any order. Recommend starting with Issue 1 (quick win) then Issue 2 (biggest payoff).
 
 ---
 
@@ -131,32 +143,30 @@ Swallows all exceptions during feedback history reconstruction. Masks bugs compl
 
 ## Issue 5: Evaluate and remove `CheckpointDAG`
 
-**Problem**: `WorkflowCheckpoint` captures `completed_steps`, `artifact_ids`, `failure_feedback`, `provenance_ids` — all derivable from the artifact DAG. The DAG IS the checkpoint: to resume, reconstruct `WorkflowState` from accepted artifacts.
+**Status**: DEFERRED
 
-**Analysis needed**:
-- Is checkpoint/resume functionality used in any experiment runner or workflow?
-- Is `HumanAmendment` used anywhere in practice?
-- Does any code call `CheckpointDAGInterface` methods?
+**Evaluation (2026-02-10)**: CheckpointDAG is NOT redundant with the artifact DAG. It stores workflow-level orchestration metadata that the artifact DAG does not track:
 
-**If unused (likely)**:
-- Remove `CheckpointDAGInterface` from `domain/interfaces.py`
-- Remove `WorkflowCheckpoint`, `HumanAmendment`, `AmendmentType`, `FailureType` from `domain/models.py`
-- Remove `infrastructure/persistence/checkpoint.py`
-- Remove `WorkflowResumer`, `HumanAmendmentProcessor` from `domain/workflow.py`
-- Remove `checkpoint_dag` parameter threading through `Workflow`
-- Update tests
+- `WorkflowCheckpoint`: which step failed, failure type (escalation vs rmax_exhausted), completed steps, specification/constraints at time of failure
+- `HumanAmendment`: human-provided corrections with amendment type (artifact/feedback/skip), links to parent artifacts
 
-**If used**: Keep but document that DAG-based resume is the intended path forward. Consider a follow-up issue to migrate to DAG-based resume.
+This metadata enables the resume-from-checkpoint pattern used by `ResumableWorkflow` (deprecated but functional) and `CheckpointService`/`WorkflowResumeService`. The 4 checkpoint example demos (`examples/checkpoint/01-04`) depend on this functionality.
+
+**Recommendation**: Keep checkpoint infrastructure. Consider migrating to DAG-based checkpointing in a future issue where checkpoint metadata is stored as special artifact types in the main DAG.
+
+**Original analysis**:
+
+**Problem**: `WorkflowCheckpoint` captures `completed_steps`, `artifact_ids`, `failure_feedback`, `provenance_ids` — some derivable from the artifact DAG. The DAG IS the checkpoint: to resume, reconstruct `WorkflowState` from accepted artifacts.
 
 **Depends on**: Issue 4 (HumanAmendmentProcessor cleanup)
 
 **Risk**: Medium. Need to verify no active workflows depend on checkpoint resume.
 
-**Acceptance criteria**: If removed — no checkpoint-related code in the codebase. Workflow constructor is simpler. All tests pass.
-
 ---
 
 ## Issue 6: Deduplicate experiment runner workflow construction
+
+**Status**: DEFERRED — example-level duplication, not a core library issue. The two `build_workflow` functions have different signatures (pro version has `lang_config`, `instance` params for multi-language Docker guards). Extracting a shared base would add coupling between examples without clear benefit to the library.
 
 **Problem**: ~400 lines of identical logic duplicated between `swe_bench_pro/experiment_runner.py` and `swe_bench_ablation/demo.py`:
 - `build_workflow()` — workflow assembly from JSON config
