@@ -29,10 +29,10 @@ from examples.swe_bench_pro.language import (
 class TestLanguageConfigs:
     def test_all_four_languages_present(self):
         assert set(LANGUAGE_CONFIGS) == {
-            "python", "py",
+            "python",
             "go",
-            "javascript", "js",
-            "typescript", "ts",
+            "javascript",
+            "typescript",
         }
 
     def test_python_has_syntax_checker(self):
@@ -235,19 +235,17 @@ class TestPreparePredictions:
             ArmResult(
                 instance_id="repo__1",
                 arm="02_singleshot",
-                workflow_status="success",
                 patch_content="diff --git a/f.py",
             ),
             ArmResult(
                 instance_id="repo__2",
                 arm="02_singleshot",
-                workflow_status="error",
+                error="Some error",
                 patch_content="",
             ),
             ArmResult(
                 instance_id="repo__3",
                 arm="03_s1_direct",
-                workflow_status="success",
                 patch_content="diff --git a/g.go",
             ),
         ]
@@ -679,14 +677,15 @@ class TestListRepoFilesStandalone:
         files = _list_repo_files(str(tmp_path))
         assert files == ["real.py"]
 
-    def test_respects_max_files(self, tmp_path):
+    def test_returns_all_files(self, tmp_path):
+        """_list_repo_files returns all matching files (no truncation)."""
         from examples.swe_bench_pro.experiment_runner import _list_repo_files
 
         for i in range(20):
             (tmp_path / f"f{i:02d}.py").write_text("")
 
-        files = _list_repo_files(str(tmp_path), max_files=5)
-        assert len(files) == 5
+        files = _list_repo_files(str(tmp_path))
+        assert len(files) == 20
 
     def test_custom_extensions(self, tmp_path):
         from examples.swe_bench_pro.experiment_runner import _list_repo_files
@@ -792,7 +791,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -822,7 +820,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -852,7 +849,6 @@ class TestRunAllParallel:
         existing = ArmResult(
             instance_id="org__repo__0",
             arm="02_singleshot",
-            workflow_status="success",
             patch_content="existing",
         )
         from dataclasses import asdict
@@ -865,7 +861,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="new",
             )
 
@@ -904,7 +899,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content=f"diff for {instance.instance_id}",
             )
 
@@ -947,7 +941,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -981,7 +974,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -3003,7 +2995,7 @@ class TestTDDVerifiedWorkflowConfig:
 
         config = load_workflow_config("05_s1_tdd_verified")
         assert config["name"] == "S1 TDD Verified"
-        assert config["rmax"] == 3
+        assert config["rmax"] == 6
 
     def test_workflow_has_three_action_pairs(self):
         """New workflow has 3 action pairs instead of 6 (using CompositeGuards)."""
@@ -3028,14 +3020,14 @@ class TestTDDVerifiedWorkflowConfig:
         assert ap["guards"] == ["test_syntax", "test_red"]
 
     def test_gen_patch_uses_composite_guard(self):
-        """ap_gen_patch should use composite guard with patch, test_green, full_eval."""
+        """ap_gen_patch should use composite guard with patch, lint, test_green, full_eval."""
         from examples.swe_bench_pro.experiment_runner import load_workflow_config
 
         config = load_workflow_config("05_s1_tdd_verified")
         ap = config["action_pairs"]["ap_gen_patch"]
         assert ap["generator"] == "PatchGenerator"
         assert ap["guard"] == "composite"
-        assert ap["guards"] == ["patch", "test_green", "full_eval"]
+        assert ap["guards"] == ["patch", "lint", "test_green", "full_eval"]
 
     def test_arm_map_includes_verified(self):
         from examples.swe_bench_pro.demo import _ARM_MAP
@@ -3103,7 +3095,7 @@ class TestCompositeGuardWorkflow:
 
         assert gen_patch_step is not None, "ap_gen_patch step not found"
         assert isinstance(gen_patch_step.action_pair.guard, CompositeGuard)
-        assert len(gen_patch_step.action_pair.guard.guards) == 3
+        assert len(gen_patch_step.action_pair.guard.guards) == 4
 
     def test_composite_guard_requires_guards_array(self, tmp_path):
         """build_workflow should raise if composite guard has no guards array."""
