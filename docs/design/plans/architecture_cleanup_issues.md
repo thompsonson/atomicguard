@@ -194,3 +194,251 @@ These issues were identified by reviewing the implementation against the formal 
 - **Separation of concerns**: Domain is pure models and business rules. Application orchestrates. Infrastructure adapts.
 
 The anti-patterns arose primarily from Extension 09/10 implementation that introduced parallel stores and observer-pattern coupling instead of working within the existing architectural boundaries.
+
+---
+
+## Issue 0: Architecture Test Infrastructure
+
+**Problem**: `pytestarch>=4.0.1` is in main `dependencies` (line 42 of `pyproject.toml`) instead of the test dependency group. The existing `tests/architecture/test_gate10_infrastructure.py` hand-rolls checks using `importlib`/`inspect` instead of using PyTestArch's `LayerRule` API, which is purpose-built for DDD/Hexagonal enforcement.
+
+**Note**: PyTestArch was originally added as a main dependency because it was used as a guard in the C4AI ML Agents project. In AtomicGuard it is purely a test tool.
+
+This issue should be done **first** — the architecture tests then serve as guardrails for Issues 1-6.
+
+### 0a: Move PyTestArch to test dependencies
+
+```toml
+# Remove from main dependencies:
+dependencies = [
+    # "pytestarch>=4.0.1",  ← REMOVE
+]
+
+# Add to test dependency group:
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytestarch>=4.0.1",
+]
+```
+
+### 0b: Rewrite architecture tests using LayerRule API
+
+Replace hand-rolled `importlib`/`inspect` tests with PyTestArch's declarative layer rules.
+
+**File**: `tests/architecture/conftest.py` (NEW)
+
+```python
+import os
+import pytest
+from pytestarch import EvaluableArchitecture, LayeredArchitecture, get_evaluable_architecture
+
+
+@pytest.fixture(scope="session")
+def evaluable() -> EvaluableArchitecture:
+    src_dir = os.path.join(os.path.dirname(__file__), "..", "..", "src")
+    project_path = os.path.join(src_dir, "atomicguard")
+    return get_evaluable_architecture(src_dir, project_path)
+
+
+@pytest.fixture(scope="session")
+def layers() -> LayeredArchitecture:
+    return (
+        LayeredArchitecture()
+        .layer("domain").containing_modules(["atomicguard.domain"])
+        .layer("application").containing_modules(["atomicguard.application"])
+        .layer("infrastructure").containing_modules(["atomicguard.infrastructure"])
+    )
+```
+
+**File**: `tests/architecture/test_layer_rules.py` (NEW)
+
+```python
+from pytestarch import LayerRule
+
+
+class TestDDDLayerRules:
+    """Permanent architecture rules — these enforce the Hexagonal architecture."""
+
+    def test_domain_does_not_access_application(self, evaluable, layers):
+        """Domain must be pure — no orchestration dependency."""
+        rule = (
+            LayerRule()
+            .based_on(layers)
+            .layers_that().are_named("domain")
+            .should_not()
+            .access_layers_that().are_named("application")
+        )
+        rule.assert_applies(evaluable)
+
+    def test_domain_does_not_access_infrastructure(self, evaluable, layers):
+        """Domain must not know about adapters."""
+        rule = (
+            LayerRule()
+            .based_on(layers)
+            .layers_that().are_named("domain")
+            .should_not()
+            .access_layers_that().are_named("infrastructure")
+        )
+        rule.assert_applies(evaluable)
+
+    def test_application_does_not_access_infrastructure(self, evaluable, layers):
+        """Application depends on domain ports, not concrete adapters."""
+        rule = (
+            LayerRule()
+            .based_on(layers)
+            .layers_that().are_named("application")
+            .should_not()
+            .access_layers_that().are_named("infrastructure")
+        )
+        rule.assert_applies(evaluable)
+```
+
+### 0c: Keep and update existing Gate 10 tests
+
+The hand-rolled tests in `test_gate10_infrastructure.py` that check specific things (interface naming, abstract methods, mock injectability) are still valuable — PyTestArch doesn't cover those. Keep them but remove any that duplicate the new LayerRule tests.
+
+### Acceptance criteria
+
+- `pytestarch` is in test dependencies only, not main dependencies
+- `tests/architecture/test_layer_rules.py` exists with 3 layer rules
+- Running `PYTHONPATH=src python -m pytest tests/architecture/ -v` shows all rules
+- **Note**: Some rules will FAIL initially (Issue 3: application imports infrastructure). That's expected — the test documents the violation that Issue 3 fixes.
+
+---
+
+## Convention Enforcement Tests
+
+Permanent tests that catch anti-patterns import-based layer rules cannot detect. Add to `tests/architecture/test_conventions.py`.
+
+### Frozen dataclass convention
+
+```python
+def test_domain_models_are_frozen():
+    """All domain dataclasses must be frozen (except WorkflowState)."""
+```
+
+Scan `domain/models.py` for all `@dataclass` classes via AST. Assert every one has `frozen=True` except the documented exception (`WorkflowState`). Catches someone adding a mutable dataclass to the domain.
+
+### Immutable collections in domain models
+
+```python
+def test_domain_models_use_tuples_not_lists():
+    """Frozen domain model fields should use tuple, not list."""
+```
+
+Inspect type hints of all frozen domain dataclasses. Assert fields use `tuple[...]` not `list[...]`, and `MappingProxyType` not `dict[...]` (except `WorkflowState`). Catches someone adding `field: list[str]` to a frozen model.
+
+### No silent exception swallowing
+
+```python
+def test_no_bare_except_pass():
+    """No silent exception swallowing in src/."""
+```
+
+AST-walk all `.py` files under `src/atomicguard/`. Flag any `except` handler where the body is only `pass` or `...`. The `domain/workflow.py:418` silent exception would have been caught.
+
+### Interface naming convention
+
+Already exists in Gate 10D — keep as-is. Inspect `domain/interfaces.py` for all ABCs, assert they end with `Interface`.
+
+### Ports have abstract methods
+
+```python
+def test_all_interface_methods_are_abstract():
+    """Every public method on a port must be abstract."""
+```
+
+For each class in `domain/interfaces.py` ending with `Interface`, assert every public method (not starting with `_`) has `__isabstractmethod__ = True`. Catches someone adding a concrete method to a port.
+
+---
+
+## Smoke Tests
+
+Zero-dependency examples that exercise the core framework end-to-end. These should be runnable in CI without API keys, Docker, or external services.
+
+| Example | What it exercises | Priority |
+|---|---|---|
+| `basics/01_mock.py` | `DualStateAgent`, `MockGenerator`, `SyntaxGuard`, `ActionPair`, retry loop, `InMemoryArtifactDAG` | **Critical** — core agent loop |
+| `basics/05_versioned_env.py` | `compute_workflow_ref`, `WorkflowRegistry`, `Context.amend()` | High — Extension 01 |
+| `basics/06_extraction.py` | Predicate queries, `extract()`, all predicate combinators | High — Extension 02 |
+| `basics/07_multiagent.py` | `MultiAgentSystem`, shared repository, agent coordination | Medium — Extension 03 |
+| `basics/08_incremental.py` | `compute_config_ref`, change detection, Merkle propagation | Medium — Extension 07 |
+
+**Not suitable for smoke tests** (require external dependencies):
+- `basics/02_ollama.py` — needs Ollama running
+- `basics/03_huggingface.py` — needs HF API key
+- `checkpoint/01_basic/demo.py` — needs `click`, uses filesystem checkpoint (depends on Issue 5 outcome)
+
+---
+
+## Justfile
+
+Standardized commands for development workflow. Create as `justfile` in repository root.
+
+```just
+# Default: run unit tests
+default: test
+
+# ─── Testing ─────────────────────────────────────────────
+
+# Run unit tests (domain + application + infrastructure)
+test:
+    PYTHONPATH=src python -m pytest tests/domain/ tests/application/ tests/infrastructure/ -q
+
+# Run architecture tests only
+test-arch:
+    PYTHONPATH=src python -m pytest tests/architecture/ -v
+
+# Run all tests
+test-all: test test-arch
+
+# Run with coverage report
+coverage:
+    PYTHONPATH=src python -m pytest --cov=src/atomicguard --cov-report=term-missing tests/domain/ tests/application/ tests/infrastructure/
+
+# ─── Smoke Tests ─────────────────────────────────────────
+
+# Run all zero-dependency smoke tests
+smoke:
+    PYTHONPATH=src python -m examples.basics.01_mock
+    PYTHONPATH=src python -m examples.basics.05_versioned_env
+    PYTHONPATH=src python -m examples.basics.06_extraction
+    PYTHONPATH=src python -m examples.basics.07_multiagent
+    PYTHONPATH=src python -m examples.basics.08_incremental
+
+# Core smoke test only (fastest check that the framework works)
+smoke-core:
+    PYTHONPATH=src python -m examples.basics.01_mock
+
+# ─── Code Quality ────────────────────────────────────────
+
+# Lint check
+lint:
+    uv run ruff check src tests
+
+# Format check
+fmt-check:
+    uv run ruff format --check src tests
+
+# Auto-format
+fmt:
+    uv run ruff format src tests
+
+# Type check
+typecheck:
+    uv run mypy src
+
+# ─── CI Pipeline ─────────────────────────────────────────
+
+# Full CI: lint + typecheck + all tests + smoke
+ci: lint fmt-check typecheck test-all smoke
+```
+
+### Usage
+
+```bash
+just              # run unit tests (default)
+just test-arch    # check architecture rules
+just smoke        # run zero-dep examples
+just ci           # full pipeline
+```
