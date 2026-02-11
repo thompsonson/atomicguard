@@ -1,6 +1,6 @@
 """Multi-language test generator.
 
-Subclasses :class:`TestGenerator` from the ablation example to add
+Subclasses :class:`TestGenerator` from swe_bench_common to add
 language-specific framework instructions to the prompt.  PydanticAI
 handles structured output parsing via the ``GeneratedTest`` model.
 """
@@ -8,9 +8,10 @@ handles structured output parsing via the ``GeneratedTest`` model.
 import logging
 from typing import Any
 
+from examples.swe_bench_common.generators import TestGenerator
+
 from atomicguard.domain.models import Context
 from atomicguard.domain.prompts import PromptTemplate
-from examples.swe_bench_ablation.generators import TestGenerator
 
 from ..language import LanguageConfig
 

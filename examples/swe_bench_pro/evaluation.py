@@ -11,7 +11,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from examples.swe_bench_ablation.evaluation import (
+from examples.swe_bench_common.evaluation import (
     EvalResult,
     write_eval_logs,
 )
@@ -364,7 +364,8 @@ def evaluate_predictions_inline(
         predictions = json.loads(pred_file.read_text())
         if not predictions:
             logger.info(
-                "arm=%s: no predictions to evaluate (all instances failed workflow)", arm
+                "arm=%s: no predictions to evaluate (all instances failed workflow)",
+                arm,
             )
             continue
 

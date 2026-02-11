@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from examples.swe_bench_ablation.guards import test_localization_guard
+from examples.swe_bench_common.guards import test_localization_guard
 
 from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot
 

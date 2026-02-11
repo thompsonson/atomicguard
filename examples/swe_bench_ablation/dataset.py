@@ -7,7 +7,12 @@ for the Experiment 7.2 bug fix strategy comparison.
 import logging
 from dataclasses import dataclass, field
 
+from examples.swe_bench_common.dataset import _parse_test_list
+
 logger = logging.getLogger("swe_bench_ablation.dataset")
+
+# Re-export for backward compatibility
+__all__ = ["SWEInstance", "load_swe_polybench", "_parse_test_list"]
 
 
 @dataclass(frozen=True)
@@ -90,21 +95,3 @@ def load_swe_polybench(
 
     logger.info("Loaded %d instances", len(instances))
     return instances
-
-
-def _parse_test_list(value: str | list[str]) -> list[str]:
-    """Parse test list from string or list."""
-    if isinstance(value, list):
-        return value
-    if isinstance(value, str):
-        import json
-
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return parsed
-        except (json.JSONDecodeError, TypeError):
-            pass
-        if value.strip():
-            return [value]
-    return []

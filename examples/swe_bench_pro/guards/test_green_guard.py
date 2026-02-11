@@ -10,7 +10,6 @@ the validated edits to ensure it always applies cleanly (Option 3).
 import json
 import logging
 import re
-from pathlib import Path
 
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
@@ -240,9 +239,7 @@ class TestGreenGuard(GuardInterface):
             raw_output = result.output or ""
 
             # Build rich, actionable feedback
-            parts = [
-                f"Test still FAILS after patch (exit code {result.exit_code})."
-            ]
+            parts = [f"Test still FAILS after patch (exit code {result.exit_code})."]
 
             # Extract key diagnostic lines first (most actionable)
             diagnostic_lines = _extract_diagnostic_lines(raw_output)
@@ -366,7 +363,10 @@ class TestGreenGuard(GuardInterface):
         for pattern in test_name_patterns:
             match = re.search(pattern, output)
             if match:
-                details.insert(0, f"FAILED TEST: {match.group(1) if match.groups() else match.group(0)}")
+                details.insert(
+                    0,
+                    f"FAILED TEST: {match.group(1) if match.groups() else match.group(0)}",
+                )
                 break
 
         # Find traceback location (last file:line before assertion)

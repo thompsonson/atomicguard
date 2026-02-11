@@ -1,26 +1,31 @@
-"""Guards for SWE-bench ablation study."""
+"""Guards for SWE-bench ablation study.
 
-from .analysis_guard import AnalysisGuard
-from .backtrack_orchestrator import (
+This module re-exports all guards from swe_bench_common for backward compatibility.
+New code should import from examples.swe_bench_common.guards directly.
+"""
+
+# Re-export all guards from common for backward compatibility
+from examples.swe_bench_common.guards import (
+    AnalysisGuard,
     BacktrackState,
+    ClassificationGuard,
+    ContextGuard,
+    DiffReviewGuard,
+    FixApproachGuard,
+    ImpactGuard,
+    LintGuard,
+    LocalizationGuard,
+    PatchGuard,
+    RootCauseGuard,
+    StructureGuard,
+    TestLocalizationGuard,
+    TestSetupVerificationGuard,
+    TestSyntaxGuard,
+    WorkflowGuard,
     llm_review_heuristic,
     resolve_backtrack_target,
     rule_based_heuristic,
 )
-from .classification_guard import ClassificationGuard
-from .context_guard import ContextGuard
-from .diff_review_guard import DiffReviewGuard
-from .fix_approach_guard import FixApproachGuard
-from .impact_guard import ImpactGuard
-from .lint_guard import LintGuard
-from .localization_guard import LocalizationGuard
-from .patch_guard import PatchGuard
-from .root_cause_guard import RootCauseGuard
-from .structure_guard import StructureGuard
-from .test_localization_guard import TestLocalizationGuard
-from .test_setup_verification_guard import TestSetupVerificationGuard
-from .test_syntax_guard import TestSyntaxGuard
-from .workflow_guard import WorkflowGuard
 
 __all__ = [
     "AnalysisGuard",

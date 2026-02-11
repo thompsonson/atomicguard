@@ -395,7 +395,10 @@ class TestDetectStagnationByGuard:
             (_make_artifact_with_guard(guard_name="TypeGuard"), "Type error"),
             (_make_artifact_with_guard(guard_name="SyntaxGuard"), "Syntax error"),
             (_make_artifact_with_guard(guard_name="TypeGuard"), "Type error"),
-            (_make_artifact_with_guard(guard_name="SyntaxGuard"), "Syntax error similar"),
+            (
+                _make_artifact_with_guard(guard_name="SyntaxGuard"),
+                "Syntax error similar",
+            ),
         ]
 
         # With r_patience=3, only SyntaxGuard has 3 entries

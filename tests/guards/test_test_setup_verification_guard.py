@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from examples.swe_bench_ablation.guards import test_setup_verification_guard
+from examples.swe_bench_common.guards import test_setup_verification_guard
 
 from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot
 
@@ -185,7 +185,7 @@ class TestFrameworkCheck:
     ):
         """Unknown framework should skip check, not fail."""
         data = make_valid_localization(test_library="unknown_framework")
-        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+        _ = make_artifact(json.dumps(data), sample_context_snapshot)
 
         # Mock successful collect
         mock_result = MagicMock()
@@ -226,10 +226,10 @@ class TestPluginCheck:
         data = make_valid_localization(test_plugins=["pytest-nonexistent"])
         artifact = make_artifact(json.dumps(data), sample_context_snapshot)
 
-        def run_side_effect(cmd, **kwargs):
+        def run_side_effect(_cmd, **_kwargs):
             result = MagicMock()
             # pytest --version succeeds
-            if "--version" in cmd or "--collect-only" in cmd:
+            if "--version" in _cmd or "--collect-only" in _cmd:
                 result.returncode = 0
             # Plugin import fails
             else:
@@ -254,7 +254,7 @@ class TestPluginCheck:
 
         call_count = 0
 
-        def run_side_effect(cmd, **kwargs):
+        def run_side_effect(_cmd, **_kwargs):
             nonlocal call_count
             call_count += 1
             result = MagicMock()
@@ -298,13 +298,13 @@ class TestCollectTests:
         data = make_valid_localization(test_invocation="pytest tests/")
         artifact = make_artifact(json.dumps(data), sample_context_snapshot)
 
-        def run_side_effect(cmd, **kwargs):
+        def run_side_effect(_cmd, **_kwargs):
             result = MagicMock()
             # Framework check passes
-            if "--version" in cmd:
+            if "--version" in _cmd:
                 result.returncode = 0
             # Collect fails
-            elif "--collect-only" in cmd:
+            elif "--collect-only" in _cmd:
                 result.returncode = 1
                 result.stderr = "ImportError: No module named 'missing_dep'"
             else:
@@ -329,7 +329,7 @@ class TestCollectTests:
 
         call_count = 0
 
-        def run_side_effect(cmd, **kwargs):
+        def run_side_effect(_cmd, **_kwargs):
             nonlocal call_count
             call_count += 1
             # First call (framework check) succeeds
@@ -375,7 +375,7 @@ class TestCollectTests:
 
         collected_cmd = None
 
-        def run_side_effect(cmd, **kwargs):
+        def run_side_effect(cmd, **_kwargs):
             nonlocal collected_cmd
             if "--collect-only" in cmd:
                 collected_cmd = cmd
@@ -407,15 +407,15 @@ class TestMultipleErrors:
 
         call_count = 0
 
-        def run_side_effect(cmd, **kwargs):
+        def run_side_effect(_cmd, **_kwargs):
             nonlocal call_count
             call_count += 1
             result = MagicMock()
             # Framework check fails
-            if "--version" in cmd or "import" in str(cmd):
+            if "--version" in _cmd or "import" in str(_cmd):
                 result.returncode = 1
             # Collect fails
-            elif "--collect-only" in cmd:
+            elif "--collect-only" in _cmd:
                 result.returncode = 1
                 result.stderr = "Error during collection"
             else:

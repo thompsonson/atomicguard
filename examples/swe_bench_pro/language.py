@@ -90,8 +90,7 @@ def get_language_config(language: str) -> LanguageConfig:
     if config is None:
         supported = ", ".join(sorted(LANGUAGE_CONFIGS))
         raise ValueError(
-            f"Unsupported language {language!r}. "
-            f"Supported languages: {supported}"
+            f"Unsupported language {language!r}. Supported languages: {supported}"
         )
     return config
 

@@ -349,7 +349,9 @@ def compute_experiment_overview(
 
     # Compute basic stats
     arms = sorted(set(r.get("arm", "") for r in all_results if r.get("arm")))
-    instances = set(r.get("instance_id", "") for r in all_results if r.get("instance_id"))
+    instances = set(
+        r.get("instance_id", "") for r in all_results if r.get("instance_id")
+    )
 
     successful = sum(1 for r in all_results if not r.get("failed_step"))
     failed = sum(1 for r in all_results if r.get("failed_step"))
@@ -386,7 +388,9 @@ def compute_experiment_overview(
         wft = r.get("workflow_time_seconds", 0)
         if wft:
             workflow_times.append(wft)
-    avg_workflow_time = sum(workflow_times) / len(workflow_times) if workflow_times else 0.0
+    avg_workflow_time = (
+        sum(workflow_times) / len(workflow_times) if workflow_times else 0.0
+    )
 
     # Try to extract model from experiment log
     model = None
@@ -476,7 +480,9 @@ def generate_final_error_report(
             f"| Total Runs | {overview.total_runs} "
             f"({len(overview.arms)} arms × {overview.instance_count} instances) |"
         )
-        lines.append(f"| Successful | {overview.successful_runs} ({success_pct:.1f}%) |")
+        lines.append(
+            f"| Successful | {overview.successful_runs} ({success_pct:.1f}%) |"
+        )
         lines.append(f"| Failed | {overview.failed_runs} ({failed_pct:.1f}%) |")
 
         if overview.total_tokens > 0:
@@ -517,7 +523,10 @@ def generate_final_error_report(
             guard_counts[err.failed_guard] += 1
 
         breakdown = ", ".join(
-            f"{g.replace('Guard', '')}: {c}" for g, c in sorted(guard_counts.items())
+            f"{(g or 'Unknown').replace('Guard', '')}: {c}"
+            for g, c in sorted(
+                guard_counts.items(), key=lambda x: (x[0] is None, x[0] or "")
+            )
         )
         lines.append(f"| {arm} | {len(arm_errors)} | {breakdown} |")
 
@@ -545,7 +554,9 @@ def generate_final_error_report(
 
             lines.append(f"### {short_id}")
             lines.append("")
-            lines.append(f"**Failed at**: {err.failed_step} | **Retries**: {err.retry_count}")
+            lines.append(
+                f"**Failed at**: {err.failed_step} | **Retries**: {err.retry_count}"
+            )
             lines.append("")
             lines.append("| Retry | Action Pair | Guard | Error |")
             lines.append("|-------|-------------|-------|-------|")
@@ -684,7 +695,9 @@ if __name__ == "__main__":
     )
 
     if len(sys.argv) < 2:
-        print("Usage: python -m examples.swe_bench_pro.final_error_analysis <results.jsonl>")
+        print(
+            "Usage: python -m examples.swe_bench_pro.final_error_analysis <results.jsonl>"
+        )
         sys.exit(1)
 
     results_path = sys.argv[1]

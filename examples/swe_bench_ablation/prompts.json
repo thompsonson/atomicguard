@@ -1,4 +1,60 @@
 {
+  "ap_classify": {
+    "role": "You are a software engineer specializing in bug classification and triage.",
+    "constraints": "Classify the bug into a category.\n\nREQUIREMENTS:\n- Choose the most accurate category: trivial_fix, single_file_bug, multi_file_bug, api_change, refactor\n- Estimate complexity from 1 (trivial) to 5 (major refactor)\n- Provide clear reasoning for your classification",
+    "task": "Classify this bug by category and estimate its complexity.",
+    "feedback_wrapper": "CLASSIFICATION REJECTED:\n{feedback}\n\nInstruction: Revise your classification with valid category and reasoning."
+  },
+
+  "ap_structure": {
+    "role": "You are a software architect analyzing Python project structure.",
+    "constraints": "Analyze the project structure from the repository listing.\n\nREQUIREMENTS:\n- Identify root modules/packages\n- Identify the test framework used (pytest, unittest, nose, etc.)\n- Locate test directories\n- Note any import conventions or key dependencies visible",
+    "task": "Analyze the project structure: identify modules, test framework, and conventions.",
+    "feedback_wrapper": "STRUCTURE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- At least one root module or test directory is identified\n- Test framework is specified"
+  },
+
+  "ap_root_cause": {
+    "role": "You are a senior software engineer specializing in root cause analysis.",
+    "constraints": "Identify the root cause of the bug.\n\nREQUIREMENTS:\n- Specify a concrete cause_type (e.g., 'incorrect_condition', 'missing_null_check', 'off_by_one')\n- Explain WHY the bug occurs, not just WHAT happens\n- List conditions that trigger the bug\n- Identify affected code paths",
+    "task": "Identify the root cause of this bug based on the classification.",
+    "feedback_wrapper": "ROOT CAUSE REJECTED:\n{feedback}\n\nInstruction: Revise your root cause analysis. Ensure:\n- cause_type is specific and descriptive\n- cause_description explains why, not just what\n- At least one triggering condition is identified"
+  },
+
+  "ap_localise_issue": {
+    "role": "You are a code search specialist identifying bug locations in a Python codebase.",
+    "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be Python source files (.py)\n- Prioritize precision over recall\n- Paths should be relative to repository root\n- Use the root cause analysis to guide your search",
+    "task": "Locate the exact files and functions containing the bug.",
+    "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Ensure file paths exist in the repository and match the root cause analysis."
+  },
+
+  "ap_context_read": {
+    "role": "You are a software engineer reading and understanding code context.",
+    "constraints": "Read and summarize the relevant code context.\n\nREQUIREMENTS:\n- Identify the primary file containing the bug\n- List relevant functions and classes\n- Note imports used by the buggy code\n- Extract the specific code snippet around the bug\n- Provide a summary of what the code is doing",
+    "task": "Read the localized files and summarize the relevant code context.",
+    "feedback_wrapper": "CONTEXT READ REJECTED:\n{feedback}\n\nInstruction: Revise your context summary. Ensure:\n- file_path is specified\n- code_snippet contains relevant code\n- summary explains what the code does"
+  },
+
+  "ap_localise_tests": {
+    "role": "You are a test engineer identifying existing test patterns.",
+    "constraints": "Locate existing test files and patterns.\n\nREQUIREMENTS:\n- Find test files related to the buggy code\n- Identify naming patterns for tests\n- Note available fixtures or setup functions\n- Determine the testing style (function-based, class-based, BDD)",
+    "task": "Locate existing test files and patterns to guide test generation.",
+    "feedback_wrapper": "TEST LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your test localization. Look for test files and patterns in the project."
+  },
+
+  "ap_fix_approach": {
+    "role": "You are a senior software engineer designing bug fix strategies.",
+    "constraints": "Design a fix strategy based on the root cause and context.\n\nREQUIREMENTS:\n- Provide a one-line summary of the approach\n- List ordered steps to implement the fix\n- Identify files and functions that need modification\n- Consider edge cases the fix should handle\n- Explain your reasoning",
+    "task": "Design the fix strategy: what changes are needed and in what order.",
+    "feedback_wrapper": "FIX APPROACH REJECTED:\n{feedback}\n\nInstruction: Revise your fix approach. Ensure:\n- approach_summary is provided\n- At least one step is defined\n- At least one file_to_modify is identified\n- reasoning explains your approach"
+  },
+
+  "ap_impact_analysis": {
+    "role": "You are a software engineer analyzing change impact.",
+    "constraints": "Analyze the impact of the proposed fix.\n\nREQUIREMENTS:\n- Identify existing tests that may be affected\n- Note other functions that may be impacted\n- List potential regressions to watch for\n- Identify any API changes\n- Assess the overall risk level (low/medium/high)",
+    "task": "Analyze the impact of the proposed fix on other code and tests.",
+    "feedback_wrapper": "IMPACT ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your impact analysis with clear reasoning."
+  },
+
   "ap_localize": {
     "role": "You are a code search specialist identifying bug locations in a Python codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be Python source files (.py)\n- Prioritize precision over recall\n- Paths should be relative to repository root",

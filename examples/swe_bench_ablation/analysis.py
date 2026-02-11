@@ -12,7 +12,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-from .experiment_runner import ArmResult
+from examples.swe_bench_common import ArmResult
 
 logger = logging.getLogger("swe_bench_ablation.analysis")
 
@@ -180,9 +180,7 @@ def compute_arm_metrics(
             )
         else:
             # Use workflow completion as proxy (no error and no failed_step)
-            successes = sum(
-                1 for r in arm_results if not r.error and not r.failed_step
-            )
+            successes = sum(1 for r in arm_results if not r.error and not r.failed_step)
 
         pass_rate, ci_lo, ci_hi = wilson_ci(successes, total)
 
@@ -244,12 +242,8 @@ def compute_pairwise(
                 succ_a = sum(1 for r in results_a if resolved.get(r.instance_id, False))
                 succ_b = sum(1 for r in results_b if resolved.get(r.instance_id, False))
             else:
-                succ_a = sum(
-                    1 for r in results_a if not r.error and not r.failed_step
-                )
-                succ_b = sum(
-                    1 for r in results_b if not r.error and not r.failed_step
-                )
+                succ_a = sum(1 for r in results_a if not r.error and not r.failed_step)
+                succ_b = sum(1 for r in results_b if not r.error and not r.failed_step)
 
             fail_a = total_a - succ_a
             fail_b = total_b - succ_b

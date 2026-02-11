@@ -1,19 +1,38 @@
-"""Generators for SWE-bench ablation study."""
+"""Generators for SWE-bench ablation study.
 
-from .analysis import AnalysisGenerator
-from .classification import ClassificationGenerator
-from .diff_review import DiffReviewGenerator
-from .localization import LocalizationGenerator
-from .patch import PatchGenerator
-from .test_gen import TestGenerator
-from .workflow_gen import WorkflowGenerator
+This module re-exports all generators from swe_bench_common for backward compatibility.
+New code should import from examples.swe_bench_common.generators directly.
+"""
+
+# Re-export all generators from common for backward compatibility
+from examples.swe_bench_common.generators import (
+    AnalysisGenerator,
+    ClassificationGenerator,
+    ContextReadGenerator,
+    DiffReviewGenerator,
+    FixApproachGenerator,
+    ImpactAnalysisGenerator,
+    LocalizationGenerator,
+    PatchGenerator,
+    RootCauseGenerator,
+    StructureGenerator,
+    TestGenerator,
+    TestLocalizationGenerator,
+    WorkflowGenerator,
+)
 
 __all__ = [
     "AnalysisGenerator",
     "ClassificationGenerator",
+    "ContextReadGenerator",
     "DiffReviewGenerator",
+    "FixApproachGenerator",
+    "ImpactAnalysisGenerator",
     "LocalizationGenerator",
     "PatchGenerator",
+    "RootCauseGenerator",
+    "StructureGenerator",
     "TestGenerator",
+    "TestLocalizationGenerator",
     "WorkflowGenerator",
 ]

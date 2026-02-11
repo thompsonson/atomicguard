@@ -100,8 +100,15 @@ class QuickTestRunner:
             # --noconftest: Don't load project's conftest.py (may import Qt/Django)
             # -p no:cacheprovider: Avoid cache issues in Docker
             return [
-                "python", "-m", "pytest", test_file,
-                "-v", "--tb=short", "--noconftest", "-p", "no:cacheprovider"
+                "python",
+                "-m",
+                "pytest",
+                test_file,
+                "-v",
+                "--tb=short",
+                "--noconftest",
+                "-p",
+                "no:cacheprovider",
             ]
         elif lang == "go":
             return ["go", "test", "-v", "-run", "TestAtomicGuard"]
@@ -109,8 +116,15 @@ class QuickTestRunner:
             return ["npm", "test", "--", test_file]
         else:
             return [
-                "python", "-m", "pytest", test_file,
-                "-v", "--tb=short", "--noconftest", "-p", "no:cacheprovider"
+                "python",
+                "-m",
+                "pytest",
+                test_file,
+                "-v",
+                "--tb=short",
+                "--noconftest",
+                "-p",
+                "no:cacheprovider",
             ]
 
     def _create_test_script(
@@ -156,23 +170,27 @@ class QuickTestRunner:
         if patch_diff:
             # Using quoted heredoc delimiter - no escaping needed
             # --whitespace=fix auto-corrects trailing whitespace issues
-            script_lines.extend([
-                "# Apply patch",
-                "cat << 'PATCH_EOF' | git apply -v --whitespace=fix -",
-                patch_diff,
-                "PATCH_EOF",
-                "",
-            ])
+            script_lines.extend(
+                [
+                    "# Apply patch",
+                    "cat << 'PATCH_EOF' | git apply -v --whitespace=fix -",
+                    patch_diff,
+                    "PATCH_EOF",
+                    "",
+                ]
+            )
 
-        script_lines.extend([
-            "# Write test file",
-            f"cat << 'TEST_EOF' > {test_filename}",
-            test_code,
-            "TEST_EOF",
-            "",
-            "# Run test",
-            f"exec {test_cmd}",
-        ])
+        script_lines.extend(
+            [
+                "# Write test file",
+                f"cat << 'TEST_EOF' > {test_filename}",
+                test_code,
+                "TEST_EOF",
+                "",
+                "# Run test",
+                f"exec {test_cmd}",
+            ]
+        )
 
         return "\n".join(script_lines)
 
@@ -214,8 +232,10 @@ class QuickTestRunner:
                 "run",
                 "--rm",
                 "--network=none",  # Block network for security
-                "--entrypoint", "/bin/sh",
-                "-v", f"{script_path}:/run_test.sh:ro",
+                "--entrypoint",
+                "/bin/sh",
+                "-v",
+                f"{script_path}:/run_test.sh:ro",
                 image,
                 "/run_test.sh",
             ]
@@ -237,7 +257,11 @@ class QuickTestRunner:
                 status = "PASSED"
             else:
                 # Check if it's a test failure or an error
-                if "FAILED" in output or "AssertionError" in output or "Error" in output:
+                if (
+                    "FAILED" in output
+                    or "AssertionError" in output
+                    or "Error" in output
+                ):
                     status = "FAILED"
                 else:
                     status = "ERROR"

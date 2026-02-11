@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from examples.swe_bench_ablation.guards.lint_guard import LintGuard
+from examples.swe_bench_common.guards.lint_guard import LintGuard
 
 from atomicguard.domain.models import Artifact, ArtifactStatus, ContextSnapshot
 
@@ -72,7 +72,9 @@ class TestLintGuard:
 
         assert result.passed is False
         assert "IntEnum" in result.feedback
-        assert "undefined" in result.feedback.lower() or "LINT ERRORS" in result.feedback
+        assert (
+            "undefined" in result.feedback.lower() or "LINT ERRORS" in result.feedback
+        )
 
     def test_passes_with_import(
         self, temp_repo: Path, sample_context_snapshot: ContextSnapshot

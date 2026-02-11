@@ -41,7 +41,9 @@ class TestFrozenDataclassConvention:
                     if isinstance(func, ast.Name) and func.id == "dataclass":
                         is_dataclass = True
                         for kw in decorator.keywords:
-                            if kw.arg == "frozen" and isinstance(kw.value, ast.Constant):
+                            if kw.arg == "frozen" and isinstance(
+                                kw.value, ast.Constant
+                            ):
                                 is_frozen = kw.value.value
 
                 if is_dataclass:
@@ -101,7 +103,9 @@ class TestImmutableCollections:
                     func = decorator.func
                     if isinstance(func, ast.Name) and func.id == "dataclass":
                         for kw in decorator.keywords:
-                            if kw.arg == "frozen" and isinstance(kw.value, ast.Constant):
+                            if kw.arg == "frozen" and isinstance(
+                                kw.value, ast.Constant
+                            ):
                                 is_frozen_dc = kw.value.value
 
             if not is_frozen_dc:
@@ -153,15 +157,15 @@ class TestNoSilentExceptionSwallowing:
                         rel_path = py_file.relative_to(SRC_ROOT.parent.parent)
                         handler_type = ""
                         if node.type:
-                            handler_type = ast.get_source_segment(source, node.type) or ""
+                            handler_type = (
+                                ast.get_source_segment(source, node.type) or ""
+                            )
                         violations.append(
-                            f"{rel_path}:{node.lineno}: "
-                            f"except {handler_type}: pass"
+                            f"{rel_path}:{node.lineno}: except {handler_type}: pass"
                         )
 
-        assert not violations, (
-            "Silent exception swallowing found:\n"
-            + "\n".join(f"  - {v}" for v in violations)
+        assert not violations, "Silent exception swallowing found:\n" + "\n".join(
+            f"  - {v}" for v in violations
         )
 
 
@@ -196,7 +200,9 @@ class TestInterfaceConventions:
             if not inspect.isabstract(cls) or not name.endswith("Interface"):
                 continue
 
-            for method_name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+            for method_name, method in inspect.getmembers(
+                cls, predicate=inspect.isfunction
+            ):
                 if method_name.startswith("_"):
                     continue
                 if not getattr(method, "__isabstractmethod__", False):
@@ -230,6 +236,4 @@ class TestInterfaceConventions:
                 )
             }
             missing = abstract_methods - impl_methods
-            assert not missing, (
-                f"{impl_cls.__name__} is missing methods: {missing}"
-            )
+            assert not missing, f"{impl_cls.__name__} is missing methods: {missing}"

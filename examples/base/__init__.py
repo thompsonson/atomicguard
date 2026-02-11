@@ -35,9 +35,9 @@ from .console import (
     print_workflow_info,
 )
 from .exceptions import ConfigurationError
+from .generators import PydanticAIGenerator
 from .guards import GUARD_REGISTRY, build_guard, register_guard
 from .logging_setup import setup_logging
-from .generators import PydanticAIGenerator
 from .workflow import (
     AgentRunner,
     BaseRunner,

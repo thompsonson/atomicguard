@@ -125,9 +125,7 @@ def cli(debug: bool, log_file: str | None) -> None:
 # =========================================================================
 
 
-def _rewrite_results_with_resolved(
-    results: list, output_dir: str
-) -> None:
+def _rewrite_results_with_resolved(results: list, output_dir: str) -> None:
     """Rewrite results.jsonl with resolved status from evaluation.
 
     This updates the single source of truth (results.jsonl) to include
@@ -185,6 +183,7 @@ _ARM_MAP = {
     "s1_tdd": "04_s1_tdd",
     "s1_tdd_verified": "05_s1_tdd_verified",
     "s1_tdd_behavior": "06_s1_tdd_behavior",
+    "s1_decomposed": "07_s1_decomposed",
     # LLM-as-reviewer and backtracking arms
     "s1_tdd_review": "17_s1_tdd_review",
     "s1_tdd_review_backtrack": "18_s1_tdd_review_backtrack",
@@ -353,7 +352,7 @@ def experiment(
 
         # Step 3: Visualization
         _report("Generating visualizations...", fg="cyan")
-        from examples.swe_bench_ablation.analysis import (
+        from examples.swe_bench_common.analysis import (
             generate_visualizations,
             load_results,
         )
@@ -503,7 +502,7 @@ def evaluate(
 )
 def visualize(results: str, resolved: str | None, output_dir: str) -> None:
     """Generate visualizations from experiment results."""
-    from examples.swe_bench_ablation.analysis import (
+    from examples.swe_bench_common.analysis import (
         generate_visualizations,
         load_results,
     )
@@ -629,9 +628,7 @@ def analyze_errors(results: str, output_dir: str | None) -> None:
 
     if "by_guard" in summary:
         click.echo("\nBy final guard:")
-        for guard, count in sorted(
-            summary["by_guard"].items(), key=lambda x: -x[1]
-        ):
+        for guard, count in sorted(summary["by_guard"].items(), key=lambda x: -x[1]):
             click.echo(f"  {guard}: {count}")
 
     click.echo(f"\nOutput files in: {out_dir}/")

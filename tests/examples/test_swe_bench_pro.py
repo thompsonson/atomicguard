@@ -228,7 +228,7 @@ class TestMultiLangTestSyntaxGuard:
 
 class TestPreparePredictions:
     def test_writes_json_per_arm(self, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.evaluation import prepare_predictions
 
         results = [
@@ -407,8 +407,8 @@ class TestWorkflowBuildHelpers:
         guard_reg = _get_guard_registry(lang)
 
         # For Python, should use the base classes
-        from examples.swe_bench_ablation.generators import PatchGenerator, TestGenerator
-        from examples.swe_bench_ablation.guards import TestSyntaxGuard
+        from examples.swe_bench_common.generators import PatchGenerator, TestGenerator
+        from examples.swe_bench_common.guards import TestSyntaxGuard
 
         assert gen_reg["PatchGenerator"] is PatchGenerator
         assert gen_reg["TestGenerator"] is TestGenerator
@@ -490,7 +490,7 @@ class TestPatchGeneratorRepoRoot:
 
     def test_constructor_stores_repo_root(self, tmp_path):
         """Constructor ``repo_root`` kwarg is stored on the instance."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         gen = PatchGenerator(
             model="test",
@@ -501,7 +501,7 @@ class TestPatchGeneratorRepoRoot:
         assert gen._repo_root == str(tmp_path)
 
     def test_constructor_repo_root_defaults_to_none(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         gen = PatchGenerator(
             model="test",
@@ -512,8 +512,8 @@ class TestPatchGeneratorRepoRoot:
 
     def test_process_output_produces_patch_key_with_repo_root(self, tmp_path):
         """_process_output produces a 'patch' key when given a valid repo_root."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
-        from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+        from examples.swe_bench_common.generators import PatchGenerator
+        from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -553,8 +553,8 @@ class TestPatchGeneratorRepoRoot:
 
     def test_process_output_without_repo_root_has_no_patch(self):
         """Without repo_root, _process_output returns raw edits (no 'patch' key)."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
-        from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+        from examples.swe_bench_common.generators import PatchGenerator
+        from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -595,7 +595,7 @@ class TestListRepoFiles:
     """Verify _list_repo_files discovers source files correctly."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         return PatchGenerator(
             model="test",
@@ -777,7 +777,7 @@ class TestRunAllParallel:
 
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_sequential_execution(self, mock_load, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         instances = self._make_instances(2)
@@ -808,7 +808,7 @@ class TestRunAllParallel:
 
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_parallel_execution(self, mock_load, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         instances = self._make_instances(4)
@@ -837,7 +837,7 @@ class TestRunAllParallel:
 
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_parallel_with_resume(self, mock_load, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         instances = self._make_instances(3)
@@ -882,7 +882,7 @@ class TestRunAllParallel:
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_concurrent_jsonl_writes_are_valid(self, mock_load, tmp_path):
         """Force overlapping writes and verify every JSONL line is valid JSON."""
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         n_instances = 20
@@ -925,7 +925,7 @@ class TestRunAllParallel:
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_concurrent_results_no_duplicates(self, mock_load, tmp_path):
         """With many workers, results list must have no duplicates or drops."""
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         n_instances = 15
@@ -960,7 +960,7 @@ class TestRunAllParallel:
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_concurrent_progress_counter(self, mock_load, tmp_path, caplog):
         """finished_count in log messages must reach total_runs exactly."""
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         n_instances = 8
@@ -1049,7 +1049,7 @@ class TestAnalysisGuardFileValidation:
         )
 
     def test_valid_files_with_repo_root(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("x = 1")
@@ -1060,7 +1060,7 @@ class TestAnalysisGuardFileValidation:
         assert result.passed is True
 
     def test_hallucinated_files_rejected(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         guard = AnalysisGuard(repo_root=str(tmp_path))
         art = _make_artifact(self._analysis_json(["tests/utils/test_log.py"]))
@@ -1070,7 +1070,7 @@ class TestAnalysisGuardFileValidation:
         assert "tests/utils/test_log.py" in result.feedback
 
     def test_mixed_valid_and_hallucinated_rejected(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         (tmp_path / "real.py").write_text("x = 1")
 
@@ -1081,7 +1081,7 @@ class TestAnalysisGuardFileValidation:
         assert "fake.py" in result.feedback
 
     def test_no_repo_root_skips_file_check(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         guard = AnalysisGuard()
         art = _make_artifact(self._analysis_json(["nonexistent/file.py"]))
@@ -1089,7 +1089,7 @@ class TestAnalysisGuardFileValidation:
         assert result.passed is True
 
     def test_many_missing_files_truncated(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         guard = AnalysisGuard(repo_root=str(tmp_path))
         files = [f"missing_{i}.py" for i in range(5)]
@@ -1140,7 +1140,7 @@ class TestPatchGuardEmptyDiff:
         return _factory
 
     def test_patch_with_changes_passes(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         patch = (
             "--- a/file.py\n"
@@ -1157,7 +1157,7 @@ class TestPatchGuardEmptyDiff:
         assert result.passed is True
 
     def test_patch_with_no_changes_rejected(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         patch = (
             "--- a/file.py\n+++ b/file.py\n@@ -1,3 +1,3 @@\n x = 1\n y = 2\n z = 4\n"
@@ -1169,7 +1169,7 @@ class TestPatchGuardEmptyDiff:
         assert "no actual changes" in result.feedback.lower()
 
     def test_edits_with_identical_search_replace_rejected(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "f.py", "search": "x = 1", "replace": "x = 1"}]
         guard = PatchGuard(require_git_apply=False, require_syntax_valid=False)
@@ -1179,7 +1179,7 @@ class TestPatchGuardEmptyDiff:
         assert "identical search and replace" in result.feedback.lower()
 
     def test_edits_with_real_changes_passes(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "f.py", "search": "x = 1", "replace": "x = 2"}]
         guard = PatchGuard(require_git_apply=False, require_syntax_valid=False)
@@ -1197,7 +1197,7 @@ class TestPatchGeneratorLanguageParams:
     """Verify configurable code_block_tag."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1227,7 +1227,7 @@ class TestPatchGeneratorSingleshotFileContent:
     """Verify PatchGenerator includes referenced file content for singleshot."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1365,7 +1365,7 @@ class TestPatchGuardFileExistence:
         return _factory
 
     def test_edit_to_existing_file_passes(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("x = 1\n")
@@ -1381,7 +1381,7 @@ class TestPatchGuardFileExistence:
         assert result.passed is True
 
     def test_edit_to_missing_file_rejected(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "nonexistent.py", "search": "x = 1", "replace": "x = 2"}]
         guard = PatchGuard(
@@ -1396,7 +1396,7 @@ class TestPatchGuardFileExistence:
         assert "nonexistent.py" in result.feedback
 
     def test_multiple_missing_files_truncated(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [
             {"file": f"missing_{i}.py", "search": "x", "replace": "y"} for i in range(5)
@@ -1412,7 +1412,7 @@ class TestPatchGuardFileExistence:
         assert "and 2 more" in result.feedback
 
     def test_no_repo_root_skips_check(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "nonexistent.py", "search": "x = 1", "replace": "x = 2"}]
         guard = PatchGuard(
@@ -1435,7 +1435,7 @@ class TestPatchGeneratorTestFileDetection:
     """Verify _is_test_file correctly identifies test files."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1473,7 +1473,7 @@ class TestPatchGeneratorUtilityDiscovery:
     """Verify _discover_utility_files and _extract_function_signatures."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1484,7 +1484,9 @@ class TestPatchGeneratorUtilityDiscovery:
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "utils.py").write_text("def helper(): pass")
         (tmp_path / "src" / "helpers").mkdir()
-        (tmp_path / "src" / "helpers" / "common.py").write_text("def common_func(): pass")
+        (tmp_path / "src" / "helpers" / "common.py").write_text(
+            "def common_func(): pass"
+        )
         (tmp_path / "src" / "main.py").write_text("def main(): pass")
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "test_utils.py").write_text("def test_helper(): pass")
@@ -1499,7 +1501,7 @@ class TestPatchGeneratorUtilityDiscovery:
         assert "tests/test_utils.py" not in utility_files
 
     def test_extract_function_signatures(self, tmp_path):
-        code = '''
+        code = """
 def simple_func():
     pass
 
@@ -1512,7 +1514,7 @@ def func_with_types(x: int, y: str) -> bool:
 class MyClass:
     def method(self):
         pass
-'''
+"""
         (tmp_path / "utils.py").write_text(code)
 
         gen = self._make_gen()
@@ -1535,7 +1537,7 @@ class TestPatchGeneratorTestGuidance:
     """Verify PatchGenerator includes guidance when test code is present."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1644,7 +1646,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_ollama_provider_detection(self):
         """Ollama provider creates an OllamaProvider-backed model."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1656,7 +1658,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_openai_provider_detection(self):
         """OpenAI provider creates an OpenAIProvider-backed model."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1668,7 +1670,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_openrouter_provider_detection(self):
         """OpenRouter provider creates an OpenRouterProvider-backed model."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1680,7 +1682,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_temperature_passthrough(self):
         """Temperature is stored and can be customised."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1693,7 +1695,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_default_temperature_analysis(self):
         """AnalysisGenerator defaults to temperature=0.2."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1705,7 +1707,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_default_temperature_patch(self):
         """PatchGenerator defaults to temperature=0.3."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         gen = PatchGenerator(
             model="test",
@@ -1717,7 +1719,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_huggingface_provider_detection(self):
         """Explicit huggingface provider creates a HuggingFaceModel."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
         from pydantic_ai.models.huggingface import HuggingFaceModel
 
         gen = AnalysisGenerator(
@@ -1730,7 +1732,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_unknown_provider_raises(self):
         """An unknown provider value raises ValueError."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         with pytest.raises(ValueError, match="Unknown provider"):
             AnalysisGenerator(
@@ -1750,26 +1752,26 @@ class TestAnalysisGeneratorPydanticAI:
     """Verify AnalysisGenerator uses PydanticAI structured output."""
 
     def test_output_type_is_analysis(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.generators import AnalysisGenerator
+        from examples.swe_bench_common.models import Analysis
 
         assert AnalysisGenerator.output_type is Analysis
 
     def test_inherits_from_pydantic_ai_generator(self):
         from examples.base.generators import PydanticAIGenerator
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         assert issubclass(AnalysisGenerator, PydanticAIGenerator)
 
     def test_localization_output_type(self):
-        from examples.swe_bench_ablation.generators import LocalizationGenerator
-        from examples.swe_bench_ablation.models import Localization
+        from examples.swe_bench_common.generators import LocalizationGenerator
+        from examples.swe_bench_common.models import Localization
 
         assert LocalizationGenerator.output_type is Localization
 
     def test_patch_output_type(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
-        from examples.swe_bench_ablation.models import Patch
+        from examples.swe_bench_common.generators import PatchGenerator
+        from examples.swe_bench_common.models import Patch
 
         assert PatchGenerator.output_type is Patch
 
@@ -1783,7 +1785,7 @@ class TestPatchGeneratorResolveRepoRoot:
     """Verify _resolve_repo_root resolves from context then constructor."""
 
     def test_context_metadata_takes_priority(self, tmp_path):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -1802,7 +1804,7 @@ class TestPatchGeneratorResolveRepoRoot:
         assert gen._resolve_repo_root(ctx) == str(tmp_path)
 
     def test_falls_back_to_constructor(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -1828,7 +1830,7 @@ class TestGenerateMethodHappyPath:
     """Verify the generate() method produces correct artifacts on success."""
 
     def _make_gen(self, cls_name="AnalysisGenerator", **kwargs):
-        from examples.swe_bench_ablation.generators import (
+        from examples.swe_bench_common.generators import (
             AnalysisGenerator,
             PatchGenerator,
         )
@@ -1860,7 +1862,7 @@ class TestGenerateMethodHappyPath:
         return mock_agent
 
     def test_generate_returns_artifact_on_success(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         from atomicguard.domain.models import ArtifactStatus
 
@@ -1883,7 +1885,7 @@ class TestGenerateMethodHappyPath:
         assert data["root_cause_hypothesis"] == "wrong branch"
 
     def test_generate_passes_prompt_and_system_to_agent(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         from atomicguard.domain.prompts import PromptTemplate
 
@@ -1909,7 +1911,7 @@ class TestGenerateMethodHappyPath:
         assert call_args[1]["instructions"] == "Bug analyst"
 
     def test_generate_increments_attempt_counter(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         gen = self._make_gen()
         gen._agent = self._mock_agent(
@@ -1929,7 +1931,7 @@ class TestGenerateMethodHappyPath:
         assert art2.attempt_number == 2
 
     def test_generate_captures_context_snapshot(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         gen = self._make_gen()
         gen._agent = self._mock_agent(
@@ -1953,7 +1955,7 @@ class TestGenerateMethodHappyPath:
         assert art.context.dependency_artifacts == (("analysis", "art-1"),)
 
     def test_generate_patch_calls_process_output(self, tmp_path):
-        from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+        from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
         (tmp_path / "hello.py").write_text("print('hello')\n")
 
@@ -1986,7 +1988,7 @@ class TestGenerateMethodErrorPaths:
     """Verify generate() handles errors correctly."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         return AnalysisGenerator(
             model="test",
@@ -2101,7 +2103,7 @@ class TestFormatValidationError:
     """Verify _format_validation_error uses error.message and error.body."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         return AnalysisGenerator(
             model="test",
@@ -2197,7 +2199,7 @@ class TestGetSystemPrompt:
     """Verify _get_system_prompt selects the right source."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         return AnalysisGenerator(
             model="test",
@@ -2226,7 +2228,7 @@ class TestDependencyExtraction:
     """Verify _get_analysis, _get_localization, _get_test_code."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         return PatchGenerator(
             model="test",
@@ -2261,7 +2263,7 @@ class TestDependencyExtraction:
     # -- _get_analysis -------------------------------------------------
 
     def test_get_analysis_valid_returns_model(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         gen = self._make_gen()
         analysis_json = json.dumps(
@@ -2299,7 +2301,7 @@ class TestDependencyExtraction:
     # -- _get_localization ---------------------------------------------
 
     def test_get_localization_valid_returns_model(self):
-        from examples.swe_bench_ablation.models import Localization
+        from examples.swe_bench_common.models import Localization
 
         gen = self._make_gen()
         loc_json = json.dumps(
@@ -2369,7 +2371,7 @@ class TestCreateUnifiedDiffEdgeCases:
     """Verify _create_unified_diff handles edge cases."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         return PatchGenerator(
             model="test",
@@ -2378,14 +2380,14 @@ class TestCreateUnifiedDiffEdgeCases:
         )
 
     def test_file_not_found_skipped(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         gen = self._make_gen()
         edits = [SearchReplaceEdit(file="nonexistent.py", search="x", replace="y")]
         assert gen._create_unified_diff(edits, str(tmp_path)) == ""
 
     def test_search_string_not_found_skipped(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         (tmp_path / "real.py").write_text("print('hello')\n")
         gen = self._make_gen()
@@ -2393,7 +2395,7 @@ class TestCreateUnifiedDiffEdgeCases:
         assert gen._create_unified_diff(edits, str(tmp_path)) == ""
 
     def test_all_edits_fail_returns_empty(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         (tmp_path / "a.py").write_text("x = 1\n")
         gen = self._make_gen()
@@ -2404,7 +2406,7 @@ class TestCreateUnifiedDiffEdgeCases:
         assert gen._create_unified_diff(edits, str(tmp_path)) == ""
 
     def test_multiple_edits_different_files(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         (tmp_path / "a.py").write_text("x = 1\n")
         (tmp_path / "b.py").write_text("y = 2\n")
@@ -2427,7 +2429,7 @@ class TestReadFileEdgeCases:
     """Verify _read_file handles edge cases."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -2486,8 +2488,8 @@ class TestDefaultProcessOutput:
         return Context(ambient=ambient, specification="bug")
 
     def test_analysis_process_output_returns_json(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.generators import AnalysisGenerator
+        from examples.swe_bench_common.models import Analysis
 
         gen = AnalysisGenerator(
             model="test",
@@ -2506,8 +2508,8 @@ class TestDefaultProcessOutput:
         assert data["files"] == ["f.py"]
 
     def test_localization_process_output_returns_json(self):
-        from examples.swe_bench_ablation.generators import LocalizationGenerator
-        from examples.swe_bench_ablation.models import Localization
+        from examples.swe_bench_common.generators import LocalizationGenerator
+        from examples.swe_bench_common.models import Localization
 
         gen = LocalizationGenerator(
             model="test",
@@ -2524,8 +2526,8 @@ class TestDefaultProcessOutput:
         assert data["reasoning"] == "because"
 
     def test_process_output_preserves_all_fields(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.generators import AnalysisGenerator
+        from examples.swe_bench_common.models import Analysis
 
         gen = AnalysisGenerator(
             model="test",
@@ -2706,7 +2708,10 @@ class TestQuickTestRunner:
 
         runner = QuickTestRunner(instance=mock_instance)
         # Official SWE-bench Pro format: {repo_base}.{repo_name}-{uid}
-        assert runner._get_docker_image() == "jefzda/sweap-images:django.django-django__django-1234"
+        assert (
+            runner._get_docker_image()
+            == "jefzda/sweap-images:django.django-django__django-1234"
+        )
 
     def test_get_test_filename_python(self, mock_instance):
         from examples.swe_bench_pro.guards import QuickTestRunner
@@ -2818,7 +2823,10 @@ class TestTestRedGuard:
 
         guard = TestRedGuard(instance=mock_instance)
         # Mock ensure_image_available to return unavailable
-        guard._runner.ensure_image_available = lambda: (False, "Docker image not available")
+        guard._runner.ensure_image_available = lambda: (
+            False,
+            "Docker image not available",
+        )
 
         artifact = make_artifact("def test_foo(): assert False")
         result = guard.validate(artifact)
@@ -2931,7 +2939,10 @@ class TestTestGreenGuard:
         from examples.swe_bench_pro.guards import TestGreenGuard
 
         guard = TestGreenGuard(instance=mock_instance)
-        guard._runner.ensure_image_available = lambda: (False, "Docker image not available")
+        guard._runner.ensure_image_available = lambda: (
+            False,
+            "Docker image not available",
+        )
 
         patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
         test_artifact = make_artifact("def test_foo(): assert fixed()")
@@ -2965,7 +2976,9 @@ class TestTestGreenGuard:
         assert result.passed is True
         assert "PASSES after patch" in result.feedback
 
-    def test_fails_when_test_still_fails_after_patch(self, mock_instance, make_artifact):
+    def test_fails_when_test_still_fails_after_patch(
+        self, mock_instance, make_artifact
+    ):
         from examples.swe_bench_pro.guards import TestGreenGuard
         from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
 

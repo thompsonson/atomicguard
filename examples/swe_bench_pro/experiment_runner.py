@@ -73,9 +73,9 @@ from .language import LanguageConfig, get_language_config
 
 logger = logging.getLogger("swe_bench_pro.experiment")
 
-# Workflow configs live in the ablation example directory.
-_ABLATION_DIR = Path(__file__).parent.parent / "swe_bench_ablation"
-_WORKFLOW_DIR = _ABLATION_DIR / "workflows"
+# Workflow configs live in the common directory.
+_COMMON_DIR = Path(__file__).parent.parent / "swe_bench_common"
+_WORKFLOW_DIR = _COMMON_DIR / "workflows"
 
 _SKIP_DIRS = {"__pycache__", ".git", "node_modules", "vendor", "venv", ".venv", ".tox"}
 

@@ -55,9 +55,7 @@ def regenerate_diff_from_edits(
 
             src_file = repo_path / file_path
             if not src_file.exists():
-                logger.warning(
-                    "File not found for diff regeneration: %s", file_path
-                )
+                logger.warning("File not found for diff regeneration: %s", file_path)
                 continue
 
             # Read original content

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from examples.swe_bench_ablation.evaluation import (
+from examples.swe_bench_common.evaluation import (
     EvalResult,
     _sanitize_instance_id,
     format_instance_log,

@@ -53,8 +53,8 @@ def load_swe_bench_pro(
     except ImportError as err:
         raise ImportError("datasets library required: pip install datasets") from err
 
-    # Reuse the test-list parser from the ablation example.
-    from examples.swe_bench_ablation.dataset import _parse_test_list
+    # Reuse the test-list parser from the common module.
+    from examples.swe_bench_common.dataset import _parse_test_list
 
     logger.info(
         "Loading SWE-Bench Pro (split=%s, language=%s, max=%s, filter=%s)",
@@ -83,9 +83,7 @@ def load_swe_bench_pro(
 
         row_lang = row.get("repo_language") or ""
         if not row_lang:
-            logger.warning(
-                "Instance %s has no repo_language field", row["instance_id"]
-            )
+            logger.warning("Instance %s has no repo_language field", row["instance_id"])
 
         if language and row_lang.lower() != language.lower():
             continue

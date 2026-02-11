@@ -71,7 +71,7 @@ def get_guard_registry() -> dict[str, type]:
 
 def load_workflow_config(variant: str) -> dict[str, Any]:
     """Load workflow configuration from JSON file."""
-    workflow_dir = Path(__file__).parent / "workflows"
+    workflow_dir = Path(__file__).parent.parent / "swe_bench_common" / "workflows"
     return _load_workflow_config(workflow_dir, variant)
 
 
@@ -269,7 +269,7 @@ def run(
 @cli.command()
 def list_workflows() -> None:
     """List available workflow variants."""
-    workflow_dir = Path(__file__).parent / "workflows"
+    workflow_dir = Path(__file__).parent.parent / "swe_bench_common" / "workflows"
 
     click.echo("Available workflows:")
     for f in sorted(workflow_dir.glob("*.json")):

@@ -1,14 +1,15 @@
 """Multi-language patch generator.
 
-Subclasses :class:`PatchGenerator` from the ablation example to replace
+Subclasses :class:`PatchGenerator` from swe_bench_common to replace
 Python-specific prompt text with language-appropriate alternatives.
 """
 
 from typing import Any
 
+from examples.swe_bench_common.generators import PatchGenerator
+
 from atomicguard.domain.models import Context
 from atomicguard.domain.prompts import PromptTemplate
-from examples.swe_bench_ablation.generators import PatchGenerator
 
 from ..language import LanguageConfig
 
@@ -87,7 +88,12 @@ class MultiLangPatchGenerator(PatchGenerator):
                         parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         # Singleshot fallback: include content of files referenced in the problem
-        if not analysis and not localization and self._include_file_content and repo_root:
+        if (
+            not analysis
+            and not localization
+            and self._include_file_content
+            and repo_root
+        ):
             repo_files = self._list_repo_files(
                 repo_root, extensions=self._lang.file_extensions
             )

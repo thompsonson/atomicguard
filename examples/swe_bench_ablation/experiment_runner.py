@@ -13,9 +13,9 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
-
 from examples.swe_bench_common import ArmResult, load_existing_results
+
+from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
 from .dataset import SWEInstance, load_swe_polybench
 from .demo import build_workflow, load_prompts, load_workflow_config

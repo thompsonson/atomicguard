@@ -66,7 +66,9 @@ class TestWorkflowInit:
 
     def test_init_with_constraints(self) -> None:
         """Constraints are stored."""
-        workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), constraints="No external imports")
+        workflow = Workflow(
+            artifact_dag=InMemoryArtifactDAG(), constraints="No external imports"
+        )
 
         assert workflow._constraints == "No external imports"
 

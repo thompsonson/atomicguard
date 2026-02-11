@@ -184,7 +184,7 @@ class FullEvalGuard(GuardInterface):
                 f"--patch_path={pred_path}",
                 f"--output_dir={output_path}",
                 f"--scripts_dir={eval_repo / 'run_scripts'}",
-                f"--num_workers=1",
+                "--num_workers=1",
                 f"--dockerhub_username={self._dockerhub_username}",
                 "--use_local_docker",
                 "--block_network",
@@ -207,7 +207,9 @@ class FullEvalGuard(GuardInterface):
                 results_file = output_path / "eval_results.json"
                 if results_file.exists():
                     eval_results = json.loads(results_file.read_text())
-                    return self._parse_eval_results(eval_results, result.stdout + result.stderr)
+                    return self._parse_eval_results(
+                        eval_results, result.stdout + result.stderr
+                    )
 
                 # No results file - check for errors
                 if result.returncode != 0:

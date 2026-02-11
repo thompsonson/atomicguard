@@ -1,10 +1,10 @@
 """Guards for SWE-Bench Pro.
 
-Re-exports language-agnostic guards from the ablation example and
+Re-exports language-agnostic guards from swe_bench_common and
 provides multi-language and TDD verification guards.
 """
 
-from examples.swe_bench_ablation.guards import (
+from examples.swe_bench_common.guards import (
     AnalysisGuard,
     ClassificationGuard,
     ContextGuard,
