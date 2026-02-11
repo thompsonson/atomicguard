@@ -164,5 +164,3 @@ class ArtifactDAGInterface(ABC):
             List of all artifacts in the repository.
         """
         pass
-
-

@@ -282,4 +282,6 @@ class StagnationInfo:
     error_signature: str  # Deduplicated error type/pattern
     approaches_tried: tuple[str, ...]  # Summary of what was attempted
     failure_summary: str  # Full summary for context injection (Definition 48)
-    stagnant_guard: str | None = None  # Sub-guard that caused stagnation (composite guards)
+    stagnant_guard: str | None = (
+        None  # Sub-guard that caused stagnation (composite guards)
+    )

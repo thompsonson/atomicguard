@@ -53,7 +53,9 @@ class PromptTemplate:
                     artifact = context.ambient.repository.get_artifact(artifact_id)
                     dep_parts.append(f"## {key}\n{artifact.content}")
                 except KeyError:
-                    logger.debug("Dependency artifact %s not found, skipping", artifact_id)
+                    logger.debug(
+                        "Dependency artifact %s not found, skipping", artifact_id
+                    )
             if dep_parts:
                 parts.append("# DEPENDENCIES\n" + "\n\n".join(dep_parts))
 

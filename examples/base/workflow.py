@@ -347,9 +347,7 @@ def _build_workflow_result_data(
                 "attempt": i + 1,
                 "action_pair_id": artifact.action_pair_id,
                 "guard_name": (
-                    artifact.guard_result.guard_name
-                    if artifact.guard_result
-                    else None
+                    artifact.guard_result.guard_name if artifact.guard_result else None
                 ),
                 "content": artifact.content,
                 "feedback": feedback,
