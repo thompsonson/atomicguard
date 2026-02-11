@@ -104,6 +104,196 @@ class Hypothesis(BaseModel):
 
 
 # =============================================================================
+# Decomposed Workflow Outputs (Arm 07)
+# =============================================================================
+
+
+class ProjectStructure(BaseModel):
+    """Structured output from project structure analysis (ap_structure).
+
+    Captures high-level understanding of project layout, dependencies,
+    and conventions to inform downstream steps.
+    """
+
+    root_modules: list[str] = Field(
+        default_factory=list,
+        description="Top-level Python modules/packages in the project",
+    )
+    test_framework: str = Field(
+        default="pytest",
+        description="Test framework used (pytest, unittest, nose, etc.)",
+    )
+    test_directories: list[str] = Field(
+        default_factory=list,
+        description="Directories containing test files",
+    )
+    import_conventions: str | None = Field(
+        default=None,
+        description="Import style used (absolute, relative, etc.)",
+    )
+    key_dependencies: list[str] = Field(
+        default_factory=list,
+        description="Key third-party dependencies",
+    )
+    reasoning: str | None = None
+
+
+class RootCause(BaseModel):
+    """Structured output from root cause analysis (ap_root_cause).
+
+    Deeper analysis of the bug's root cause, building on classification.
+    """
+
+    cause_type: str = Field(
+        description="Specific type of root cause (e.g., 'incorrect_condition', 'missing_null_check')"
+    )
+    cause_description: str = Field(
+        description="Detailed explanation of why the bug occurs"
+    )
+    triggering_conditions: list[str] = Field(
+        default_factory=list,
+        description="Conditions that trigger the bug",
+    )
+    affected_code_paths: list[str] = Field(
+        default_factory=list,
+        description="Code paths affected by the bug",
+    )
+    confidence: Literal["low", "medium", "high"] = "medium"
+
+
+class ContextSummary(BaseModel):
+    """Structured output from context reading (ap_context_read).
+
+    Summarizes the relevant code context around the bug location.
+    """
+
+    file_path: str = Field(description="Primary file containing the bug")
+    relevant_functions: list[str] = Field(
+        default_factory=list,
+        description="Functions relevant to the bug",
+    )
+    relevant_classes: list[str] = Field(
+        default_factory=list,
+        description="Classes relevant to the bug",
+    )
+    imports_used: list[str] = Field(
+        default_factory=list,
+        description="Imports used by the buggy code",
+    )
+    code_snippet: str = Field(
+        description="The relevant code snippet containing or near the bug"
+    )
+    summary: str = Field(description="Summary of what the code is doing")
+
+
+class TestLocalization(BaseModel):
+    """Structured output from test localization (ap_localise_tests).
+
+    Comprehensive test infrastructure analysis to guide test generation.
+    """
+
+    # Required: Test file locations
+    test_files: list[str] = Field(
+        min_length=1,
+        description="Existing test files related to the buggy code",
+    )
+
+    # Test discovery patterns
+    test_patterns: list[str] = Field(
+        default_factory=list,
+        description="File naming patterns (e.g., 'test_*.py', '*_test.py')",
+    )
+
+    # Test framework info
+    test_library: str = Field(
+        default="pytest",
+        description="Test framework: pytest, unittest, nose, doctest",
+    )
+    test_plugins: list[str] = Field(
+        default_factory=list,
+        description="Test plugins used (pytest-qt, pytest-asyncio, etc.)",
+    )
+
+    # Test infrastructure
+    test_fixtures: list[str] = Field(
+        default_factory=list,
+        description="Available fixtures or setup functions",
+    )
+    conftest_files: list[str] = Field(
+        default_factory=list,
+        description="Relevant conftest.py files in scope",
+    )
+
+    # Test style
+    test_style: Literal["function-based", "class-based", "bdd", "mixed"] = Field(
+        default="function-based",
+        description="Testing style used in this area of the codebase",
+    )
+
+    # Invocation
+    test_invocation: str = Field(
+        description="Example command to run the relevant tests",
+    )
+
+    # Reasoning
+    reasoning: str | None = None
+
+
+class FixApproach(BaseModel):
+    """Structured output from fix approach design (ap_fix_approach).
+
+    Detailed strategy for how to fix the bug.
+    """
+
+    approach_summary: str = Field(
+        description="One-line summary of the fix approach"
+    )
+    steps: list[str] = Field(
+        default_factory=list,
+        description="Ordered steps to implement the fix",
+    )
+    files_to_modify: list[str] = Field(
+        default_factory=list,
+        description="Files that need modification",
+    )
+    functions_to_modify: list[str] = Field(
+        default_factory=list,
+        description="Functions that need modification",
+    )
+    edge_cases: list[str] = Field(
+        default_factory=list,
+        description="Edge cases the fix should handle",
+    )
+    reasoning: str
+
+
+class ImpactAnalysis(BaseModel):
+    """Structured output from impact analysis (ap_impact_analysis).
+
+    Analyzes the impact of the proposed fix on other code and tests.
+    """
+
+    affected_tests: list[str] = Field(
+        default_factory=list,
+        description="Existing tests that may be affected by the fix",
+    )
+    affected_functions: list[str] = Field(
+        default_factory=list,
+        description="Other functions that may be affected by the fix",
+    )
+    potential_regressions: list[str] = Field(
+        default_factory=list,
+        description="Potential regressions to watch for",
+    )
+    api_changes: list[str] = Field(
+        default_factory=list,
+        description="Any API changes introduced by the fix",
+    )
+    risk_level: Literal["low", "medium", "high"] = "low"
+    reasoning: str
+
+
+# =============================================================================
 # Localization Output
 # =============================================================================
 
