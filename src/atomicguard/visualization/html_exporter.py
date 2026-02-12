@@ -214,14 +214,55 @@ def extract_workflow_data(
         else 1
     )
 
-    # For run N, each step uses segment min(N, len(segments)-1).
-    # Edges belong to a run if both endpoints are in that run.
+    # Build lookups for dependency tracing.
+    node_to_artifact: dict[str, "Artifact"] = {}
+    node_to_step: dict[str, str] = {}
+    node_to_seg_idx: dict[str, int] = {}
+    for step_id, step_artifacts in steps.items():
+        for artifact in step_artifacts:
+            nid = artifact_node_lookup[artifact.artifact_id]
+            node_to_artifact[nid] = artifact
+            node_to_step[nid] = step_id
+    for step_id, segments in step_segments.items():
+        for seg_idx, seg_nodes in enumerate(segments):
+            for nid in seg_nodes:
+                node_to_seg_idx[nid] = seg_idx
+
+    # For run N, anchor nodes are segment N of steps that actually have
+    # that segment (were re-executed in this escalation round).  Then
+    # trace backwards through dependency_artifacts to include the exact
+    # upstream artifacts each anchor depended on, pulling in the whole
+    # segment so the retry chain is visible.
     runs: list[dict[str, Any]] = []
     for run_idx in range(num_runs):
-        run_node_ids: set[str] = set()
+        # Anchor nodes: segment run_idx from steps that have it.
+        anchor_nodes: set[str] = set()
         for _step_id, segments in step_segments.items():
-            seg_idx = min(run_idx, len(segments) - 1)
-            run_node_ids.update(segments[seg_idx])
+            if run_idx < len(segments):
+                anchor_nodes.update(segments[run_idx])
+
+        # Trace dependency_artifacts transitively from anchors.
+        run_node_ids: set[str] = set(anchor_nodes)
+        queue = list(anchor_nodes)
+        visited: set[str] = set()
+        while queue:
+            nid = queue.pop()
+            if nid in visited:
+                continue
+            visited.add(nid)
+            art = node_to_artifact.get(nid)
+            if not art:
+                continue
+            for _dep_ap, dep_art_id in art.context.dependency_artifacts:
+                dep_nid = artifact_node_lookup.get(dep_art_id)
+                if dep_nid and dep_nid not in run_node_ids:
+                    # Include the full segment containing this dep
+                    dep_step = node_to_step.get(dep_nid)
+                    dep_seg = node_to_seg_idx.get(dep_nid)
+                    if dep_step is not None and dep_seg is not None:
+                        for seg_nid in step_segments[dep_step][dep_seg]:
+                            run_node_ids.add(seg_nid)
+                            queue.append(seg_nid)
 
         run_edge_ids: set[str] = set()
         for edge in edges:
