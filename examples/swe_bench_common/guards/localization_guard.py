@@ -6,6 +6,7 @@ that exist in the repository.
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,11 @@ class LocalizationGuard(GuardInterface):
     - Files exist in repository (if repo_root provided)
     """
 
+    # Patterns that identify test files (filenames only).
+    _TEST_FILE_RE = re.compile(r"(?:^test_.*\.py$|_test\.py$)", re.IGNORECASE)
+    # Directory segments that mark a test tree.
+    _TEST_DIR_SEGMENTS = {"tests", "test"}
+
     def __init__(
         self,
         require_files: bool = True,
@@ -34,6 +40,7 @@ class LocalizationGuard(GuardInterface):
         max_files: int = 5,
         require_functions: bool = False,
         repo_root: str | None = None,
+        reject_test_files: bool = True,
         **kwargs: Any,  # noqa: ARG002
     ):
         """Initialize the guard.
@@ -44,12 +51,14 @@ class LocalizationGuard(GuardInterface):
             max_files: Maximum files allowed
             require_functions: Whether to require functions
             repo_root: Repository root for file validation
+            reject_test_files: Reject files that look like test files
         """
         self._require_files = require_files
         self._min_files = min_files
         self._max_files = max_files
         self._require_functions = require_functions
         self._repo_root = repo_root
+        self._reject_test_files = reject_test_files
 
     def validate(
         self,
@@ -134,6 +143,23 @@ class LocalizationGuard(GuardInterface):
                         if len(missing_files) > 3
                         else ""
                     )
+                )
+
+        # Reject test files (defense-in-depth for ap_localise_issue)
+        if self._reject_test_files:
+            test_files = [
+                f
+                for f in localization.files
+                if self._TEST_FILE_RE.search(Path(f).name)
+                or self._TEST_DIR_SEGMENTS & set(Path(f).parts)
+            ]
+            if test_files:
+                errors.append(
+                    "Localization returned test files: "
+                    + ", ".join(test_files)
+                    + ". Identify SOURCE files that need modification, "
+                    "not test files. Test localization is handled "
+                    "separately by ap_localise_tests."
                 )
 
         if errors:

@@ -36,6 +36,7 @@ from .generators import (
     ClassificationGenerator,
     ContextReadGenerator,
     DiffReviewGenerator,
+    EditPlanGenerator,
     FixApproachGenerator,
     ImpactAnalysisGenerator,
     LocalizationGenerator,
@@ -53,6 +54,7 @@ from .guards import (
     ClassificationGuard,
     ContextGuard,
     DiffReviewGuard,
+    EditPlanGuard,
     FixApproachGuard,
     FullEvalGuard,
     ImpactGuard,
@@ -133,6 +135,7 @@ def _get_generator_registry(
         "ClassificationGenerator": ClassificationGenerator,
         "ContextReadGenerator": ContextReadGenerator,
         "DiffReviewGenerator": DiffReviewGenerator,
+        "EditPlanGenerator": EditPlanGenerator,
         "FixApproachGenerator": FixApproachGenerator,
         "ImpactAnalysisGenerator": ImpactAnalysisGenerator,
         "LocalizationGenerator": LocalizationGenerator,
@@ -154,6 +157,7 @@ def _get_guard_registry(
         "analysis": AnalysisGuard,
         "classification_schema": ClassificationGuard,
         "context": ContextGuard,
+        "edit_plan": EditPlanGuard,
         "fix_approach": FixApproachGuard,
         "impact": ImpactGuard,
         "lint": LintGuard,
@@ -257,6 +261,14 @@ def build_workflow(
                 "api_key": api_key,
                 "provider": provider,
             }
+            # ContextReadGenerator reads files from disk — repo_root is mandatory.
+            if issubclass(gen_cls, ContextReadGenerator):
+                if not repo_root:
+                    raise ValueError(
+                        "ContextReadGenerator requires repo_root for disk-based "
+                        "file reading, but none was provided."
+                    )
+                gen_kwargs["repo_root"] = repo_root
             # AnalysisGenerator needs repo_root for code-aware analysis.
             if repo_root and issubclass(gen_cls, AnalysisGenerator):
                 gen_kwargs["repo_root"] = repo_root

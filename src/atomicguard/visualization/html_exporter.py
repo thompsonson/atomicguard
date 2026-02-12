@@ -109,9 +109,7 @@ def extract_workflow_data(
             artifact_step_lookup[artifact.artifact_id] = step_id
 
             # Serialize artifact data for detail panel
-            artifact_data[artifact.artifact_id] = _serialize_artifact(
-                artifact
-            )
+            artifact_data[artifact.artifact_id] = _serialize_artifact(artifact)
 
             nodes.append(
                 {
@@ -127,9 +125,7 @@ def extract_workflow_data(
                             artifact.context.escalation_feedback
                         )
                         > 0,
-                        "feedback_count": len(
-                            artifact.context.feedback_history
-                        ),
+                        "feedback_count": len(artifact.context.feedback_history),
                     }
                 }
             )
@@ -139,9 +135,7 @@ def extract_workflow_data(
             # attempt (fresh start with new upstream artifacts).
             if artifact.previous_attempt_id:
                 # Explicit retry chain — local retry
-                source_id = (
-                    f"artifact_{artifact.previous_attempt_id[:8]}"
-                )
+                source_id = f"artifact_{artifact.previous_attempt_id[:8]}"
                 edges.append(
                     {
                         "data": {
@@ -172,7 +166,7 @@ def extract_workflow_data(
     # escalation paths are visible (e.g. attempt#3 → structure#2
     # vs attempt#1 → structure#1).
     seen_dep_edges: set[tuple[str, str]] = set()
-    for step_id, step_artifacts in steps.items():
+    for _step_id, step_artifacts in steps.items():
         for artifact in step_artifacts:
             artifact_node_id = artifact_node_lookup[artifact.artifact_id]
             for (
@@ -208,14 +202,10 @@ def extract_workflow_data(
             segments[-1].append(node_id)
         step_segments[step_id] = segments
 
-    num_runs = (
-        max(len(segs) for segs in step_segments.values())
-        if step_segments
-        else 1
-    )
+    num_runs = max(len(segs) for segs in step_segments.values()) if step_segments else 1
 
     # Build lookups for dependency tracing.
-    node_to_artifact: dict[str, "Artifact"] = {}
+    node_to_artifact: dict[str, Artifact] = {}
     node_to_step: dict[str, str] = {}
     node_to_seg_idx: dict[str, int] = {}
     for step_id, step_artifacts in steps.items():
@@ -223,7 +213,7 @@ def extract_workflow_data(
             nid = artifact_node_lookup[artifact.artifact_id]
             node_to_artifact[nid] = artifact
             node_to_step[nid] = step_id
-    for step_id, segments in step_segments.items():
+    for _step_id, segments in step_segments.items():
         for seg_idx, seg_nodes in enumerate(segments):
             for nid in seg_nodes:
                 node_to_seg_idx[nid] = seg_idx
@@ -234,7 +224,7 @@ def extract_workflow_data(
     # Single-segment steps: assigned to the run of their latest
     # dependency (they only executed once the upstream was ready).
     node_native_run: dict[str, int] = {}
-    for step_id, segments in step_segments.items():
+    for _step_id, segments in step_segments.items():
         for seg_idx, seg_nodes in enumerate(segments):
             for nid in seg_nodes:
                 node_native_run[nid] = seg_idx
@@ -245,7 +235,7 @@ def extract_workflow_data(
     changed = True
     while changed:
         changed = False
-        for step_id, segments in step_segments.items():
+        for _step_id, segments in step_segments.items():
             if len(segments) != 1:
                 continue
             for nid in segments[0]:

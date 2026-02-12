@@ -295,6 +295,37 @@ class FixApproach(BaseModel):
     reasoning: str
 
 
+class FileEdit(BaseModel):
+    """A planned edit to a single file (part of EditPlan)."""
+
+    file: str = Field(description="File path relative to repo root")
+    change_description: str = Field(
+        description="What needs to change in this file"
+    )
+    functions_to_modify: list[str] = Field(
+        default_factory=list,
+        description="Functions that will be modified in this file",
+    )
+
+
+class EditPlan(BaseModel):
+    """Structured output from edit planning (ap_edit_plan).
+
+    Bridges fix_approach and gen_patch by specifying exact files and
+    changes needed, validated against the repository before patch generation.
+    """
+
+    files_to_edit: list[FileEdit] = Field(
+        min_length=1,
+        description="Files to edit with descriptions of changes",
+    )
+    import_changes: list[str] = Field(
+        default_factory=list,
+        description="Import additions/removals needed",
+    )
+    rationale: str = Field(description="Why these specific edits fix the bug")
+
+
 class ImpactAnalysis(BaseModel):
     """Structured output from impact analysis (ap_impact_analysis).
 

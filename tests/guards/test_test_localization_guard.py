@@ -224,7 +224,7 @@ class TestFileExistenceValidation:
         result = guard.validate(artifact)
 
         assert result.passed is False
-        assert "Test files not found" in result.feedback
+        assert "do not exist in the repository" in result.feedback
         assert "nonexistent.py" in result.feedback
 
     def test_missing_conftest_fails(
@@ -239,7 +239,7 @@ class TestFileExistenceValidation:
         result = guard.validate(artifact)
 
         assert result.passed is False
-        assert "Conftest files not found" in result.feedback
+        assert "do not exist in the repository" in result.feedback
 
     def test_no_repo_root_skips_file_check(
         self, sample_context_snapshot: ContextSnapshot
@@ -297,7 +297,7 @@ class TestInvocationValidation:
         result = guard.validate(artifact)
 
         assert result.passed is False
-        assert "Path in test_invocation not found" in result.feedback
+        assert "does not exist in the repository" in result.feedback
 
     def test_unknown_runner_warns(
         self, temp_repo: Path, sample_context_snapshot: ContextSnapshot
@@ -363,5 +363,4 @@ class TestMultipleErrors:
         assert result.passed is False
         # All errors should be in feedback
         assert "Unknown test library" in result.feedback
-        assert "Test files not found" in result.feedback
-        assert "Conftest files not found" in result.feedback
+        assert "do not exist in the repository" in result.feedback

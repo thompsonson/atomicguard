@@ -92,11 +92,42 @@ class ContextGuard(GuardInterface):
         if not context.summary.strip():
             errors.append("summary is empty")
 
-        # Validate file exists in repository
+        # Validate file exists in repository and snippet matches real content
         if context.file_path and self._repo_root:
             full_path = Path(self._repo_root) / context.file_path
             if not full_path.exists():
                 errors.append(f"File not found in repository: {context.file_path}")
+            elif context.code_snippet.strip():
+                try:
+                    real_content = full_path.read_text(errors="replace")
+                    # For multi-file snippets with "--- file: ..." headers,
+                    # extract the section for the primary file.
+                    snippet_to_check = context.code_snippet
+                    header = f"--- file: {context.file_path} ---"
+                    if header in snippet_to_check:
+                        # Extract content after this header until next header or end
+                        start = snippet_to_check.index(header) + len(header)
+                        next_header = snippet_to_check.find("\n--- file: ", start)
+                        if next_header != -1:
+                            snippet_to_check = snippet_to_check[start:next_header]
+                        else:
+                            snippet_to_check = snippet_to_check[start:]
+                        snippet_to_check = snippet_to_check.strip()
+
+                    if snippet_to_check and snippet_to_check not in real_content:
+                        preview_lines = real_content.splitlines()[:30]
+                        preview = "\n".join(preview_lines)
+                        errors.append(
+                            f"code_snippet does not match actual file content for "
+                            f"{context.file_path}. First 30 lines of real file:\n"
+                            f"{preview}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "[ContextGuard] Could not read %s for verification: %s",
+                        full_path,
+                        e,
+                    )
 
         if errors:
             feedback = "Context validation failed:\n- " + "\n- ".join(errors)

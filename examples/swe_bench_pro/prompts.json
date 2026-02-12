@@ -1,4 +1,74 @@
 {
+  "ap_classify": {
+    "role": "You are an expert at analyzing software engineering tasks to determine their complexity and type.",
+    "constraints": "Classify the problem into a category:\n\n- trivial_fix: Single-line or obvious fix (typo, missing import, wrong constant)\n- single_file_bug: Bug localized to one file, requires understanding logic flow\n- multi_file_bug: Bug spans multiple files, requires coordinated changes\n- api_change: Requires changing function signatures or adding new interfaces\n- refactor: Requires restructuring code to fix the underlying issue\n\nESTIMATED COMPLEXITY (1-5):\n- 1: Trivial, < 5 lines changed\n- 2: Simple, single function modification\n- 3: Moderate, multiple functions or logic changes\n- 4: Complex, architectural considerations\n- 5: Very complex, deep refactoring needed",
+    "task": "Analyze the problem and classify its type and complexity.\n\n## Problem Statement\n{specification}",
+    "feedback_wrapper": "CLASSIFICATION REJECTED:\n{feedback}\n\nInstruction: Revise your classification. Ensure:\n- category is one of: trivial_fix, single_file_bug, multi_file_bug, api_change, refactor\n- estimated_complexity is an integer from 1 to 5\n- reasoning explains the classification"
+  },
+
+  "ap_structure": {
+    "role": "You are a software architect analyzing project structure and conventions.",
+    "constraints": "Analyze the project structure to identify:\n\n1. ROOT MODULES: Top-level packages/modules in the project\n2. TEST FRAMEWORK: pytest, unittest, nose, etc.\n3. TEST DIRECTORIES: Where test files are located\n4. IMPORT CONVENTIONS: Absolute vs relative imports, common patterns\n5. KEY DEPENDENCIES: Third-party libraries used\n\nUse the Repository Structure listing in the problem statement to guide your analysis.",
+    "task": "Analyze the project structure, test framework, and conventions.\n\n## Problem Statement\n{specification}",
+    "feedback_wrapper": "STRUCTURE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Use exact paths from the Repository Structure listing."
+  },
+
+  "ap_root_cause": {
+    "role": "You are a debugging expert identifying root causes of software bugs.",
+    "constraints": "Based on the problem classification, identify the root cause:\n\n1. CAUSE TYPE: Specific type (e.g., 'incorrect_condition', 'missing_null_check', 'wrong_return_value')\n2. CAUSE DESCRIPTION: Detailed explanation of WHY the bug occurs\n3. TRIGGERING CONDITIONS: What inputs/states trigger the bug\n4. AFFECTED CODE PATHS: Which code paths are affected\n5. CONFIDENCE: How confident are you in this analysis (low/medium/high)",
+    "task": "Identify the root cause of the bug based on the classification.\n\n## Problem Statement\n{specification}\n\n## Problem Classification\n{ap_classify}",
+    "feedback_wrapper": "ROOT CAUSE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your root cause analysis. Be more specific about the triggering conditions.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to issues with the root cause analysis:\n{feedback}\n\nRe-analyze with a different hypothesis about the root cause."
+  },
+
+  "ap_localise_issue": {
+    "role": "You are a code search specialist identifying exact bug locations in a codebase.",
+    "constraints": "Based on the root cause analysis, identify the exact locations:\n\n1. FILES: List of files that need modification (max 5)\n2. FUNCTIONS: Specific functions within those files\n3. LINE NUMBERS: If possible, approximate line numbers\n\nREQUIREMENTS:\n- Paths must be relative to repository root\n- Use exact paths from the Repository Structure listing\n- Prioritize precision over recall\n- Files must be SOURCE files, NOT test files (test_*.py, *_test.py, files under tests/ directories). Test localization is handled separately by ap_localise_tests.",
+    "task": "Identify exact files and functions that need modification.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}",
+    "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Use exact paths from the Repository Structure listing.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to incorrect localization:\n{feedback}\n\nRe-localize using the root cause analysis and repository structure."
+  },
+
+  "ap_context_read": {
+    "role": "You are a code analyst summarizing relevant context around bug locations.",
+    "constraints": "Read and summarize the code context around the identified bug location:\n\n1. FILE PATH: The primary file containing the bug\n2. RELEVANT FUNCTIONS: Functions involved in the bug\n3. RELEVANT CLASSES: Classes involved (if any)\n4. IMPORTS: Imports used by the buggy code\n5. CODE SNIPPET: The actual code containing/near the bug\n6. SUMMARY: What the code is doing and how the bug manifests",
+    "task": "Summarize the code context around the bug location.\n\n## Problem Statement\n{specification}\n\n## Localization\n{ap_localise_issue}",
+    "feedback_wrapper": "CONTEXT SUMMARY REJECTED:\n{feedback}\n\nInstruction: Revise your context summary. Focus on the code directly related to the bug.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to insufficient context:\n{feedback}\n\nProvide more detailed context about the bug location."
+  },
+
+  "ap_localise_tests": {
+    "role": "You are a test infrastructure analyst identifying test patterns and locations.",
+    "constraints": "Identify the test infrastructure for the buggy code:\n\n1. TEST FILES: Existing test files related to the buggy code (MUST exist in Repository Structure)\n2. TEST PATTERNS: File naming patterns (test_*.py, *_test.py, etc.)\n3. TEST LIBRARY: pytest, unittest, nose, doctest\n4. TEST PLUGINS: pytest-qt, pytest-asyncio, etc.\n5. TEST FIXTURES: Available fixtures or setup functions\n6. CONFTEST FILES: ONLY list conftest.py files that are VISIBLE in the Repository Structure. If no conftest.py files are shown, leave this list EMPTY []\n7. TEST STYLE: function-based, class-based, bdd, or mixed\n8. TEST INVOCATION: Example command to run the tests\n\nCRITICAL: All file paths MUST be exact paths from the Repository Structure listing. Do NOT invent or assume files exist - only reference files you can see in the structure.",
+    "task": "Identify test files, patterns, and infrastructure for the buggy code.\n\n## Problem Statement\n{specification}\n\n## Localization\n{ap_localise_issue}\n\n## Project Structure\n{ap_structure}",
+    "feedback_wrapper": "TEST LOCALIZATION REJECTED:\n{feedback}\n\nThe guard has checked the filesystem and confirmed these files are MISSING. Do NOT retry the same paths.\n\nCRITICAL RULES:\n- Only list files that ACTUALLY EXIST in the Repository Structure\n- If a file is not shown in the structure, do NOT include it\n- For conftest_files, use an empty list [] if no conftest.py files are visible in the Repository Structure\n- Do NOT guess or hallucinate file paths — every path must come from the structure listing",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nTest generation failed due to incorrect test localization:\n{feedback}\n\nRe-analyze the test infrastructure. ONLY list files visible in the Repository Structure."
+  },
+
+  "ap_fix_approach": {
+    "role": "You are a senior software engineer designing fix strategies for bugs.",
+    "constraints": "Design a concrete fix approach:\n\n1. APPROACH SUMMARY: One-line summary of the fix\n2. STEPS: Ordered list of steps to implement the fix\n3. FILES TO MODIFY: Which files need changes (REQUIRED — must list at least one file using exact paths from the Repository Structure)\n4. FUNCTIONS TO MODIFY: Which functions need changes\n5. EDGE CASES: Edge cases the fix should handle\n6. REASONING: Why this approach will fix the bug",
+    "task": "Design a fix strategy based on the root cause and context.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}\n\n## Code Context\n{ap_context_read}\n\n## Localization\n{ap_localise_issue}\n\n## Project Structure\n{ap_structure}",
+    "feedback_wrapper": "FIX APPROACH REJECTED:\n{feedback}\n\nInstruction: Revise your fix approach. The files_to_modify field is REQUIRED and must contain at least one file path from the Repository Structure.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to issues with the fix approach:\n{feedback}\n\nDesign a different fix approach."
+  },
+
+  "ap_impact_analysis": {
+    "role": "You are a senior software engineer analyzing the impact of code changes.",
+    "constraints": "Analyze the impact of the proposed fix:\n\n1. AFFECTED TESTS: Existing tests that may be affected\n2. AFFECTED FUNCTIONS: Other functions that may be affected\n3. POTENTIAL REGRESSIONS: Things that could break\n4. API CHANGES: Any API changes introduced\n5. RISK LEVEL: low, medium, or high\n6. REASONING: Why this risk assessment",
+    "task": "Analyze the impact of the proposed fix on other code and tests.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}",
+    "feedback_wrapper": "IMPACT ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your impact analysis. Consider more potential side effects.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed, possibly due to missed impacts:\n{feedback}\n\nRe-analyze the impact more thoroughly."
+  },
+
+  "ap_integrate_patch": {
+    "role": "You are a senior software engineer integrating and validating bug fixes.",
+    "constraints": "Generate a final integrated patch that:\n\n1. EXACT MATCH: Search strings match EXACTLY (including whitespace/indentation)\n2. VALID CODE: Replace code is syntactically valid\n3. MINIMAL CHANGE: Only change what's necessary\n4. FULL COVERAGE: Address all aspects of the fix approach\n5. TEST COMPATIBLE: Works with the generated test\n\nThis is the final integration step - ensure the patch is complete and correct.",
+    "task": "Generate the final integrated patch.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Generated Test\n{ap_gen_test}\n\n## Previous Patch Attempt\n{ap_gen_patch}\n\n## Project Structure\n{ap_structure}",
+    "feedback_wrapper": "INTEGRATION REJECTED:\n{feedback}\n\n## RESPONSE FORMAT (MANDATORY)\nYou MUST respond with a JSON object containing an 'edits' array.\nDo NOT explain your reasoning in text. Do NOT use markdown code blocks.\nJust return the JSON directly.\n\nGenerate corrected search-replace blocks as JSON.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe integrated patch failed validation:\n{feedback}\n\nRevise the patch to address all issues."
+  },
+
   "ap_localize": {
     "role": "You are a code search specialist identifying bug locations in a codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be source files for the target language\n- Prioritize precision over recall\n- Paths should be relative to repository root",
@@ -24,7 +94,7 @@
   "ap_gen_test": {
     "role": "You are a test engineer writing TDD-style tests to reproduce bugs.",
     "constraints": "Write a STANDALONE test that asserts CORRECT behavior, which will FAIL on the current buggy code.\n\nCRITICAL: Your test runs IN ISOLATION (pytest test_atomicguard.py at repo root).\nThe project's conftest.py fixtures are NOT available. You must write self-contained tests.\n\nSTANDALONE TEST RULES:\n1. Do NOT import project modules at the top level - they may have complex initialization\n2. Import project modules INSIDE test functions to defer initialization\n3. Do NOT rely on fixtures from conftest.py - they won't be loaded\n4. Use only standard pytest features (caplog, tmp_path, monkeypatch, etc.)\n5. If you need to mock Qt/Django/etc., do it explicitly in the test\n\nMANDATORY FOR Qt-based projects (PyQt/PySide/qutebrowser):\n- Project modules often import Qt at MODULE LEVEL, so even deferred imports trigger Qt\n- You MUST mock Qt modules BEFORE importing ANY project module\n- Use: `with patch.dict('sys.modules', {'PyQt5': MagicMock(), 'PyQt5.QtCore': MagicMock(), 'PyQt5.QtWidgets': MagicMock()}): ...`\n- ALL project imports must be INSIDE the mock context manager\n\nTDD PATTERN:\n- Assert what the code SHOULD do (correct behavior)\n- This assertion will FAIL because the buggy code behaves incorrectly\n- After the bug is fixed, the assertion will PASS\n\nDO NOT write tests that:\n- Import project modules at the top level (causes initialization errors!)\n- Only check if functions exist (e.g., `assert callable(func)`)\n- Only check types or module imports\n- Rely on fixtures from the project's conftest.py\n\nEXAMPLE (Good - standalone with deferred imports):\n```python\nimport pytest\n\ndef test_subdomain_not_blocked():\n    # Import inside function to avoid initialization issues\n    from myproject.blocker import is_blocked\n    result = is_blocked('sub.example.com', blocked=['example.com'])\n    assert result == False, 'Subdomains should not match parent'\n```\n\nEXAMPLE (REQUIRED for Qt projects - mock BEFORE any project import):\n```python\nimport pytest\nfrom unittest.mock import patch, MagicMock\n\ndef test_qt_function():\n    # MUST mock Qt modules BEFORE importing project code\n    # Project modules import Qt at module level, so this is REQUIRED\n    mock_qt = MagicMock()\n    with patch.dict('sys.modules', {\n        'PyQt5': mock_qt,\n        'PyQt5.QtCore': mock_qt,\n        'PyQt5.QtWidgets': mock_qt,\n        'PyQt5.QtGui': mock_qt,\n    }):\n        # NOW import project module - Qt is safely mocked\n        from myproject.utils import my_function\n        result = my_function('test')\n        assert result == 'expected'\n```\n\nEXAMPLE (Bad - top-level imports cause failures):\n```python\nfrom myproject.qt_module import something  # FAILS: Qt not initialized!\n\ndef test_something():\n    assert something() == 'expected'\n```\n\nREQUIREMENTS:\n- Write STANDALONE tests that don't depend on project fixtures\n- Import project modules INSIDE test functions, not at top level\n- Use concrete input values that trigger the bug\n- Assert the EXPECTED (correct) output value",
-    "task": "Write a STANDALONE test that asserts CORRECT behavior. It will FAIL on buggy code. CRITICAL: Import project modules INSIDE test functions, not at the top level.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}",
+    "task": "Write a STANDALONE test that asserts CORRECT behavior. It will FAIL on buggy code. CRITICAL: Import project modules INSIDE test functions, not at the top level.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Test Infrastructure\n{ap_localise_tests}\n\n## Impact Analysis\n{ap_impact_analysis}",
     "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nCOMMON MISTAKES:\n1. Top-level imports of project modules - move imports INSIDE test functions!\n2. Relying on project fixtures (qapp, etc.) - write standalone tests\n3. Not mocking complex dependencies (Qt, Django, etc.)\n4. Testing existence (callable, hasattr) instead of behavior\n5. Not using inputs that trigger the specific bug\n\nFIX:\n- Move ALL project imports inside the test function\n- If initialization still fails, mock the problematic dependencies\n- Call the buggy function with trigger inputs, assert EXPECTED output\n\nGenerate corrected test code.",
     "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the generated test:\n{feedback}\n\nAvoid these issues. Write a test that better captures the bug behavior."
   },
@@ -65,11 +135,19 @@
     "feedback_wrapper": "WORKFLOW REJECTED:\n{feedback}\n\nInstruction: Revise your workflow. Ensure:\n- action_pairs uses valid generators and guards from the component registry\n- requires lists only define valid dependencies\n- rmax is between 1 and 10"
   },
 
+  "ap_edit_plan": {
+    "role": "You are a senior software engineer planning exact file edits to fix a bug.",
+    "constraints": "Plan the exact file edits needed to implement the fix approach.\n\nREQUIREMENTS:\n1. FILES TO EDIT: List every file that needs modification with exact paths from the Repository Structure\n2. CHANGE DESCRIPTION: For each file, describe what needs to change\n3. FUNCTIONS TO MODIFY: List specific functions that will be modified in each file\n4. IMPORT CHANGES: List any import additions or removals needed\n5. RATIONALE: Explain why these specific edits will fix the bug\n\nCRITICAL:\n- Use ONLY exact paths from the Repository Structure listing\n- Do NOT invent or guess file paths\n- Be specific about what changes in each function",
+    "task": "Plan the exact file edits needed to implement the fix.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Code Context\n{ap_context_read}",
+    "feedback_wrapper": "EDIT PLAN REJECTED:\n{feedback}\n\nThe guard has checked the filesystem. Any files listed as missing are CONFIRMED to not exist.\n\nRevise your edit plan using ONLY files from the Repository Structure listing.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nPatch generation failed due to issues with the edit plan:\n{feedback}\n\nDesign a different edit plan. Check the Repository Structure carefully."
+  },
+
   "ap_gen_patch": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
-    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
-    "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n{ap_gen_test}",
-    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\n## RESPONSE FORMAT (MANDATORY)\nYou MUST respond with a JSON object containing an 'edits' array.\nDo NOT explain your reasoning in text. Do NOT use markdown code blocks.\nJust return the JSON directly.\n\n## Requirements:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks as JSON.",
-    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe patch failed in a previous escalation cycle:\n{feedback}\n\nAvoid these issues. Try a different approach to fix the bug."
+    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Follow the edit plan exactly — it specifies which files and functions to modify\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
+    "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Edit Plan\n{ap_edit_plan}\n\n## Code Context (ACTUAL file content — use this for exact search strings)\n{ap_context_read}\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n{ap_gen_test}",
+    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\n## RESPONSE FORMAT (MANDATORY)\nYou MUST respond with a JSON object containing an 'edits' array.\nDo NOT explain your reasoning in text. Do NOT use markdown code blocks.\nJust return the JSON directly.\n\n## Requirements:\n- Follow the edit plan for which files and functions to modify\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks as JSON.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe patch failed in a previous escalation cycle:\n{feedback}\n\nThe edit plan is being revised. Follow the updated plan."
   }
 }

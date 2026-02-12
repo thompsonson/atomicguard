@@ -123,7 +123,11 @@ class TestLocalizationGuard(GuardInterface):
                     if len(missing_test_files) > 3
                     else ""
                 )
-                errors.append(f"Test files not found: {', '.join(truncated)}{suffix}")
+                errors.append(
+                    f"These test files do not exist in the repository: "
+                    f"{', '.join(truncated)}{suffix}. "
+                    f"Only reference files that actually exist in the codebase."
+                )
 
             # Check conftest files
             missing_conftest = [
@@ -137,7 +141,9 @@ class TestLocalizationGuard(GuardInterface):
                     else ""
                 )
                 errors.append(
-                    f"Conftest files not found: {', '.join(truncated)}{suffix}"
+                    f"These conftest files do not exist in the repository: "
+                    f"{', '.join(truncated)}{suffix}. "
+                    f"Only reference files that actually exist in the codebase."
                 )
 
             # Check test invocation paths exist
@@ -212,6 +218,10 @@ class TestLocalizationGuard(GuardInterface):
                 path_part = token.split("::")[0]
                 path = repo_path / path_part
                 if not path.exists():
-                    errors.append(f"Path in test_invocation not found: {path_part}")
+                    errors.append(
+                        f"This path in test_invocation does not exist in the "
+                        f"repository: {path_part}. "
+                        f"Only reference paths that actually exist in the codebase."
+                    )
 
         return errors

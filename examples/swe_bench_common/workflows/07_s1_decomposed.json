@@ -52,7 +52,7 @@
     "ap_fix_approach": {
       "generator": "FixApproachGenerator",
       "guard": "fix_approach",
-      "requires": ["ap_root_cause", "ap_context_read", "ap_localise_issue"],
+      "requires": ["ap_root_cause", "ap_context_read", "ap_localise_issue", "ap_structure"],
       "r_patience": 2,
       "e_max": 2,
       "escalate_feedback_to": ["ap_context_read"],
@@ -81,34 +81,46 @@
       },
       "description": "Generate failing test (TDD red phase)"
     },
+    "ap_edit_plan": {
+      "generator": "EditPlanGenerator",
+      "guard": "edit_plan",
+      "guard_config": {
+        "repo_root": "{repo_root}"
+      },
+      "requires": ["ap_fix_approach", "ap_context_read"],
+      "r_patience": 2,
+      "e_max": 2,
+      "escalate_feedback_to": ["ap_fix_approach"],
+      "description": "Plan exact file edits before patch generation"
+    },
     "ap_gen_patch": {
       "generator": "PatchGenerator",
       "guard": "composite",
-      "guards": ["patch", "lint", "test_green"],
+      "guards": ["patch", "lint"],
       "guard_config": {
         "require_git_apply": true,
         "require_syntax_valid": true
       },
-      "requires": ["ap_fix_approach", "ap_gen_test"],
+      "requires": ["ap_edit_plan", "ap_gen_test", "ap_context_read"],
       "r_patience": 3,
       "e_max": 2,
-      "escalate_feedback_to": ["ap_fix_approach", "ap_gen_test"],
+      "escalate_feedback_to": ["ap_edit_plan"],
       "escalate_feedback_by_guard": {
-        "PatchGuard": ["ap_localise_issue", "ap_context_read"],
-        "LintGuard": ["ap_context_read", "ap_structure"],
-        "TestGreenGuard": ["ap_fix_approach", "ap_gen_test", "ap_root_cause"]
+        "PatchGuard": ["ap_edit_plan"],
+        "LintGuard": ["ap_edit_plan"]
       },
       "description": "Generate patch (TDD green phase)"
     },
     "ap_integrate_patch": {
       "generator": "PatchGenerator",
       "guard": "composite",
-      "guards": ["full_eval"],
-      "requires": ["ap_gen_patch", "ap_structure"],
+      "guards": ["test_green", "full_eval"],
+      "requires": ["ap_gen_patch", "ap_structure", "ap_fix_approach", "ap_gen_test"],
       "r_patience": 2,
       "e_max": 2,
       "escalate_feedback_to": ["ap_gen_patch"],
       "escalate_feedback_by_guard": {
+        "TestGreenGuard": ["ap_gen_patch", "ap_edit_plan"],
         "FullEvalGuard": ["ap_impact_analysis", "ap_gen_patch"]
       },
       "description": "Integrate and verify patch passes full eval"

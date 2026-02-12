@@ -15,6 +15,7 @@ from .backtrack_orchestrator import (
 from .classification_guard import ClassificationGuard
 from .context_guard import ContextGuard
 from .diff_review_guard import DiffReviewGuard
+from .edit_plan_guard import EditPlanGuard
 from .fix_approach_guard import FixApproachGuard
 from .impact_guard import ImpactGuard
 from .lint_guard import LintGuard
@@ -33,6 +34,7 @@ __all__ = [
     "ClassificationGuard",
     "ContextGuard",
     "DiffReviewGuard",
+    "EditPlanGuard",
     "FixApproachGuard",
     "ImpactGuard",
     "LintGuard",

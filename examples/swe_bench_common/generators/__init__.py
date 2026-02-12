@@ -9,6 +9,7 @@ from .analysis import AnalysisGenerator
 from .classification import ClassificationGenerator
 from .context_read import ContextReadGenerator
 from .diff_review import DiffReviewGenerator
+from .edit_plan import EditPlanGenerator
 from .fix_approach import FixApproachGenerator
 from .impact_analysis import ImpactAnalysisGenerator
 from .localization import LocalizationGenerator
@@ -24,6 +25,7 @@ __all__ = [
     "ClassificationGenerator",
     "ContextReadGenerator",
     "DiffReviewGenerator",
+    "EditPlanGenerator",
     "FixApproachGenerator",
     "ImpactAnalysisGenerator",
     "LocalizationGenerator",
