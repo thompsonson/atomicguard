@@ -128,6 +128,7 @@ def extract_workflow_data(
         )
 
         # Create artifact sub-nodes for retry chain
+        prev_artifact_node_id = None
         for artifact in step_artifacts:
             artifact_node_id = f"artifact_{artifact.artifact_id[:8]}"
 
@@ -153,7 +154,7 @@ def extract_workflow_data(
                 }
             )
 
-            # Create retry chain edge
+            # Create retry chain edge from explicit link or consecutive ordering
             if artifact.previous_attempt_id:
                 edges.append(
                     {
@@ -165,6 +166,19 @@ def extract_workflow_data(
                         }
                     }
                 )
+            elif prev_artifact_node_id is not None:
+                # Infer retry edge from consecutive attempt ordering
+                edges.append(
+                    {
+                        "data": {
+                            "id": f"retry_{artifact.artifact_id[:8]}",
+                            "source": prev_artifact_node_id,
+                            "target": artifact_node_id,
+                            "type": "retry",
+                        }
+                    }
+                )
+            prev_artifact_node_id = artifact_node_id
 
     # Create dependency edges between steps
     for step_id, step_artifacts in steps.items():
