@@ -30,6 +30,7 @@ class WorkflowVisualizationData:
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
     artifacts: dict[str, dict[str, Any]]  # artifact_id -> full artifact data
+    runs: list[dict[str, Any]]  # escalation run memberships
 
 
 def extract_workflow_data(
@@ -58,6 +59,7 @@ def extract_workflow_data(
             nodes=[],
             edges=[],
             artifacts={},
+            runs=[],
         )
 
     # Auto-detect workflow_id from first artifact if needed
@@ -193,6 +195,50 @@ def extract_workflow_data(
                             }
                         )
 
+    # ── Compute escalation runs ──────────────────────────────────
+    # Split each step's artifacts into segments at escalation boundaries
+    # (non-first attempt with previous_attempt_id = null).
+    step_segments: dict[str, list[list[str]]] = {}
+    for step_id, step_artifacts in steps.items():
+        segments: list[list[str]] = [[]]
+        for i, artifact in enumerate(step_artifacts):
+            node_id = artifact_node_lookup[artifact.artifact_id]
+            if i > 0 and artifact.previous_attempt_id is None:
+                segments.append([])
+            segments[-1].append(node_id)
+        step_segments[step_id] = segments
+
+    num_runs = (
+        max(len(segs) for segs in step_segments.values())
+        if step_segments
+        else 1
+    )
+
+    # For run N, each step uses segment min(N, len(segments)-1).
+    # Edges belong to a run if both endpoints are in that run.
+    runs: list[dict[str, Any]] = []
+    for run_idx in range(num_runs):
+        run_node_ids: set[str] = set()
+        for _step_id, segments in step_segments.items():
+            seg_idx = min(run_idx, len(segments) - 1)
+            run_node_ids.update(segments[seg_idx])
+
+        run_edge_ids: set[str] = set()
+        for edge in edges:
+            src = edge["data"]["source"]
+            tgt = edge["data"]["target"]
+            if src in run_node_ids and tgt in run_node_ids:
+                run_edge_ids.add(edge["data"]["id"])
+
+        label = "Initial" if run_idx == 0 else f"Esc. {run_idx}"
+        runs.append(
+            {
+                "label": label,
+                "node_ids": sorted(run_node_ids),
+                "edge_ids": sorted(run_edge_ids),
+            }
+        )
+
     # Determine overall workflow status
     all_accepted = all(
         any(a.status.value == "accepted" for a in step_arts)
@@ -209,6 +255,7 @@ def extract_workflow_data(
         nodes=nodes,
         edges=edges,
         artifacts=artifact_data,
+        runs=runs,
     )
 
 
@@ -353,6 +400,7 @@ def _try_render_with_jinja2(data: WorkflowVisualizationData) -> str | None:
         nodes_json=json.dumps(data.nodes, indent=2),
         edges_json=json.dumps(data.edges, indent=2),
         artifacts_json=json.dumps(data.artifacts, indent=2),
+        runs_json=json.dumps(data.runs, indent=2),
         generated_at=datetime.now().isoformat(),
     )
 
@@ -369,6 +417,7 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
     nodes_json = json.dumps(data.nodes, indent=2)
     edges_json = json.dumps(data.edges, indent=2)
     artifacts_json = json.dumps(data.artifacts, indent=2)
+    runs_json = json.dumps(data.runs, indent=2)
     generated_at = datetime.now().isoformat()
 
     return f"""<!DOCTYPE html>
@@ -651,6 +700,40 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
         .legend-line.dependency {{ background: #6366f1; }}
         .legend-line.retry {{ background: #9ca3af; border-top: 2px dashed #9ca3af; height: 0; }}
         .legend-line.escalation-retry {{ background: #ec4899; border-top: 2px dashed #ec4899; height: 0; }}
+        .run-selector {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: #eef2ff;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }}
+        .run-selector-label {{
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #4338ca;
+        }}
+        .run-btn {{
+            padding: 0.3rem 0.75rem;
+            border: 1px solid #c7d2fe;
+            border-radius: 6px;
+            background: white;
+            color: #4338ca;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }}
+        .run-btn:hover {{
+            background: #e0e7ff;
+        }}
+        .run-btn.active {{
+            background: #4338ca;
+            color: white;
+            border-color: #4338ca;
+        }}
         @media (max-width: 768px) {{
             main {{
                 flex-direction: column;
@@ -720,6 +803,10 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                         <span>Escalation Retry</span>
                     </div>
                 </div>
+                <div id="run-selector" class="run-selector" style="display:none;">
+                    <span class="run-selector-label">Execution Run:</span>
+                    <div id="run-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+                </div>
                 <div id="detail-panel">
                     <p class="no-selection">Click on an artifact node to view details</p>
                 </div>
@@ -735,6 +822,7 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
         const nodes = {nodes_json};
         const edges = {edges_json};
         const artifacts = {artifacts_json};
+        const runs = {runs_json};
 
         // Initialize Cytoscape
         const cy = cytoscape({{
@@ -999,6 +1087,59 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
             div.textContent = text;
             return div.innerHTML;
         }}
+
+        // ── Run selector ──────────────────────────────────────────
+        (function initRunSelector() {{
+            if (runs.length <= 1) return;  // nothing to toggle
+
+            const container = document.getElementById('run-selector');
+            const btnContainer = document.getElementById('run-buttons');
+            container.style.display = 'flex';
+
+            // "All" button
+            const allBtn = document.createElement('button');
+            allBtn.className = 'run-btn active';
+            allBtn.textContent = 'All';
+            allBtn.addEventListener('click', () => selectRun(-1));
+            btnContainer.appendChild(allBtn);
+
+            // One button per run
+            runs.forEach((run, idx) => {{
+                const btn = document.createElement('button');
+                btn.className = 'run-btn';
+                btn.textContent = run.label;
+                btn.addEventListener('click', () => selectRun(idx));
+                btnContainer.appendChild(btn);
+            }});
+
+            function selectRun(runIdx) {{
+                // Update active button
+                btnContainer.querySelectorAll('.run-btn').forEach((b, i) => {{
+                    b.classList.toggle('active', i === runIdx + 1);
+                }});
+
+                if (runIdx === -1) {{
+                    // Reset all to full opacity
+                    cy.batch(() => {{
+                        cy.elements().style('opacity', 1);
+                    }});
+                    return;
+                }}
+
+                const run = runs[runIdx];
+                const nodeSet = new Set(run.node_ids);
+                const edgeSet = new Set(run.edge_ids);
+
+                cy.batch(() => {{
+                    cy.nodes().forEach(n => {{
+                        n.style('opacity', nodeSet.has(n.id()) ? 1 : 0.12);
+                    }});
+                    cy.edges().forEach(e => {{
+                        e.style('opacity', edgeSet.has(e.id()) ? 1 : 0.06);
+                    }});
+                }});
+            }}
+        }})();
     </script>
 </body>
 </html>"""

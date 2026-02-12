@@ -278,6 +278,40 @@
         .legend-line.dependency { background: #6366f1; }
         .legend-line.retry { background: #9ca3af; border-top: 2px dashed #9ca3af; height: 0; }
         .legend-line.escalation-retry { background: #ec4899; border-top: 2px dashed #ec4899; height: 0; }
+        .run-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: #eef2ff;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .run-selector-label {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #4338ca;
+        }
+        .run-btn {
+            padding: 0.3rem 0.75rem;
+            border: 1px solid #c7d2fe;
+            border-radius: 6px;
+            background: white;
+            color: #4338ca;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .run-btn:hover {
+            background: #e0e7ff;
+        }
+        .run-btn.active {
+            background: #4338ca;
+            color: white;
+            border-color: #4338ca;
+        }
         @media (max-width: 768px) {
             main {
                 flex-direction: column;
@@ -347,6 +381,10 @@
                         <span>Escalation Retry</span>
                     </div>
                 </div>
+                <div id="run-selector" class="run-selector" style="display:none;">
+                    <span class="run-selector-label">Execution Run:</span>
+                    <div id="run-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+                </div>
                 <div id="detail-panel">
                     <p class="no-selection">Click on an artifact node to view details</p>
                 </div>
@@ -362,6 +400,7 @@
         const nodes = {{ nodes_json|safe }};
         const edges = {{ edges_json|safe }};
         const artifacts = {{ artifacts_json|safe }};
+        const runs = {{ runs_json|safe }};
 
         // Initialize Cytoscape
         const cy = cytoscape({
@@ -626,6 +665,59 @@
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // ── Run selector ──────────────────────────────────────────
+        (function initRunSelector() {
+            if (runs.length <= 1) return;  // nothing to toggle
+
+            const container = document.getElementById('run-selector');
+            const btnContainer = document.getElementById('run-buttons');
+            container.style.display = 'flex';
+
+            // "All" button
+            const allBtn = document.createElement('button');
+            allBtn.className = 'run-btn active';
+            allBtn.textContent = 'All';
+            allBtn.addEventListener('click', () => selectRun(-1));
+            btnContainer.appendChild(allBtn);
+
+            // One button per run
+            runs.forEach((run, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'run-btn';
+                btn.textContent = run.label;
+                btn.addEventListener('click', () => selectRun(idx));
+                btnContainer.appendChild(btn);
+            });
+
+            function selectRun(runIdx) {
+                // Update active button
+                btnContainer.querySelectorAll('.run-btn').forEach((b, i) => {
+                    b.classList.toggle('active', i === runIdx + 1);
+                });
+
+                if (runIdx === -1) {
+                    // Reset all to full opacity
+                    cy.batch(() => {
+                        cy.elements().style('opacity', 1);
+                    });
+                    return;
+                }
+
+                const run = runs[runIdx];
+                const nodeSet = new Set(run.node_ids);
+                const edgeSet = new Set(run.edge_ids);
+
+                cy.batch(() => {
+                    cy.nodes().forEach(n => {
+                        n.style('opacity', nodeSet.has(n.id()) ? 1 : 0.12);
+                    });
+                    cy.edges().forEach(e => {
+                        e.style('opacity', edgeSet.has(e.id()) ? 1 : 0.06);
+                    });
+                });
+            }
+        })();
     </script>
 </body>
 </html>
