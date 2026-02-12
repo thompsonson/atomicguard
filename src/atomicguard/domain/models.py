@@ -93,6 +93,7 @@ class ContextSnapshot:
     dependency_artifacts: tuple[
         tuple[str, str], ...
     ] = ()  # (action_pair_id, artifact_id) - matches schema
+    escalation_feedback: tuple[str, ...] = ()  # One entry per escalation cycle
 
 
 @dataclass(frozen=True)
@@ -168,6 +169,7 @@ class Context:
         tuple[str, str], ...
     ] = ()  # (action_pair_id, artifact_id) - matches schema
     workflow_id: str | None = None  # Extension 03: Agent workflow identifier (Def 19)
+    escalation_feedback: tuple[str, ...] = ()  # Downstream failure summaries
 
     def get_dependency(self, action_pair_id: str) -> str | None:
         """Look up artifact_id by action_pair_id."""
@@ -209,6 +211,7 @@ class Context:
             feedback_history=self.feedback_history,
             dependency_artifacts=self.dependency_artifacts,
             workflow_id=self.workflow_id,
+            escalation_feedback=self.escalation_feedback,
         )
 
 

@@ -94,6 +94,7 @@ class DualStateAgent:
         self,
         specification: str,
         dependencies: dict[str, Artifact] | None = None,
+        escalation_feedback: tuple[str, ...] = (),
     ) -> Artifact:
         """
         Execute the action pair with retry logic.
@@ -102,6 +103,7 @@ class DualStateAgent:
             specification: The task specification
             dependencies: Artifacts from prior workflow steps (key -> Artifact)
                          Passed to both generator (via Context) and guard (via validate)
+            escalation_feedback: Downstream failure summaries from prior escalation cycles
 
         Returns:
             The accepted artifact
@@ -112,8 +114,21 @@ class DualStateAgent:
             EscalationRequired: If guard returns fatal
         """
         dependencies = dependencies or {}
-        context = self._compose_context(specification, dependencies)
-        feedback_history: list[tuple[Artifact, str]] = []
+
+        # Reconstruct prior feedback from DAG for this action pair
+        prior_artifacts = self._artifact_dag.get_all_for_action_pair(
+            action_pair_id=self._action_pair_id,
+            workflow_id=self._workflow_id,
+        )
+        feedback_history: list[tuple[Artifact, str]] = [
+            (a, a.guard_result.feedback)
+            for a in prior_artifacts
+            if a.status == ArtifactStatus.REJECTED and a.guard_result
+        ]
+
+        context = self._compose_context(
+            specification, dependencies, escalation_feedback=escalation_feedback
+        )
         retry_count = 0
         previous_id: str | None = None  # Track chain linkage
 
@@ -216,6 +231,7 @@ class DualStateAgent:
                     feedback_history,
                     dependencies,
                     stagnation_warning=stagnation_warning,
+                    escalation_feedback=escalation_feedback,
                 )
 
         raise RmaxExhausted(
@@ -226,6 +242,7 @@ class DualStateAgent:
         self,
         specification: str,
         dependencies: dict[str, Artifact] | None = None,
+        escalation_feedback: tuple[str, ...] = (),
     ) -> Context:
         """Compose initial context with dependencies."""
         dependencies = dependencies or {}
@@ -240,6 +257,7 @@ class DualStateAgent:
             dependency_artifacts=tuple(
                 (k, v.artifact_id) for k, v in dependencies.items()
             ),  # Store IDs, not full artifacts
+            escalation_feedback=escalation_feedback,
         )
 
     def _refine_context(
@@ -249,6 +267,7 @@ class DualStateAgent:
         feedback_history: list[tuple[Artifact, str]],
         dependencies: dict[str, Artifact] | None = None,
         stagnation_warning: str | None = None,
+        escalation_feedback: tuple[str, ...] = (),
     ) -> Context:
         """Refine context with feedback from failed attempt."""
         dependencies = dependencies or {}
@@ -273,4 +292,5 @@ class DualStateAgent:
             dependency_artifacts=tuple(
                 (k, v.artifact_id) for k, v in dependencies.items()
             ),  # Preserve dependencies on retry
+            escalation_feedback=escalation_feedback,
         )

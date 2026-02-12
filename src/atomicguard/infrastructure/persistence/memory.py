@@ -60,6 +60,26 @@ class InMemoryArtifactDAG(ArtifactDAGInterface):
         candidates.sort(key=lambda a: a.created_at, reverse=True)
         return candidates[0]
 
+    def get_all_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> list[Artifact]:
+        """Get all artifacts for an action pair in a specific workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            List of artifacts sorted by created_at ascending.
+        """
+        candidates = [
+            a
+            for a in self._artifacts.values()
+            if a.action_pair_id == action_pair_id and a.workflow_id == workflow_id
+        ]
+        candidates.sort(key=lambda a: a.created_at)
+        return candidates
+
     def get_all(self) -> list[Artifact]:
         """Return all artifacts in the DAG.
 

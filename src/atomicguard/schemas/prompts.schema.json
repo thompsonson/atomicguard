@@ -26,10 +26,14 @@
         },
         "feedback_wrapper": {
           "type": "string",
-          "description": "Template for wrapping guard feedback φ into context. Use {feedback} placeholder.",
-          "default": "{feedback}"
+          "description": "Template for wrapping guard feedback φ into context. Use {feedback} placeholder."
+        },
+        "escalation_feedback_wrapper": {
+          "type": "string",
+          "description": "Optional template for wrapping escalation cycle feedback. Use {feedback} placeholder. Only needed for action pairs that receive escalation feedback."
         }
-      }
+      },
+      "required": ["role", "constraints", "task", "feedback_wrapper"]
     }
   }
 }

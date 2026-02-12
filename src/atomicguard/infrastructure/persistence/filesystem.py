@@ -122,6 +122,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
                 ],
                 # Serialize tuple → dict for JSON object format (matches schema)
                 "dependency_artifacts": dict(artifact.context.dependency_artifacts),
+                "escalation_feedback": list(artifact.context.escalation_feedback),
             },
         }
         # Include metadata if present
@@ -147,6 +148,7 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
             ),
             # Deserialize dict → tuple for immutability
             dependency_artifacts=tuple(dep_data.items()),
+            escalation_feedback=tuple(data["context"].get("escalation_feedback", [])),
         )
         # Get metadata if present
         metadata = data.get("metadata", {})
@@ -366,6 +368,30 @@ class FilesystemArtifactDAG(ArtifactDAGInterface):
         # Sort by created_at descending and return the latest
         candidates.sort(key=lambda x: x[1], reverse=True)
         return self.get_artifact(candidates[0][0])
+
+    def get_all_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> list[Artifact]:
+        """Get all artifacts for an action pair in a specific workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            List of artifacts sorted by created_at ascending.
+        """
+        if action_pair_id not in self._index.get("action_pairs", {}):
+            return []
+
+        artifacts = []
+        for artifact_id in self._index["action_pairs"][action_pair_id]:
+            artifact_info = self._index["artifacts"].get(artifact_id, {})
+            if artifact_info.get("workflow_id") == workflow_id:
+                artifacts.append(self.get_artifact(artifact_id))
+
+        artifacts.sort(key=lambda a: a.created_at)
+        return artifacts
 
     def get_all(self) -> list[Artifact]:
         """Return all artifacts in the DAG.

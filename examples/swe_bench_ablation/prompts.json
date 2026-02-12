@@ -10,42 +10,48 @@
     "role": "You are a software architect analyzing Python project structure.",
     "constraints": "Analyze the project structure from the repository listing.\n\nREQUIREMENTS:\n- Identify root modules/packages\n- Identify the test framework used (pytest, unittest, nose, etc.)\n- Locate test directories\n- Note any import conventions or key dependencies visible",
     "task": "Analyze the project structure: identify modules, test framework, and conventions.\n\n## Problem Statement\n{specification}",
-    "feedback_wrapper": "STRUCTURE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- At least one root module or test directory is identified\n- Test framework is specified"
+    "feedback_wrapper": "STRUCTURE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- At least one root module or test directory is identified\n- Test framework is specified",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the structure analysis:\n{feedback}\n\nAvoid these issues. Ensure your analysis correctly identifies project structure."
   },
 
   "ap_root_cause": {
     "role": "You are a senior software engineer specializing in root cause analysis.",
     "constraints": "Identify the root cause of the bug.\n\nREQUIREMENTS:\n- Specify a concrete cause_type (e.g., 'incorrect_condition', 'missing_null_check', 'off_by_one')\n- Explain WHY the bug occurs, not just WHAT happens\n- List conditions that trigger the bug\n- Identify affected code paths",
     "task": "Identify the root cause of this bug based on the classification.\n\n## Problem Statement\n{specification}\n\n## Bug Classification\n{ap_classify}",
-    "feedback_wrapper": "ROOT CAUSE REJECTED:\n{feedback}\n\nInstruction: Revise your root cause analysis. Ensure:\n- cause_type is specific and descriptive\n- cause_description explains why, not just what\n- At least one triggering condition is identified"
+    "feedback_wrapper": "ROOT CAUSE REJECTED:\n{feedback}\n\nInstruction: Revise your root cause analysis. Ensure:\n- cause_type is specific and descriptive\n- cause_description explains why, not just what\n- At least one triggering condition is identified",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the root cause analysis:\n{feedback}\n\nAvoid these issues. Try a different root cause hypothesis."
   },
 
   "ap_localise_issue": {
     "role": "You are a code search specialist identifying bug locations in a Python codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be Python source files (.py)\n- Prioritize precision over recall\n- Paths should be relative to repository root\n- Use the root cause analysis to guide your search",
     "task": "Locate the exact files and functions containing the bug.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}",
-    "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Ensure file paths exist in the repository and match the root cause analysis."
+    "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Ensure file paths exist in the repository and match the root cause analysis.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with file localization:\n{feedback}\n\nAvoid these issues. Try different files or more precise localization."
   },
 
   "ap_context_read": {
     "role": "You are a software engineer reading and understanding code context.",
     "constraints": "Read and summarize the relevant code context.\n\nREQUIREMENTS:\n- Identify the primary file containing the bug\n- List relevant functions and classes\n- Note imports used by the buggy code\n- Extract the specific code snippet around the bug\n- Provide a summary of what the code is doing",
     "task": "Read the localized files and summarize the relevant code context.\n\n## Problem Statement\n{specification}\n\n## Localization\n{ap_localise_issue}",
-    "feedback_wrapper": "CONTEXT READ REJECTED:\n{feedback}\n\nInstruction: Revise your context summary. Ensure:\n- file_path is specified\n- code_snippet contains relevant code\n- summary explains what the code does"
+    "feedback_wrapper": "CONTEXT READ REJECTED:\n{feedback}\n\nInstruction: Revise your context summary. Ensure:\n- file_path is specified\n- code_snippet contains relevant code\n- summary explains what the code does",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to incomplete code context:\n{feedback}\n\nAvoid these issues. Provide more complete code context."
   },
 
   "ap_localise_tests": {
     "role": "You are a test engineer identifying existing test patterns.",
     "constraints": "Locate existing test files and patterns.\n\nREQUIREMENTS:\n- Find test files related to the buggy code\n- Identify naming patterns for tests\n- Note available fixtures or setup functions\n- Determine the testing style (function-based, class-based, BDD)",
     "task": "Locate existing test files and patterns to guide test generation.\n\n## Problem Statement\n{specification}\n\n## Issue Localization\n{ap_localise_issue}\n\n## Project Structure\n{ap_structure}",
-    "feedback_wrapper": "TEST LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your test localization. Look for test files and patterns in the project."
+    "feedback_wrapper": "TEST LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your test localization. Look for test files and patterns in the project.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with test localization:\n{feedback}\n\nAvoid these issues. Look for different test patterns or files."
   },
 
   "ap_fix_approach": {
     "role": "You are a senior software engineer designing bug fix strategies.",
     "constraints": "Design a fix strategy based on the root cause and context.\n\nREQUIREMENTS:\n- Provide a one-line summary of the approach\n- List ordered steps to implement the fix\n- Identify files and functions that need modification\n- Consider edge cases the fix should handle\n- Explain your reasoning",
     "task": "Design the fix strategy: what changes are needed and in what order.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}\n\n## Code Context\n{ap_context_read}\n\n## Localization\n{ap_localise_issue}",
-    "feedback_wrapper": "FIX APPROACH REJECTED:\n{feedback}\n\nInstruction: Revise your fix approach. Ensure:\n- approach_summary is provided\n- At least one step is defined\n- At least one file_to_modify is identified\n- reasoning explains your approach"
+    "feedback_wrapper": "FIX APPROACH REJECTED:\n{feedback}\n\nInstruction: Revise your fix approach. Ensure:\n- approach_summary is provided\n- At least one step is defined\n- At least one file_to_modify is identified\n- reasoning explains your approach",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the fix approach:\n{feedback}\n\nAvoid these issues. Try a fundamentally different fix strategy."
   },
 
   "ap_impact_analysis": {
@@ -73,28 +79,32 @@
     "role": "You are a senior software engineer specializing in bug analysis and root cause identification.",
     "constraints": "Analyze the bug systematically.\n\nREQUIREMENTS:\n- Classify the bug type accurately\n- Identify the root cause with a specific, testable hypothesis\n- List ALL files likely involved (at least one)\n- Provide a concrete fix approach that could guide patch generation\n- Assess your confidence level honestly",
     "task": "Analyze the bug: classify its type, identify the root cause, list affected files, and describe a fix approach.\n\n## Problem Statement\n{specification}",
-    "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- root_cause_hypothesis is specific and actionable\n- fix_approach describes concrete code changes\n- files contains at least one valid file path"
+    "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- root_cause_hypothesis is specific and actionable\n- fix_approach describes concrete code changes\n- files contains at least one valid file path",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the bug analysis:\n{feedback}\n\nAvoid these issues. Re-analyze the bug with a different hypothesis."
   },
 
   "ap_gen_test": {
     "role": "You are a test engineer writing pytest-style tests to reproduce bugs.",
     "constraints": "Write a failing test that reproduces the bug.\n\nREQUIREMENTS:\n- Use pytest style (test_ functions or Test classes)\n- The test MUST fail on the current buggy code\n- The test MUST pass after the bug is fixed\n- Import only from the project's own modules\n- Be specific about expected vs actual behavior\n- Include clear assertions with descriptive messages",
     "task": "Write a pytest-style failing test that reproduces the bug described in the problem statement.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}",
-    "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nInstruction: Fix the test code. Common issues:\n- Syntax errors in the test\n- No test_ functions found\n- Test doesn't actually test the reported bug behavior\n\nGenerate corrected test code."
+    "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nInstruction: Fix the test code. Common issues:\n- Syntax errors in the test\n- No test_ functions found\n- Test doesn't actually test the reported bug behavior\n\nGenerate corrected test code.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the generated test:\n{feedback}\n\nAvoid these issues. Write a test that better captures the bug behavior."
   },
 
   "ap_gen_fix": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
     "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
     "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n{ap_gen_test}",
-    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
+    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe fix failed in a previous escalation cycle:\n{feedback}\n\nAvoid these issues. Try a different approach to fix the bug."
   },
 
   "ap_gen_patch": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
     "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
     "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n{ap_gen_test}",
-    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
+    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe patch failed in a previous escalation cycle:\n{feedback}\n\nAvoid these issues. Try a different approach to fix the bug."
   },
 
   "ap_integrate_patch": {

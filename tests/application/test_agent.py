@@ -21,7 +21,9 @@ from atomicguard.guards import SyntaxGuard
 from atomicguard.infrastructure.llm.mock import MockGenerator
 from atomicguard.infrastructure.persistence.memory import InMemoryArtifactDAG
 
-_TEMPLATE = PromptTemplate(role="test", constraints="", task="test")
+_TEMPLATE = PromptTemplate(
+    role="test", constraints="", task="test", feedback_wrapper="{feedback}"
+)
 
 
 class AlwaysPassGuard(GuardInterface):
@@ -607,3 +609,74 @@ class TestStagnationDetectionAndEscalation:
         artifact = agent.execute("Write something")
 
         assert artifact.content == "good"
+
+
+class TestAgentEscalationFeedback:
+    """Tests for escalation feedback persistence across cycles."""
+
+    def test_agent_passes_escalation_feedback_to_context(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Agent passes escalation_feedback to context for prompt rendering."""
+        generator = MockGenerator(responses=["def foo(): pass"])
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            action_pair_id="ap_test",
+            workflow_id="wf-001",
+        )
+
+        escalation_feedback = ("Prior cycle failed: test error", "Second cycle failed")
+        artifact = agent.execute(
+            "Write something", escalation_feedback=escalation_feedback
+        )
+
+        assert artifact.status == ArtifactStatus.ACCEPTED
+
+    def test_agent_reconstructs_feedback_from_dag(
+        self, memory_dag: InMemoryArtifactDAG
+    ) -> None:
+        """Agent reconstructs prior feedback from DAG at execute() start."""
+        from atomicguard.domain.models import ContextSnapshot, GuardResult
+
+        # Pre-populate DAG with rejected artifacts for this action pair
+        prior_artifact = Artifact(
+            artifact_id="prior-001",
+            workflow_id="wf-001",
+            content="bad code",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="ap_test",
+            created_at="2025-01-01T00:00:00Z",
+            attempt_number=1,
+            status=ArtifactStatus.REJECTED,
+            guard_result=GuardResult(passed=False, feedback="Prior error"),
+            context=ContextSnapshot(
+                workflow_id="wf-001",
+                specification="test",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
+            ),
+        )
+        memory_dag.store(prior_artifact)
+
+        generator = MockGenerator(responses=["def foo(): pass"])
+        pair = ActionPair(
+            generator=generator, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
+        )
+        agent = DualStateAgent(
+            action_pair=pair,
+            artifact_dag=memory_dag,
+            action_pair_id="ap_test",
+            workflow_id="wf-001",
+        )
+
+        # Execute should reconstruct feedback from DAG
+        artifact = agent.execute("Write something")
+
+        assert artifact.status == ArtifactStatus.ACCEPTED
+        # The prior artifact should be found via get_all_for_action_pair

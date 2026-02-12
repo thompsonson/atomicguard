@@ -79,6 +79,9 @@ class Workflow:
         # Extension 09: Escalation tracking
         self._escalation_count: dict[str, int] = defaultdict(int)  # step_id -> count
         self._escalation_context: dict[str, str] = {}  # step_id -> failure_summary
+        self._escalation_feedback: dict[str, list[str]] = defaultdict(
+            list
+        )  # step_id -> failure summaries
 
     def add_step(
         self,
@@ -203,7 +206,15 @@ class Workflow:
             )
 
             try:
-                artifact = agent.execute(specification, dependencies)
+                # Get escalation feedback accumulated for this step
+                step_escalation_feedback = tuple(
+                    self._escalation_feedback.get(step.guard_id, [])
+                )
+                artifact = agent.execute(
+                    specification,
+                    dependencies,
+                    escalation_feedback=step_escalation_feedback,
+                )
                 self._artifacts[step.guard_id] = artifact
                 self._workflow_state.satisfy(step.guard_id, artifact.artifact_id)
 
@@ -217,6 +228,16 @@ class Workflow:
                         step.e_max,
                         e.escalate_to,
                     )
+
+                    # Store escalation feedback for this step and targets
+                    if e.failure_summary:
+                        self._escalation_feedback[step.guard_id].append(
+                            e.failure_summary
+                        )
+                        for target_id in e.escalate_to:
+                            self._escalation_feedback[target_id].append(
+                                e.failure_summary
+                            )
 
                     # Definition 47: Cascade Invalidation - invalidate ALL targets
                     for target_id in e.escalate_to:

@@ -175,3 +175,66 @@ class TestInMemoryArtifactDAG:
         provenance = memory_dag.get_provenance("orphan-001")
         assert len(provenance) == 1
         assert provenance[0].artifact_id == "orphan-001"
+
+    def test_get_all_for_action_pair(self, memory_dag, sample_context_snapshot):
+        """get_all_for_action_pair returns all artifacts for action pair in workflow."""
+        from atomicguard.domain.models import GuardResult
+
+        # Create artifacts in same workflow and action pair
+        art1 = Artifact(
+            artifact_id="art-001",
+            workflow_id="wf-001",
+            content="attempt 1",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="ap-test",
+            created_at="2025-01-01T00:00:00Z",
+            attempt_number=1,
+            status=ArtifactStatus.REJECTED,
+            guard_result=GuardResult(passed=False, feedback="error 1"),
+            context=sample_context_snapshot,
+        )
+        art2 = Artifact(
+            artifact_id="art-002",
+            workflow_id="wf-001",
+            content="attempt 2",
+            previous_attempt_id="art-001",
+            parent_action_pair_id=None,
+            action_pair_id="ap-test",
+            created_at="2025-01-01T00:00:01Z",
+            attempt_number=2,
+            status=ArtifactStatus.ACCEPTED,
+            guard_result=GuardResult(passed=True, feedback=""),
+            context=sample_context_snapshot,
+        )
+        # Artifact in different workflow
+        art3 = Artifact(
+            artifact_id="art-003",
+            workflow_id="wf-002",
+            content="different workflow",
+            previous_attempt_id=None,
+            parent_action_pair_id=None,
+            action_pair_id="ap-test",
+            created_at="2025-01-01T00:00:02Z",
+            attempt_number=1,
+            status=ArtifactStatus.PENDING,
+            guard_result=None,
+            context=sample_context_snapshot,
+        )
+
+        memory_dag.store(art1)
+        memory_dag.store(art2)
+        memory_dag.store(art3)
+
+        result = memory_dag.get_all_for_action_pair("ap-test", "wf-001")
+
+        assert len(result) == 2
+        # Should be sorted by created_at ascending
+        assert result[0].artifact_id == "art-001"
+        assert result[1].artifact_id == "art-002"
+
+    def test_get_all_for_action_pair_empty(self, memory_dag):
+        """get_all_for_action_pair returns empty list when no matches."""
+        result = memory_dag.get_all_for_action_pair("nonexistent", "wf-001")
+
+        assert result == []

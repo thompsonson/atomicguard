@@ -153,6 +153,21 @@ class ArtifactDAGInterface(ABC):
         pass
 
     @abstractmethod
+    def get_all_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> list["Artifact"]:
+        """Get all artifacts for an action pair in a specific workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            List of artifacts sorted by created_at ascending.
+        """
+        pass
+
+    @abstractmethod
     def get_all(self) -> list["Artifact"]:
         """
         Return all artifacts in the DAG.
