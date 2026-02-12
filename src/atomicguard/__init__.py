@@ -78,6 +78,9 @@ from atomicguard.infrastructure.persistence import (
     InMemoryArtifactDAG,
 )
 
+# Visualization
+from atomicguard.visualization import export_workflow_html
+
 __version__ = "2.2.0"
 
 __all__ = [
@@ -124,4 +127,6 @@ __all__ = [
     "TestGuard",
     "DynamicTestGuard",
     "HumanReviewGuard",
+    # Visualization
+    "export_workflow_html",
 ]

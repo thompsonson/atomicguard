@@ -30,6 +30,7 @@ from atomicguard import (
     PromptTemplate,
     Workflow,
     WorkflowStatus,
+    export_workflow_html,
 )
 
 # Configure logging to see escalation events
@@ -302,6 +303,19 @@ def main() -> None:
     else:
         print(f"\n=== FAILED ===")
         print(f"Failed step: {result.failed_step}")
+
+    # Export HTML visualization
+    print("\n" + "-" * 70)
+    print("HTML VISUALIZATION")
+    print("-" * 70)
+
+    # Get workflow_id from the first artifact
+    all_artifacts = dag.get_all()
+    if all_artifacts:
+        workflow_id = all_artifacts[0].workflow_id
+        output_path = export_workflow_html(dag, workflow_id, "workflow_visualization.html")
+        print(f"\nVisualization exported to: {output_path}")
+        print("Open this file in a browser to explore the workflow DAG interactively.")
 
     print("\n" + "=" * 70)
     print("DEMO COMPLETE")

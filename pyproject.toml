@@ -61,6 +61,9 @@ experiment = [
     "swebench>=2.0.0",
     "docker>=7.0.0",
 ]
+visualization = [
+    "jinja2>=3.0.0",
+]
 
 # Note: Dev dependencies are in [dependency-groups] below, not here.
 
