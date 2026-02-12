@@ -495,6 +495,8 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/diff.min.js"></script>
     <style>
         * {{
             box-sizing: border-box;
@@ -638,16 +640,19 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
             display: block;
         }}
         .code-block {{
-            background: #1f2937;
-            color: #f9fafb;
+            background: #f6f8fa;
+            color: #24292e;
             padding: 1rem;
+            border: 1px solid #e1e4e8;
             border-radius: 6px;
             overflow-x: auto;
             font-family: 'SF Mono', Monaco, monospace;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             line-height: 1.5;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
         }}
         .code-block code {{
             background: transparent;
@@ -1009,6 +1014,19 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
 
             const panel = document.getElementById('detail-panel');
 
+            // Build dependency artifacts HTML
+            let depsHtml = '';
+            if (artifact.context.dependency_artifacts && artifact.context.dependency_artifacts.length > 0) {{
+                depsHtml = artifact.context.dependency_artifacts.map(dep => `
+                    <div style="padding:0.4rem 0.6rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;margin-bottom:0.4rem;font-size:0.82rem;">
+                        <strong>${{escapeHtml(dep.action_pair_id)}}</strong>
+                        <span style="color:#6b7280;margin-left:0.5rem;">${{dep.artifact_id.substring(0,8)}}...</span>
+                    </div>
+                `).join('');
+            }} else {{
+                depsHtml = '<p style="color: #9ca3af; font-style: italic;">No dependencies</p>';
+            }}
+
             // Build feedback history HTML
             let feedbackHtml = '';
             if (artifact.context.feedback_history && artifact.context.feedback_history.length > 0) {{
@@ -1057,6 +1075,15 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                 guardHtml = '<p style="color: #9ca3af; font-style: italic;">No guard result (pending)</p>';
             }}
 
+            // Detect content language for syntax highlighting
+            let langClass = '';
+            if (artifact.content) {{
+                const trimmed = artifact.content.trimStart();
+                if (trimmed.startsWith('{{') || trimmed.startsWith('[')) langClass = 'language-json';
+                else if (trimmed.startsWith('diff ') || trimmed.startsWith('---') || trimmed.startsWith('@@')) langClass = 'language-diff';
+                else langClass = 'language-python';
+            }}
+
             panel.innerHTML = `
                 <div class="artifact-detail active">
                     <div class="detail-section">
@@ -1078,6 +1105,10 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                                 <span>${{new Date(artifact.created_at).toLocaleString()}}</span>
                             </div>
                         </div>
+                        <div style="margin-top:0.75rem;padding:0.5rem 0.75rem;background:#f9fafb;border-radius:6px;font-size:0.78rem;color:#6b7280;word-break:break-all;">
+                            <strong>Artifact ID:</strong> ${{artifact.artifact_id}}
+                            ${{artifact.previous_attempt_id ? '<br><strong>Previous:</strong> ' + artifact.previous_attempt_id : ''}}
+                        </div>
                     </div>
 
                     <div class="detail-section">
@@ -1087,7 +1118,7 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                                 <span class="toggle">&#9660;</span>
                             </div>
                             <div class="collapsible-content">
-                                <pre class="code-block"><code class="language-python">${{escapeHtml(artifact.content)}}</code></pre>
+                                <pre class="code-block"><code class="${{langClass}}">${{escapeHtml(artifact.content)}}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -1100,6 +1131,43 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                             </div>
                             <div class="collapsible-content">
                                 ${{guardHtml}}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                                <h4>Dependency Artifacts</h4>
+                                <span class="badge">${{artifact.context.dependency_artifacts ? artifact.context.dependency_artifacts.length : 0}}</span>
+                                <span class="toggle">&#9660;</span>
+                            </div>
+                            <div class="collapsible-content">
+                                ${{depsHtml}}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                                <h4>Specification</h4>
+                                <span class="toggle">&#9660;</span>
+                            </div>
+                            <div class="collapsible-content">
+                                <pre class="code-block" style="max-height:250px;">${{escapeHtml(artifact.context.specification || '')}}</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <div class="collapsible">
+                            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                                <h4>Constraints</h4>
+                                <span class="toggle">&#9660;</span>
+                            </div>
+                            <div class="collapsible-content">
+                                <pre class="code-block" style="max-height:250px;">${{escapeHtml(artifact.context.constraints || '')}}</pre>
                             </div>
                         </div>
                     </div>
@@ -1132,8 +1200,8 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                 </div>
             `;
 
-            // Highlight code
-            document.querySelectorAll('pre code').forEach((block) => {{
+            // Highlight code blocks with language class
+            panel.querySelectorAll('pre code[class]').forEach((block) => {{
                 hljs.highlightElement(block);
             }});
         }}
