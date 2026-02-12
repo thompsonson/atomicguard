@@ -371,56 +371,19 @@
                 edges: edges
             },
             style: [
-                // Step nodes (compound)
-                {
-                    selector: 'node[type="step"]',
-                    style: {
-                        'shape': 'round-rectangle',
-                        'background-color': '#f3f4f6',
-                        'border-width': 2,
-                        'border-color': '#9ca3af',
-                        'label': 'data(label)',
-                        'text-valign': 'top',
-                        'text-halign': 'center',
-                        'font-size': '14px',
-                        'font-weight': 'bold',
-                        'padding': '20px',
-                        'text-margin-y': '-10px'
-                    }
-                },
-                {
-                    selector: 'node[type="step"][status="accepted"]',
-                    style: {
-                        'border-color': '#10b981',
-                        'border-width': 3
-                    }
-                },
-                {
-                    selector: 'node[type="step"][status="rejected"]',
-                    style: {
-                        'border-color': '#ef4444',
-                        'border-width': 3
-                    }
-                },
-                {
-                    selector: 'node[type="step"][has_escalation]',
-                    style: {
-                        'border-style': 'dashed',
-                        'border-color': '#ec4899'
-                    }
-                },
-                // Artifact nodes
+                // Artifact nodes (flat — no compound grouping)
                 {
                     selector: 'node[type="artifact"]',
                     style: {
-                        'shape': 'ellipse',
-                        'width': 40,
-                        'height': 40,
+                        'shape': 'round-rectangle',
+                        'width': 'label',
+                        'height': 30,
+                        'padding': '12px',
                         'background-color': '#9ca3af',
                         'label': 'data(label)',
                         'text-valign': 'center',
                         'text-halign': 'center',
-                        'font-size': '12px',
+                        'font-size': '11px',
                         'font-weight': 'bold',
                         'color': 'white'
                     }
@@ -515,14 +478,6 @@
             const node = evt.target;
             const artifactId = node.data('artifact_id');
             showArtifactDetail(artifactId);
-        });
-
-        cy.on('tap', 'node[type="step"]', function(evt) {
-            const node = evt.target;
-            const finalArtifactId = node.data('final_artifact_id');
-            if (finalArtifactId) {
-                showArtifactDetail(finalArtifactId);
-            }
         });
 
         function showArtifactDetail(artifactId) {
