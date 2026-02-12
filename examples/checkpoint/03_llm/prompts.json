@@ -1,8 +1,0 @@
-{
-  "g_template": {
-    "role": "You are a Python developer. Write clean, correct code. Output ONLY the Python code, no markdown or explanations.",
-    "constraints": "Function must be named `render_template`. Take two arguments: template (str) and context (dict). Return a string. Use only standard library (re module is allowed).",
-    "task": "Write a function `render_template(template: str, context: dict) -> str` that implements a simple template engine:\n\n1. Replace `{{ variable }}` with the value from context dict. If the variable is not in context, leave the placeholder unchanged.\n2. Support basic conditionals: `{% if variable %}text{% endif %}`. If variable exists in context and is truthy, include the text. Otherwise, remove the entire block.\n3. Use regex for matching patterns.\n\nExamples:\n- render_template(\"Hello {{ name }}!\", {\"name\": \"World\"}) → \"Hello World!\"\n- render_template(\"Hi {{ missing }}\", {}) → \"Hi {{ missing }}\"\n- render_template(\"{% if show %}Visible{% endif %}\", {\"show\": True}) → \"Visible\"\n- render_template(\"{% if show %}Hidden{% endif %}\", {\"show\": False}) → \"\"",
-    "feedback_wrapper": "TEST FAILURE:\n{feedback}\n\nFix the implementation to pass the tests. Output ONLY the corrected Python code."
-  }
-}

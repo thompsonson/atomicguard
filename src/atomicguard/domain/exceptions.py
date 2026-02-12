@@ -30,13 +30,17 @@ class RmaxExhausted(Exception):
 
 class EscalationRequired(Exception):
     """
-    Raised when guard returns ⊥_fatal - human intervention needed.
+    Raised when guard returns ⊥_fatal (Level 4 recovery: human intervention).
 
     This indicates a non-recoverable failure that should not be retried.
-    The workflow should surface this to the caller for human review.
+    The workflow should surface to caller for human review.
     """
 
-    def __init__(self, artifact: "Artifact", feedback: str):
+    def __init__(
+        self,
+        artifact: "Artifact",
+        feedback: str,
+    ):
         """
         Args:
             artifact: The artifact that triggered escalation
@@ -45,3 +49,34 @@ class EscalationRequired(Exception):
         super().__init__(feedback)
         self.artifact = artifact
         self.feedback = feedback
+
+
+class StagnationDetected(Exception):
+    """Raised when r_patience consecutive similar failures detected (Definition 44).
+
+    Triggers workflow-level escalation to upstream action pairs (Level 2 recovery).
+    Distinct from EscalationRequired which triggers human intervention (Level 4).
+    """
+
+    def __init__(
+        self,
+        artifact: "Artifact",
+        feedback: str,
+        escalate_to: list[str],
+        failure_summary: str,
+        stagnant_guard: str | None = None,
+    ):
+        """
+        Args:
+            artifact: The artifact that triggered stagnation detection
+            feedback: Latest guard feedback
+            escalate_to: ALL target action_pair_ids to re-invoke (Definition 45)
+            failure_summary: Summarized failure context for injection (Definition 48)
+            stagnant_guard: Name of the sub-guard that caused stagnation (for composite guards)
+        """
+        super().__init__(feedback)
+        self.artifact = artifact
+        self.feedback = feedback
+        self.escalate_to = escalate_to  # List of all targets to invalidate
+        self.failure_summary = failure_summary
+        self.stagnant_guard = stagnant_guard

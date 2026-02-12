@@ -1,0 +1,41 @@
+{
+  "name": "S1 TDD + Diff Review (Forward Only)",
+  "description": "Arm 17: TDD with execution verification + LLM-as-reviewer. Forward-only — review feedback loops back to ap_gen_patch retry, backtrack_target recorded but not acted on.",
+  "model": "moonshotai/kimi-k2-0905",
+  "provider": "openrouter",
+  "rmax": 6,
+  "action_pairs": {
+    "ap_analysis": {
+      "generator": "AnalysisGenerator",
+      "guard": "analysis",
+      "guard_config": {},
+      "description": "Analyze the bug: classify type, identify root cause, list affected files"
+    },
+    "ap_gen_test": {
+      "generator": "TestGenerator",
+      "guard": "composite",
+      "guards": ["test_syntax", "test_red"],
+      "guard_config": {},
+      "requires": ["ap_analysis"],
+      "description": "Write a failing test that reproduces the bug (verified via Docker execution)"
+    },
+    "ap_gen_patch": {
+      "generator": "PatchGenerator",
+      "guard": "composite",
+      "guards": ["patch", "test_green", "full_eval"],
+      "guard_config": {
+        "require_git_apply": true,
+        "require_syntax_valid": true
+      },
+      "requires": ["ap_analysis", "ap_gen_test"],
+      "description": "Generate patch that fixes the bug, passes generated test, and passes full eval"
+    },
+    "ap_diff_review": {
+      "generator": "DiffReviewGenerator",
+      "guard": "review_schema",
+      "guard_config": {},
+      "requires": ["ap_analysis", "ap_gen_test", "ap_gen_patch"],
+      "description": "LLM-as-reviewer: critique the patch, identify issues, record backtrack_target (not acted on in this arm)"
+    }
+  }
+}

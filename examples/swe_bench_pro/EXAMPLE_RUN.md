@@ -70,6 +70,7 @@ structure, guessing at code that doesn't exist in the actual source:
 PatchGuard feedback:
 
 > Patch validation failed:
+>
 > - Search string not found in qutebrowser/utils/log.py: `"    logging.getLogger('qutebrowser.utils.log')"`
 > - Search string not found in qutebrowser/utils/log.py: `'from PyQt5 import QtCore\n\nimport logging...'`
 > - Search string not found in qutebrowser/utils/log.py: `'def hide_qt_warning(pattern):\n    """Hide a Qt warning...'`

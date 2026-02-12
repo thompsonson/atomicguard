@@ -11,7 +11,6 @@ Design Decision (from docs/design/decisions/decisions.md):
 from __future__ import annotations
 
 import logging
-from abc import abstractmethod
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
@@ -42,16 +41,30 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
     Dual-State Action Pair feedback loop to handle retries with
     constructive validation errors.
 
-    Subclasses must implement:
+    Subclasses must define:
     - output_type: The Pydantic model class for structured output
-    - _build_prompt: Construct the prompt from context
 
-    Example:
+    Optionally override:
+    - _build_prompt: Construct the prompt from context (default uses template.render())
+
+    Design principle: Prompt templates are the single source of truth for
+    what context a generator needs. The default _build_prompt() uses
+    template.render() which handles {ap_*} placeholder substitution
+    automatically. Only override _build_prompt() if you need custom
+    logic beyond what templates provide.
+
+    Example (simple generator using template placeholders):
         class PatchGenerator(PydanticAIGenerator[Patch]):
             output_type = Patch
+            # No _build_prompt override needed - template handles context
 
-            def _build_prompt(self, context, template, repo_root):
-                return f"Fix this bug: {context.specification}"
+    Example (custom generator with special processing):
+        class AnalysisGenerator(PydanticAIGenerator[Analysis]):
+            output_type = Analysis
+
+            def _build_prompt(self, context, template):
+                # Custom logic that can't be expressed in templates
+                return custom_prompt_logic(context)
     """
 
     # Subclasses must set this to their Pydantic output model
@@ -158,9 +171,14 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
             from pydantic_ai.models.openai import OpenAIChatModel
             from pydantic_ai.providers.openai import OpenAIProvider
 
+            # Only pass base_url if non-empty (empty string breaks URL construction)
+            provider_kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url:
+                provider_kwargs["base_url"] = base_url
+
             return OpenAIChatModel(
                 model_name=model,
-                provider=OpenAIProvider(base_url=base_url, api_key=api_key),
+                provider=OpenAIProvider(**provider_kwargs),
             )
 
         raise ValueError(
@@ -171,7 +189,7 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
     def generate(
         self,
         context: Context,
-        template: PromptTemplate | None = None,
+        template: PromptTemplate,
         action_pair_id: str = "unknown",
         workflow_id: str = "unknown",
         workflow_ref: str | None = None,
@@ -288,38 +306,43 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
             metadata=MappingProxyType(metadata),
         )
 
-    @abstractmethod
     def _build_prompt(
         self,
         context: Context,
-        template: PromptTemplate | None,
+        template: PromptTemplate,
     ) -> str:
         """Build the prompt for the LLM.
 
-        Subclasses must implement this to construct the prompt
-        from the context and template.
+        Default implementation uses template.render() which handles
+        {ap_*} placeholder substitution automatically.
 
         Args:
             context: Execution context
-            template: Optional prompt template
+            template: Prompt template
 
         Returns:
             The prompt string to send to the LLM
         """
-        pass
+        return template.render(context)
 
-    def _get_system_prompt(self, template: PromptTemplate | None) -> str:
-        """Get the system prompt from template or default.
+    def _get_system_prompt(self, template: PromptTemplate) -> str:
+        """Get the system prompt from the template.
 
         Args:
-            template: Optional prompt template
+            template: Prompt template (must have a role defined)
 
         Returns:
             System prompt string
+
+        Raises:
+            ValueError: If template.role is empty
         """
-        if template and template.role:
-            return template.role
-        return "You are a helpful assistant."
+        if not template.role:
+            raise ValueError(
+                f"{self.__class__.__name__} requires a role in PromptTemplate. "
+                "Define 'role' in prompts.json for this action pair."
+            )
+        return template.role
 
     def _process_output(self, output: OutputT, context: Context) -> str:
         """Process the validated output into artifact content.

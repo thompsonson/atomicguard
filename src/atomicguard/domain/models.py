@@ -40,6 +40,9 @@ class GuardResult:
     - v = passed (⊤ or ⊥)
     - φ = feedback signal
     - fatal = ⊥_fatal (non-recoverable, requires escalation)
+
+    Note: Stagnation detection is done by the agent (which sees feedback history),
+    not by guards (which are stateless and validate single artifacts).
     """
 
     passed: bool
@@ -90,6 +93,7 @@ class ContextSnapshot:
     dependency_artifacts: tuple[
         tuple[str, str], ...
     ] = ()  # (action_pair_id, artifact_id) - matches schema
+    escalation_feedback: tuple[str, ...] = ()  # One entry per escalation cycle
 
 
 @dataclass(frozen=True)
@@ -165,6 +169,7 @@ class Context:
         tuple[str, str], ...
     ] = ()  # (action_pair_id, artifact_id) - matches schema
     workflow_id: str | None = None  # Extension 03: Agent workflow identifier (Def 19)
+    escalation_feedback: tuple[str, ...] = ()  # Downstream failure summaries
 
     def get_dependency(self, action_pair_id: str) -> str | None:
         """Look up artifact_id by action_pair_id."""
@@ -206,6 +211,7 @@ class Context:
             feedback_history=self.feedback_history,
             dependency_artifacts=self.dependency_artifacts,
             workflow_id=self.workflow_id,
+            escalation_feedback=self.escalation_feedback,
         )
 
 
@@ -220,7 +226,6 @@ class WorkflowStatus(Enum):
     SUCCESS = "success"  # All steps completed
     FAILED = "failed"  # Rmax exhausted on a step
     ESCALATION = "escalation"  # Fatal guard triggered
-    CHECKPOINT = "checkpoint"  # Workflow paused, checkpoint created for resume
 
 
 @dataclass
@@ -237,8 +242,17 @@ class WorkflowState:
         self.guards[guard_id] = True
         self.artifact_ids[guard_id] = artifact_id
 
+    def unsatisfy(self, guard_id: str) -> None:
+        """Mark a guard as unsatisfied (Extension 09: Cascade Invalidation)."""
+        self.guards[guard_id] = False
+        self.artifact_ids.pop(guard_id, None)
+
     def get_artifact_id(self, guard_id: str) -> str | None:
         return self.artifact_ids.get(guard_id)
+
+    def get_satisfied_guards(self) -> tuple[str, ...]:
+        """Return tuple of all currently satisfied guard IDs."""
+        return tuple(gid for gid, satisfied in self.guards.items() if satisfied)
 
 
 @dataclass(frozen=True)
@@ -251,87 +265,26 @@ class WorkflowResult:
     provenance: tuple[tuple[Artifact, str], ...] = ()
     escalation_artifact: Artifact | None = None  # Artifact that triggered escalation
     escalation_feedback: str = ""  # Fatal feedback message
-    checkpoint: "WorkflowCheckpoint | None" = None  # For CHECKPOINT status
 
 
 # =============================================================================
-# CHECKPOINT AND HUMAN AMENDMENT (Resumable Workflow Support)
+# STAGNATION INFO (Definition 44)
 # =============================================================================
 
 
-class FailureType(Enum):
-    """Type of workflow failure that triggered checkpoint."""
-
-    ESCALATION = "escalation"  # Guard returned ⊥_fatal
-    RMAX_EXHAUSTED = "rmax_exhausted"  # Retry budget exhausted
-
-
 @dataclass(frozen=True)
-class WorkflowCheckpoint:
-    """
-    Immutable checkpoint capturing workflow state at failure.
+class StagnationInfo:
+    """Result of stagnation detection (Definition 44).
 
-    Enables resumption after human amendment by preserving:
-    - Original workflow context and configuration
-    - Completed steps and their artifacts
-    - Failure details for human review
+    Captures whether consecutive failures are similar enough to trigger
+    escalation, along with summary information for context injection.
     """
 
-    # Identity
-    checkpoint_id: str  # UUID
-    workflow_id: str  # Original workflow execution ID
-    created_at: str  # ISO timestamp
-
-    # Workflow Context
-    specification: str  # Original Ψ
-    constraints: str  # Original Ω
-    rmax: int  # Original retry budget
-
-    # Completed State
-    completed_steps: tuple[str, ...]  # guard_ids that passed
-    artifact_ids: tuple[tuple[str, str], ...]  # (guard_id, artifact_id) pairs
-
-    # Failure Details
-    failure_type: FailureType
-    failed_step: str  # guard_id where failure occurred
-    failed_artifact_id: str | None  # Last artifact before failure
-    failure_feedback: str  # Error/feedback message
-    provenance_ids: tuple[str, ...]  # Artifact IDs of all failed attempts
-
-    # Extension 01: Versioned Environment (Definition 11)
-    workflow_ref: str | None = None  # W_ref: Content-addressed workflow hash
-
-
-class AmendmentType(Enum):
-    """Type of human amendment."""
-
-    ARTIFACT = "artifact"  # Human provides new artifact content
-    FEEDBACK = "feedback"  # Human provides additional guidance for LLM retry
-    SKIP = "skip"  # Human approves skipping this step (for optional steps)
-
-
-@dataclass(frozen=True)
-class HumanAmendment:
-    """
-    Immutable record of human intervention in a workflow.
-
-    Creates a link in the DAG provenance chain from the failed artifact
-    to the human-provided amendment.
-    """
-
-    # Identity
-    amendment_id: str  # UUID
-    checkpoint_id: str  # Links to WorkflowCheckpoint
-    amendment_type: AmendmentType
-    created_at: str  # ISO timestamp
-    created_by: str  # Human identifier (e.g., username, "cli")
-
-    # Content
-    content: str  # Human-provided artifact or feedback
-    context: str = ""  # Additional context/clarification
-
-    # Provenance
-    parent_artifact_id: str | None = None  # Links to failed artifact in DAG
-
-    # Resume Options
-    additional_rmax: int = 0  # Extra retries beyond original budget
+    detected: bool  # True if r_patience consecutive similar failures
+    similar_count: int  # Number of consecutive similar failures
+    error_signature: str  # Deduplicated error type/pattern
+    approaches_tried: tuple[str, ...]  # Summary of what was attempted
+    failure_summary: str  # Full summary for context injection (Definition 48)
+    stagnant_guard: str | None = (
+        None  # Sub-guard that caused stagnation (composite guards)
+    )

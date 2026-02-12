@@ -1,0 +1,36 @@
+{
+  "name": "S1 TDD Behavior",
+  "description": "TDD workflow with behavior-focused test prompts. A/B test variant of 05_s1_tdd_verified. Extension 09: Includes informed backtracking.",
+  "rmax": 6,
+  "action_pairs": {
+    "ap_analysis": {
+      "generator": "AnalysisGenerator",
+      "guard": "analysis",
+      "description": "Analyze bug with expected/actual behavior extraction"
+    },
+    "ap_gen_test": {
+      "generator": "TestGenerator",
+      "guard": "composite",
+      "guards": ["test_syntax", "test_red"],
+      "requires": ["ap_analysis"],
+      "r_patience": 2,
+      "e_max": 1,
+      "escalate_feedback_to": ["ap_analysis"],
+      "description": "Generate behavior-focused test + verify FAILS on buggy code"
+    },
+    "ap_gen_patch": {
+      "generator": "PatchGenerator",
+      "guard": "composite",
+      "guards": ["patch", "lint", "test_green", "full_eval"],
+      "guard_config": {
+        "require_git_apply": true,
+        "require_syntax_valid": true
+      },
+      "requires": ["ap_analysis", "ap_gen_test"],
+      "r_patience": 3,
+      "e_max": 2,
+      "escalate_feedback_to": ["ap_analysis", "ap_gen_test"],
+      "description": "Generate patch + verify test PASSES + run full eval"
+    }
+  }
+}

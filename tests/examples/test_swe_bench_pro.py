@@ -28,7 +28,12 @@ from examples.swe_bench_pro.language import (
 
 class TestLanguageConfigs:
     def test_all_four_languages_present(self):
-        assert set(LANGUAGE_CONFIGS) == {"python", "go", "javascript", "typescript"}
+        assert set(LANGUAGE_CONFIGS) == {
+            "python",
+            "go",
+            "javascript",
+            "typescript",
+        }
 
     def test_python_has_syntax_checker(self):
         assert LANGUAGE_CONFIGS["python"].syntax_check_fn is not None
@@ -223,26 +228,24 @@ class TestMultiLangTestSyntaxGuard:
 
 class TestPreparePredictions:
     def test_writes_json_per_arm(self, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.evaluation import prepare_predictions
 
         results = [
             ArmResult(
                 instance_id="repo__1",
                 arm="02_singleshot",
-                workflow_status="success",
                 patch_content="diff --git a/f.py",
             ),
             ArmResult(
                 instance_id="repo__2",
                 arm="02_singleshot",
-                workflow_status="error",
+                error="Some error",
                 patch_content="",
             ),
             ArmResult(
                 instance_id="repo__3",
                 arm="03_s1_direct",
-                workflow_status="success",
                 patch_content="diff --git a/g.go",
             ),
         ]
@@ -404,8 +407,8 @@ class TestWorkflowBuildHelpers:
         guard_reg = _get_guard_registry(lang)
 
         # For Python, should use the base classes
-        from examples.swe_bench_ablation.generators import PatchGenerator, TestGenerator
-        from examples.swe_bench_ablation.guards import TestSyntaxGuard
+        from examples.swe_bench_common.generators import PatchGenerator, TestGenerator
+        from examples.swe_bench_common.guards import TestSyntaxGuard
 
         assert gen_reg["PatchGenerator"] is PatchGenerator
         assert gen_reg["TestGenerator"] is TestGenerator
@@ -487,7 +490,7 @@ class TestPatchGeneratorRepoRoot:
 
     def test_constructor_stores_repo_root(self, tmp_path):
         """Constructor ``repo_root`` kwarg is stored on the instance."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         gen = PatchGenerator(
             model="test",
@@ -498,7 +501,7 @@ class TestPatchGeneratorRepoRoot:
         assert gen._repo_root == str(tmp_path)
 
     def test_constructor_repo_root_defaults_to_none(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         gen = PatchGenerator(
             model="test",
@@ -509,8 +512,8 @@ class TestPatchGeneratorRepoRoot:
 
     def test_process_output_produces_patch_key_with_repo_root(self, tmp_path):
         """_process_output produces a 'patch' key when given a valid repo_root."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
-        from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+        from examples.swe_bench_common.generators import PatchGenerator
+        from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -550,8 +553,8 @@ class TestPatchGeneratorRepoRoot:
 
     def test_process_output_without_repo_root_has_no_patch(self):
         """Without repo_root, _process_output returns raw edits (no 'patch' key)."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
-        from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+        from examples.swe_bench_common.generators import PatchGenerator
+        from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -592,7 +595,7 @@ class TestListRepoFiles:
     """Verify _list_repo_files discovers source files correctly."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         return PatchGenerator(
             model="test",
@@ -674,14 +677,15 @@ class TestListRepoFilesStandalone:
         files = _list_repo_files(str(tmp_path))
         assert files == ["real.py"]
 
-    def test_respects_max_files(self, tmp_path):
+    def test_returns_all_files(self, tmp_path):
+        """_list_repo_files returns all matching files (no truncation)."""
         from examples.swe_bench_pro.experiment_runner import _list_repo_files
 
         for i in range(20):
             (tmp_path / f"f{i:02d}.py").write_text("")
 
-        files = _list_repo_files(str(tmp_path), max_files=5)
-        assert len(files) == 5
+        files = _list_repo_files(str(tmp_path))
+        assert len(files) == 20
 
     def test_custom_extensions(self, tmp_path):
         from examples.swe_bench_pro.experiment_runner import _list_repo_files
@@ -773,7 +777,7 @@ class TestRunAllParallel:
 
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_sequential_execution(self, mock_load, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         instances = self._make_instances(2)
@@ -787,7 +791,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -805,7 +808,7 @@ class TestRunAllParallel:
 
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_parallel_execution(self, mock_load, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         instances = self._make_instances(4)
@@ -817,7 +820,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -835,7 +837,7 @@ class TestRunAllParallel:
 
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_parallel_with_resume(self, mock_load, tmp_path):
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         instances = self._make_instances(3)
@@ -847,7 +849,6 @@ class TestRunAllParallel:
         existing = ArmResult(
             instance_id="org__repo__0",
             arm="02_singleshot",
-            workflow_status="success",
             patch_content="existing",
         )
         from dataclasses import asdict
@@ -860,7 +861,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="new",
             )
 
@@ -882,7 +882,7 @@ class TestRunAllParallel:
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_concurrent_jsonl_writes_are_valid(self, mock_load, tmp_path):
         """Force overlapping writes and verify every JSONL line is valid JSON."""
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         n_instances = 20
@@ -899,7 +899,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content=f"diff for {instance.instance_id}",
             )
 
@@ -926,7 +925,7 @@ class TestRunAllParallel:
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_concurrent_results_no_duplicates(self, mock_load, tmp_path):
         """With many workers, results list must have no duplicates or drops."""
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         n_instances = 15
@@ -942,7 +941,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -962,7 +960,7 @@ class TestRunAllParallel:
     @patch("examples.swe_bench_pro.experiment_runner.load_swe_bench_pro")
     def test_concurrent_progress_counter(self, mock_load, tmp_path, caplog):
         """finished_count in log messages must reach total_runs exactly."""
-        from examples.swe_bench_ablation.experiment_runner import ArmResult
+        from examples.swe_bench_common import ArmResult
         from examples.swe_bench_pro.experiment_runner import SWEBenchProRunner
 
         n_instances = 8
@@ -976,7 +974,6 @@ class TestRunAllParallel:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="success",
                 patch_content="diff",
             )
 
@@ -1052,7 +1049,7 @@ class TestAnalysisGuardFileValidation:
         )
 
     def test_valid_files_with_repo_root(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("x = 1")
@@ -1063,7 +1060,7 @@ class TestAnalysisGuardFileValidation:
         assert result.passed is True
 
     def test_hallucinated_files_rejected(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         guard = AnalysisGuard(repo_root=str(tmp_path))
         art = _make_artifact(self._analysis_json(["tests/utils/test_log.py"]))
@@ -1073,7 +1070,7 @@ class TestAnalysisGuardFileValidation:
         assert "tests/utils/test_log.py" in result.feedback
 
     def test_mixed_valid_and_hallucinated_rejected(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         (tmp_path / "real.py").write_text("x = 1")
 
@@ -1084,7 +1081,7 @@ class TestAnalysisGuardFileValidation:
         assert "fake.py" in result.feedback
 
     def test_no_repo_root_skips_file_check(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         guard = AnalysisGuard()
         art = _make_artifact(self._analysis_json(["nonexistent/file.py"]))
@@ -1092,7 +1089,7 @@ class TestAnalysisGuardFileValidation:
         assert result.passed is True
 
     def test_many_missing_files_truncated(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.analysis_guard import AnalysisGuard
+        from examples.swe_bench_common.guards.analysis_guard import AnalysisGuard
 
         guard = AnalysisGuard(repo_root=str(tmp_path))
         files = [f"missing_{i}.py" for i in range(5)]
@@ -1143,7 +1140,7 @@ class TestPatchGuardEmptyDiff:
         return _factory
 
     def test_patch_with_changes_passes(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         patch = (
             "--- a/file.py\n"
@@ -1160,7 +1157,7 @@ class TestPatchGuardEmptyDiff:
         assert result.passed is True
 
     def test_patch_with_no_changes_rejected(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         patch = (
             "--- a/file.py\n+++ b/file.py\n@@ -1,3 +1,3 @@\n x = 1\n y = 2\n z = 4\n"
@@ -1172,7 +1169,7 @@ class TestPatchGuardEmptyDiff:
         assert "no actual changes" in result.feedback.lower()
 
     def test_edits_with_identical_search_replace_rejected(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "f.py", "search": "x = 1", "replace": "x = 1"}]
         guard = PatchGuard(require_git_apply=False, require_syntax_valid=False)
@@ -1182,7 +1179,7 @@ class TestPatchGuardEmptyDiff:
         assert "identical search and replace" in result.feedback.lower()
 
     def test_edits_with_real_changes_passes(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "f.py", "search": "x = 1", "replace": "x = 2"}]
         guard = PatchGuard(require_git_apply=False, require_syntax_valid=False)
@@ -1200,7 +1197,7 @@ class TestPatchGeneratorLanguageParams:
     """Verify configurable code_block_tag."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1230,7 +1227,7 @@ class TestPatchGeneratorSingleshotFileContent:
     """Verify PatchGenerator includes referenced file content for singleshot."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1242,6 +1239,15 @@ class TestPatchGeneratorSingleshotFileContent:
         ambient = AmbientEnvironment(repository=MagicMock(spec=[]), constraints="")
         return Context(ambient=ambient, specification=specification)
 
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Patch generator",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
+
     def test_singleshot_includes_referenced_files(self, tmp_path):
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("def hello():\n    return 'hi'\n")
@@ -1250,7 +1256,7 @@ class TestPatchGeneratorSingleshotFileContent:
         gen = self._make_gen(repo_root=str(tmp_path))
         spec = "There is a bug in src/main.py where hello() returns wrong value"
         ctx = self._make_context(spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         assert "## Current File Content" in prompt
         assert "src/main.py" in prompt
@@ -1264,7 +1270,7 @@ class TestPatchGeneratorSingleshotFileContent:
         gen = self._make_gen(repo_root=str(tmp_path))
         spec = "There is a bug in src/main.py"
         ctx = self._make_context(spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         assert "src/main.py" in prompt
         # other.py is not mentioned in spec, so its content should not appear
@@ -1282,7 +1288,7 @@ class TestPatchGeneratorSingleshotFileContent:
         # Reference all 8 files in the spec
         spec = "Bug affects: " + ", ".join(file_names)
         ctx = self._make_context(spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         # Count how many file content sections appear
         count = prompt.count("### src/f")
@@ -1296,6 +1302,15 @@ class TestPatchGeneratorSingleshotFileContent:
 
 class TestMultiLangPatchGeneratorSingleshotFileContent:
     """Verify MultiLangPatchGenerator includes referenced file content for singleshot."""
+
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Patch generator",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
 
     def test_singleshot_includes_referenced_files(self, tmp_path):
         from examples.swe_bench_pro.generators.multilang_patch import (
@@ -1319,7 +1334,7 @@ class TestMultiLangPatchGeneratorSingleshotFileContent:
         ambient = AmbientEnvironment(repository=MagicMock(spec=[]), constraints="")
         spec = "Bug in cmd/main.go"
         ctx = Context(ambient=ambient, specification=spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         assert "## Current File Content" in prompt
         assert "cmd/main.go" in prompt
@@ -1368,7 +1383,7 @@ class TestPatchGuardFileExistence:
         return _factory
 
     def test_edit_to_existing_file_passes(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("x = 1\n")
@@ -1384,7 +1399,7 @@ class TestPatchGuardFileExistence:
         assert result.passed is True
 
     def test_edit_to_missing_file_rejected(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "nonexistent.py", "search": "x = 1", "replace": "x = 2"}]
         guard = PatchGuard(
@@ -1399,7 +1414,7 @@ class TestPatchGuardFileExistence:
         assert "nonexistent.py" in result.feedback
 
     def test_multiple_missing_files_truncated(self, tmp_path, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [
             {"file": f"missing_{i}.py", "search": "x", "replace": "y"} for i in range(5)
@@ -1415,7 +1430,7 @@ class TestPatchGuardFileExistence:
         assert "and 2 more" in result.feedback
 
     def test_no_repo_root_skips_check(self, _make_artifact):
-        from examples.swe_bench_ablation.guards.patch_guard import PatchGuard
+        from examples.swe_bench_common.guards.patch_guard import PatchGuard
 
         edits = [{"file": "nonexistent.py", "search": "x = 1", "replace": "x = 2"}]
         guard = PatchGuard(
@@ -1430,15 +1445,121 @@ class TestPatchGuardFileExistence:
 
 
 # =========================================================================
+# PatchGenerator – Test file detection
+# =========================================================================
+
+
+class TestPatchGeneratorTestFileDetection:
+    """Verify _is_test_file correctly identifies test files."""
+
+    def _make_gen(self, **kwargs):
+        from examples.swe_bench_common.generators import PatchGenerator
+
+        defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
+        defaults.update(kwargs)
+        return PatchGenerator(**defaults)
+
+    @pytest.mark.parametrize(
+        "path,expected",
+        [
+            # Should be detected as test files
+            ("tests/test_foo.py", True),
+            ("test/unit/test_bar.py", True),
+            ("tests/unit/utils/test_log.py", True),
+            ("test_module.py", True),
+            ("src/module_test.py", True),
+            ("foo/bar/test_baz.py", True),
+            # Should NOT be detected as test files
+            ("src/utils.py", False),
+            ("qutebrowser/utils/urlutils.py", False),
+            ("lib/testing_helpers.py", False),  # 'testing' != 'test' or 'tests'
+            ("contest/module.py", False),  # 'contest' contains 'test' but not /test
+            ("src/latest.py", False),
+        ],
+    )
+    def test_is_test_file(self, path, expected):
+        gen = self._make_gen()
+        assert gen._is_test_file(path) is expected
+
+
+# =========================================================================
+# PatchGenerator – Utility file discovery
+# =========================================================================
+
+
+class TestPatchGeneratorUtilityDiscovery:
+    """Verify _discover_utility_files and _extract_function_signatures."""
+
+    def _make_gen(self, **kwargs):
+        from examples.swe_bench_common.generators import PatchGenerator
+
+        defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
+        defaults.update(kwargs)
+        return PatchGenerator(**defaults)
+
+    def test_discover_utility_files(self, tmp_path):
+        # Create a mock repository with utility files
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "utils.py").write_text("def helper(): pass")
+        (tmp_path / "src" / "helpers").mkdir()
+        (tmp_path / "src" / "helpers" / "common.py").write_text(
+            "def common_func(): pass"
+        )
+        (tmp_path / "src" / "main.py").write_text("def main(): pass")
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_utils.py").write_text("def test_helper(): pass")
+
+        gen = self._make_gen()
+        utility_files = gen._discover_utility_files(str(tmp_path))
+
+        # Should find utils.py and helpers/common.py but not test_utils.py
+        assert "src/utils.py" in utility_files
+        assert "src/helpers/common.py" in utility_files
+        assert "src/main.py" not in utility_files
+        assert "tests/test_utils.py" not in utility_files
+
+    def test_extract_function_signatures(self, tmp_path):
+        code = """
+def simple_func():
+    pass
+
+def func_with_args(a, b, c):
+    return a + b + c
+
+def func_with_types(x: int, y: str) -> bool:
+    return True
+
+class MyClass:
+    def method(self):
+        pass
+"""
+        (tmp_path / "utils.py").write_text(code)
+
+        gen = self._make_gen()
+        signatures = gen._extract_function_signatures(str(tmp_path), "utils.py")
+
+        # Only top-level functions are extracted (regex uses ^ anchor)
+        assert "def simple_func():" in signatures
+        assert "def func_with_args(a, b, c):" in signatures
+        assert "def func_with_types(x: int, y: str) -> bool:" in signatures
+        # Methods inside classes are NOT extracted (indented, so don't match ^)
+        assert "def method(self):" not in signatures
+
+
+# =========================================================================
 # PatchGenerator – TDD prompt includes guidance note
 # =========================================================================
 
 
 class TestPatchGeneratorTestGuidance:
-    """Verify PatchGenerator includes guidance when test code is present."""
+    """Verify PatchGenerator includes guidance when test code is present.
+
+    Note: In the new design, TDD guidance comes from prompt templates.
+    These tests verify that templates with test placeholders render correctly.
+    """
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
@@ -1457,24 +1578,40 @@ class TestPatchGeneratorTestGuidance:
         ctx = Context(
             ambient=ambient,
             specification="There is a bug",
-            dependency_artifacts=(("test", "test-artifact-id"),),
+            dependency_artifacts=(("ap_gen_test", "test-artifact-id"),),
         )
         return ctx
+
+    def _make_template_with_test_guidance(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="You are a software engineer.",
+            constraints="Fix the bug.",
+            task=(
+                "Generate a patch.\n\n"
+                "## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n"
+                "Do NOT create or modify any test files.\n"
+                "{ap_gen_test}"
+            ),
+        )
 
     def test_tdd_prompt_includes_guidance_note(self):
         gen = self._make_gen()
         ctx = self._make_context_with_test("def test_foo(): assert True")
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
-        assert "for guidance only" in prompt
+        assert "REFERENCE ONLY" in prompt
 
     def test_tdd_prompt_warns_not_to_patch_tests(self):
         gen = self._make_gen()
         ctx = self._make_context_with_test("def test_foo(): assert True")
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
-        assert "do NOT patch this" in prompt
-        assert "Do NOT create or modify test files" in prompt
+        assert "DO NOT MODIFY" in prompt
+        assert "Do NOT create or modify any test files" in prompt
 
 
 # =========================================================================
@@ -1483,7 +1620,10 @@ class TestPatchGeneratorTestGuidance:
 
 
 class TestMultiLangPatchGeneratorTestGuidance:
-    """Verify MultiLangPatchGenerator includes guidance when test code is present."""
+    """Verify MultiLangPatchGenerator includes guidance when test code is present.
+
+    Note: In the new design, TDD guidance comes from prompt templates.
+    """
 
     def _make_context_with_test(self, test_code: str):
         from atomicguard.domain.models import AmbientEnvironment, Context
@@ -1497,9 +1637,23 @@ class TestMultiLangPatchGeneratorTestGuidance:
         ctx = Context(
             ambient=ambient,
             specification="There is a bug",
-            dependency_artifacts=(("test", "test-artifact-id"),),
+            dependency_artifacts=(("ap_gen_test", "test-artifact-id"),),
         )
         return ctx
+
+    def _make_template_with_test_guidance(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="You are a software engineer.",
+            constraints="Fix the bug.",
+            task=(
+                "Generate a patch.\n\n"
+                "## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n"
+                "Do NOT create or modify any test files.\n"
+                "{ap_gen_test}"
+            ),
+        )
 
     def test_tdd_prompt_includes_guidance_note(self):
         from examples.swe_bench_pro.generators.multilang_patch import (
@@ -1514,9 +1668,10 @@ class TestMultiLangPatchGeneratorTestGuidance:
             api_key="test",
         )
         ctx = self._make_context_with_test('func TestFoo(t *testing.T) { t.Log("ok") }')
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
-        assert "for guidance only" in prompt
+        assert "REFERENCE ONLY" in prompt
 
     def test_tdd_prompt_warns_not_to_patch_tests(self):
         from examples.swe_bench_pro.generators.multilang_patch import (
@@ -1531,10 +1686,11 @@ class TestMultiLangPatchGeneratorTestGuidance:
             api_key="test",
         )
         ctx = self._make_context_with_test('func TestFoo(t *testing.T) { t.Log("ok") }')
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
-        assert "do NOT patch this" in prompt
-        assert "Do NOT create or modify test files" in prompt
+        assert "DO NOT MODIFY" in prompt
+        assert "Do NOT create or modify any test files" in prompt
 
 
 # =========================================================================
@@ -1547,7 +1703,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_ollama_provider_detection(self):
         """Ollama provider creates an OllamaProvider-backed model."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1559,7 +1715,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_openai_provider_detection(self):
         """OpenAI provider creates an OpenAIProvider-backed model."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1571,7 +1727,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_openrouter_provider_detection(self):
         """OpenRouter provider creates an OpenRouterProvider-backed model."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1583,7 +1739,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_temperature_passthrough(self):
         """Temperature is stored and can be customised."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1596,7 +1752,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_default_temperature_analysis(self):
         """AnalysisGenerator defaults to temperature=0.2."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         gen = AnalysisGenerator(
             model="test",
@@ -1608,7 +1764,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_default_temperature_patch(self):
         """PatchGenerator defaults to temperature=0.3."""
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         gen = PatchGenerator(
             model="test",
@@ -1620,7 +1776,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_huggingface_provider_detection(self):
         """Explicit huggingface provider creates a HuggingFaceModel."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
         from pydantic_ai.models.huggingface import HuggingFaceModel
 
         gen = AnalysisGenerator(
@@ -1633,7 +1789,7 @@ class TestPydanticAIGeneratorBase:
 
     def test_unknown_provider_raises(self):
         """An unknown provider value raises ValueError."""
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         with pytest.raises(ValueError, match="Unknown provider"):
             AnalysisGenerator(
@@ -1653,26 +1809,26 @@ class TestAnalysisGeneratorPydanticAI:
     """Verify AnalysisGenerator uses PydanticAI structured output."""
 
     def test_output_type_is_analysis(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.generators import AnalysisGenerator
+        from examples.swe_bench_common.models import Analysis
 
         assert AnalysisGenerator.output_type is Analysis
 
     def test_inherits_from_pydantic_ai_generator(self):
         from examples.base.generators import PydanticAIGenerator
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         assert issubclass(AnalysisGenerator, PydanticAIGenerator)
 
     def test_localization_output_type(self):
-        from examples.swe_bench_ablation.generators import LocalizationGenerator
-        from examples.swe_bench_ablation.models import Localization
+        from examples.swe_bench_common.generators import LocalizationGenerator
+        from examples.swe_bench_common.models import Localization
 
         assert LocalizationGenerator.output_type is Localization
 
     def test_patch_output_type(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
-        from examples.swe_bench_ablation.models import Patch
+        from examples.swe_bench_common.generators import PatchGenerator
+        from examples.swe_bench_common.models import Patch
 
         assert PatchGenerator.output_type is Patch
 
@@ -1686,7 +1842,7 @@ class TestPatchGeneratorResolveRepoRoot:
     """Verify _resolve_repo_root resolves from context then constructor."""
 
     def test_context_metadata_takes_priority(self, tmp_path):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -1705,7 +1861,7 @@ class TestPatchGeneratorResolveRepoRoot:
         assert gen._resolve_repo_root(ctx) == str(tmp_path)
 
     def test_falls_back_to_constructor(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         from atomicguard.domain.models import AmbientEnvironment, Context
 
@@ -1731,7 +1887,7 @@ class TestGenerateMethodHappyPath:
     """Verify the generate() method produces correct artifacts on success."""
 
     def _make_gen(self, cls_name="AnalysisGenerator", **kwargs):
-        from examples.swe_bench_ablation.generators import (
+        from examples.swe_bench_common.generators import (
             AnalysisGenerator,
             PatchGenerator,
         )
@@ -1755,6 +1911,15 @@ class TestGenerateMethodHappyPath:
             dependency_artifacts=deps,
         )
 
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Test assistant",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
+
     def _mock_agent(self, output):
         mock_agent = MagicMock()
         mock_result = MagicMock(spec=[])  # no usage attribute
@@ -1763,7 +1928,7 @@ class TestGenerateMethodHappyPath:
         return mock_agent
 
     def test_generate_returns_artifact_on_success(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         from atomicguard.domain.models import ArtifactStatus
 
@@ -1778,7 +1943,7 @@ class TestGenerateMethodHappyPath:
         )
 
         ctx = self._make_context()
-        art = gen.generate(ctx)
+        art = gen.generate(ctx, template=self._make_template())
 
         assert art.status == ArtifactStatus.PENDING
         data = json.loads(art.content)
@@ -1786,7 +1951,7 @@ class TestGenerateMethodHappyPath:
         assert data["root_cause_hypothesis"] == "wrong branch"
 
     def test_generate_passes_prompt_and_system_to_agent(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         from atomicguard.domain.prompts import PromptTemplate
 
@@ -1801,7 +1966,12 @@ class TestGenerateMethodHappyPath:
         )
         gen._agent = mock_agent
 
-        tmpl = PromptTemplate(role="Bug analyst", constraints="", task="Analyze this")
+        # Use {specification} placeholder to include the problem statement
+        tmpl = PromptTemplate(
+            role="Bug analyst",
+            constraints="",
+            task="Analyze this\n\n## Problem\n{specification}",
+        )
         ctx = self._make_context(specification="segfault in foo()")
         gen.generate(ctx, template=tmpl)
 
@@ -1812,7 +1982,7 @@ class TestGenerateMethodHappyPath:
         assert call_args[1]["instructions"] == "Bug analyst"
 
     def test_generate_increments_attempt_counter(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         gen = self._make_gen()
         gen._agent = self._mock_agent(
@@ -1825,14 +1995,15 @@ class TestGenerateMethodHappyPath:
         )
 
         ctx = self._make_context()
-        art1 = gen.generate(ctx)
-        art2 = gen.generate(ctx)
+        tmpl = self._make_template()
+        art1 = gen.generate(ctx, template=tmpl)
+        art2 = gen.generate(ctx, template=tmpl)
 
         assert art1.attempt_number == 1
         assert art2.attempt_number == 2
 
     def test_generate_captures_context_snapshot(self):
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.models import Analysis
 
         gen = self._make_gen()
         gen._agent = self._mock_agent(
@@ -1846,17 +2017,15 @@ class TestGenerateMethodHappyPath:
 
         ctx = self._make_context(
             specification="spec text",
-            deps=(("analysis", "art-1"),),
         )
-        art = gen.generate(ctx, workflow_id="wf-1")
+        art = gen.generate(ctx, template=self._make_template(), workflow_id="wf-1")
 
         assert art.context.specification == "spec text"
         assert art.context.workflow_id == "wf-1"
         assert art.context.constraints == "c"
-        assert art.context.dependency_artifacts == (("analysis", "art-1"),)
 
     def test_generate_patch_calls_process_output(self, tmp_path):
-        from examples.swe_bench_ablation.models import Patch, SearchReplaceEdit
+        from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
         (tmp_path / "hello.py").write_text("print('hello')\n")
 
@@ -1875,7 +2044,7 @@ class TestGenerateMethodHappyPath:
         )
 
         ctx = self._make_context()
-        art = gen.generate(ctx)
+        art = gen.generate(ctx, template=self._make_template())
         data = json.loads(art.content)
         assert "patch" in data
 
@@ -1889,7 +2058,7 @@ class TestGenerateMethodErrorPaths:
     """Verify generate() handles errors correctly."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         return AnalysisGenerator(
             model="test",
@@ -1903,6 +2072,15 @@ class TestGenerateMethodErrorPaths:
         ambient = AmbientEnvironment(repository=MagicMock(spec=[]), constraints="")
         return Context(ambient=ambient, specification="bug")
 
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Test assistant",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
+
     def test_generate_validation_error_returns_error_artifact(self):
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 
@@ -1913,7 +2091,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         # Content is now the raw body from the LLM (may be re-formatted by PydanticAI)
         assert "bad" in art.content
         assert "data" in art.content
@@ -1933,7 +2111,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         assert art.content == raw_body
         assert "generator_error" in art.metadata
         assert "tool call" in art.metadata["generator_error"]
@@ -1949,7 +2127,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         # Without a body, content falls back to str(e) which is just the message
         assert "1 validation error for Analysis" in art.content
         assert art.metadata["generator_error_kind"] == "validation"
@@ -1966,7 +2144,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         assert art.content == "not valid json {"
         assert art.metadata["generator_error_kind"] == "validation"
 
@@ -1976,7 +2154,7 @@ class TestGenerateMethodErrorPaths:
         mock_agent.run_sync.side_effect = RuntimeError("network timeout")
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         assert art.content == "network timeout"
         assert art.metadata["generator_error"] == "Generation failed: network timeout"
         assert art.metadata["generator_error_kind"] == "infrastructure"
@@ -1988,8 +2166,9 @@ class TestGenerateMethodErrorPaths:
         gen._agent = mock_agent
 
         ctx = self._make_context()
-        art1 = gen.generate(ctx)
-        art2 = gen.generate(ctx)
+        tmpl = self._make_template()
+        art1 = gen.generate(ctx, template=tmpl)
+        art2 = gen.generate(ctx, template=tmpl)
 
         assert art1.attempt_number == 1
         assert art2.attempt_number == 2
@@ -2004,7 +2183,7 @@ class TestFormatValidationError:
     """Verify _format_validation_error uses error.message and error.body."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         return AnalysisGenerator(
             model="test",
@@ -2097,10 +2276,10 @@ class TestFormatValidationError:
 
 
 class TestGetSystemPrompt:
-    """Verify _get_system_prompt selects the right source."""
+    """Verify _get_system_prompt requires a valid role."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
+        from examples.swe_bench_common.generators import AnalysisGenerator
 
         return AnalysisGenerator(
             model="test",
@@ -2112,155 +2291,29 @@ class TestGetSystemPrompt:
         from atomicguard.domain.prompts import PromptTemplate
 
         gen = self._make_gen()
-        tmpl = PromptTemplate(role="Bug analyst", constraints="", task="")
+        tmpl = PromptTemplate(
+            role="Bug analyst",
+            constraints="",
+            task="Analyze bugs",
+        )
         assert gen._get_system_prompt(tmpl) == "Bug analyst"
 
-    def test_returns_default_when_no_template(self):
+    def test_raises_when_role_is_empty(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
         gen = self._make_gen()
-        assert gen._get_system_prompt(None) == "You are a helpful assistant."
+        tmpl = PromptTemplate(role="", constraints="", task="Test task")
+        with pytest.raises(ValueError, match="requires a role in PromptTemplate"):
+            gen._get_system_prompt(tmpl)
 
 
 # =========================================================================
-# PatchGenerator – dependency extraction helpers
+# NOTE: TestDependencyExtraction class was removed as part of Issue 7
+# (Move All Context to Prompt Templates). The _get_analysis, _get_localization,
+# and _get_test_code methods no longer exist - dependency artifacts are now
+# accessed via {ap_*} placeholders in prompt templates instead of hardcoded
+# extraction methods. See prompts.json for placeholder usage.
 # =========================================================================
-
-
-class TestDependencyExtraction:
-    """Verify _get_analysis, _get_localization, _get_test_code."""
-
-    def _make_gen(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
-
-        return PatchGenerator(
-            model="test",
-            base_url="http://localhost",
-            api_key="test",
-        )
-
-    def _make_context(self, deps, artifact_map):
-        """Build a Context whose repo returns artifacts from *artifact_map*.
-
-        Args:
-            deps: Tuple of (dep_id, artifact_id) pairs.
-            artifact_map: Dict mapping artifact_id to content strings.
-        """
-        from atomicguard.domain.models import AmbientEnvironment, Context
-
-        repo = MagicMock(spec=["get_artifact"])
-
-        def _get(aid):
-            content = artifact_map.get(aid)
-            if content is None:
-                return None
-            art = MagicMock()
-            art.content = content
-            return art
-
-        repo.get_artifact.side_effect = _get
-
-        ambient = AmbientEnvironment(repository=repo, constraints="")
-        return Context(ambient=ambient, specification="bug", dependency_artifacts=deps)
-
-    # -- _get_analysis -------------------------------------------------
-
-    def test_get_analysis_valid_returns_model(self):
-        from examples.swe_bench_ablation.models import Analysis
-
-        gen = self._make_gen()
-        analysis_json = json.dumps(
-            {
-                "bug_type": "logic",
-                "root_cause_hypothesis": "wrong branch",
-                "files": ["f.py"],
-                "fix_approach": "fix branch",
-            }
-        )
-        ctx = self._make_context(
-            deps=(("analysis", "a1"),),
-            artifact_map={"a1": analysis_json},
-        )
-        result = gen._get_analysis(ctx)
-        assert isinstance(result, Analysis)
-        assert result.bug_type.value == "logic"
-
-    def test_get_analysis_invalid_json_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("analysis", "a1"),),
-            artifact_map={"a1": "not json"},
-        )
-        assert gen._get_analysis(ctx) is None
-
-    def test_get_analysis_no_matching_dep_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("patch", "a1"),),
-            artifact_map={"a1": "{}"},
-        )
-        assert gen._get_analysis(ctx) is None
-
-    # -- _get_localization ---------------------------------------------
-
-    def test_get_localization_valid_returns_model(self):
-        from examples.swe_bench_ablation.models import Localization
-
-        gen = self._make_gen()
-        loc_json = json.dumps(
-            {
-                "files": ["src/main.py"],
-                "functions": [{"name": "foo", "file": "src/main.py"}],
-                "reasoning": "because",
-            }
-        )
-        ctx = self._make_context(
-            deps=(("localize", "l1"),),
-            artifact_map={"l1": loc_json},
-        )
-        result = gen._get_localization(ctx)
-        assert isinstance(result, Localization)
-        assert result.files == ["src/main.py"]
-
-    def test_get_localization_invalid_json_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("localize", "l1"),),
-            artifact_map={"l1": "not valid"},
-        )
-        assert gen._get_localization(ctx) is None
-
-    def test_get_localization_missing_artifact_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("localize", "l1"),),
-            artifact_map={},  # get_artifact returns None
-        )
-        assert gen._get_localization(ctx) is None
-
-    # -- _get_test_code ------------------------------------------------
-
-    def test_get_test_code_valid_returns_content(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("test", "t1"),),
-            artifact_map={"t1": "def test_foo(): assert True"},
-        )
-        assert gen._get_test_code(ctx) == "def test_foo(): assert True"
-
-    def test_get_test_code_empty_content_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("test", "t1"),),
-            artifact_map={"t1": "   \n  "},
-        )
-        assert gen._get_test_code(ctx) is None
-
-    def test_get_test_code_no_test_dep_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("analysis", "a1"),),
-            artifact_map={"a1": "def test_foo(): assert True"},
-        )
-        assert gen._get_test_code(ctx) is None
 
 
 # =========================================================================
@@ -2272,7 +2325,7 @@ class TestCreateUnifiedDiffEdgeCases:
     """Verify _create_unified_diff handles edge cases."""
 
     def _make_gen(self):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         return PatchGenerator(
             model="test",
@@ -2281,14 +2334,14 @@ class TestCreateUnifiedDiffEdgeCases:
         )
 
     def test_file_not_found_skipped(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         gen = self._make_gen()
         edits = [SearchReplaceEdit(file="nonexistent.py", search="x", replace="y")]
         assert gen._create_unified_diff(edits, str(tmp_path)) == ""
 
     def test_search_string_not_found_skipped(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         (tmp_path / "real.py").write_text("print('hello')\n")
         gen = self._make_gen()
@@ -2296,7 +2349,7 @@ class TestCreateUnifiedDiffEdgeCases:
         assert gen._create_unified_diff(edits, str(tmp_path)) == ""
 
     def test_all_edits_fail_returns_empty(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         (tmp_path / "a.py").write_text("x = 1\n")
         gen = self._make_gen()
@@ -2307,7 +2360,7 @@ class TestCreateUnifiedDiffEdgeCases:
         assert gen._create_unified_diff(edits, str(tmp_path)) == ""
 
     def test_multiple_edits_different_files(self, tmp_path):
-        from examples.swe_bench_ablation.models import SearchReplaceEdit
+        from examples.swe_bench_common.models import SearchReplaceEdit
 
         (tmp_path / "a.py").write_text("x = 1\n")
         (tmp_path / "b.py").write_text("y = 2\n")
@@ -2330,30 +2383,48 @@ class TestReadFileEdgeCases:
     """Verify _read_file handles edge cases."""
 
     def _make_gen(self, **kwargs):
-        from examples.swe_bench_ablation.generators import PatchGenerator
+        from examples.swe_bench_common.generators import PatchGenerator
 
         defaults = {"model": "test", "base_url": "http://localhost", "api_key": "test"}
         defaults.update(kwargs)
         return PatchGenerator(**defaults)
 
-    def test_long_file_truncated(self, tmp_path):
+    def test_long_file_not_truncated(self, tmp_path):
+        """Files are returned in full, not truncated."""
+        content = "\n".join(f"line_{i}" for i in range(500))
+        (tmp_path / "big.py").write_text(content)
+        gen = self._make_gen()  # No max_file_lines by default
+
+        result, error = gen._read_file(str(tmp_path), "big.py")
+        assert result is not None
+        assert error is None
+        assert "TRUNCATED" not in result
+        assert "line_250" in result  # Middle content present
+
+    def test_file_exceeds_limit_returns_error(self, tmp_path):
+        """When max_file_lines set, exceeding it returns error."""
         content = "\n".join(f"line_{i}" for i in range(200))
         (tmp_path / "big.py").write_text(content)
-        gen = self._make_gen(max_context_lines=50)
+        gen = self._make_gen(max_file_lines=100)
 
-        result = gen._read_file(str(tmp_path), "big.py")
-        assert result is not None
-        assert "lines omitted" in result
+        result, error = gen._read_file(str(tmp_path), "big.py")
+        assert result is None
+        assert error is not None
+        assert "exceeding limit" in error
 
     def test_file_not_found_returns_none(self, tmp_path):
         gen = self._make_gen()
-        assert gen._read_file(str(tmp_path), "nonexistent.py") is None
+        result, error = gen._read_file(str(tmp_path), "nonexistent.py")
+        assert result is None
+        assert error is None
 
     def test_read_error_returns_none(self, tmp_path):
         (tmp_path / "bad.py").write_text("x = 1")
         gen = self._make_gen()
         with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
-            assert gen._read_file(str(tmp_path), "bad.py") is None
+            result, error = gen._read_file(str(tmp_path), "bad.py")
+            assert result is None
+            assert error is None
 
 
 # =========================================================================
@@ -2371,8 +2442,8 @@ class TestDefaultProcessOutput:
         return Context(ambient=ambient, specification="bug")
 
     def test_analysis_process_output_returns_json(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.generators import AnalysisGenerator
+        from examples.swe_bench_common.models import Analysis
 
         gen = AnalysisGenerator(
             model="test",
@@ -2391,8 +2462,8 @@ class TestDefaultProcessOutput:
         assert data["files"] == ["f.py"]
 
     def test_localization_process_output_returns_json(self):
-        from examples.swe_bench_ablation.generators import LocalizationGenerator
-        from examples.swe_bench_ablation.models import Localization
+        from examples.swe_bench_common.generators import LocalizationGenerator
+        from examples.swe_bench_common.models import Localization
 
         gen = LocalizationGenerator(
             model="test",
@@ -2409,8 +2480,8 @@ class TestDefaultProcessOutput:
         assert data["reasoning"] == "because"
 
     def test_process_output_preserves_all_fields(self):
-        from examples.swe_bench_ablation.generators import AnalysisGenerator
-        from examples.swe_bench_ablation.models import Analysis
+        from examples.swe_bench_common.generators import AnalysisGenerator
+        from examples.swe_bench_common.models import Analysis
 
         gen = AnalysisGenerator(
             model="test",
@@ -2488,7 +2559,11 @@ class TestActionPairGeneratorErrorSkip:
 
         mock_guard = MagicMock()
 
-        template = PromptTemplate(role="", constraints="", task="")
+        template = PromptTemplate(
+            role="Test role",
+            constraints="",
+            task="Test task",
+        )
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2517,7 +2592,11 @@ class TestActionPairGeneratorErrorSkip:
             passed=True, feedback="", guard_name="TestGuard"
         )
 
-        template = PromptTemplate(role="", constraints="", task="")
+        template = PromptTemplate(
+            role="Test role",
+            constraints="",
+            task="Test task",
+        )
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2550,7 +2629,11 @@ class TestActionPairGeneratorErrorSkip:
 
         mock_guard = MagicMock()
 
-        template = PromptTemplate(role="", constraints="", task="")
+        template = PromptTemplate(
+            role="Test role",
+            constraints="",
+            task="Test task",
+        )
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2562,3 +2645,505 @@ class TestActionPairGeneratorErrorSkip:
         assert "Raw response preview:" in result.feedback
         # Guard was bypassed
         mock_guard.validate.assert_not_called()
+
+
+# =========================================================================
+# TDD Verification Guards
+# =========================================================================
+
+
+class TestQuickTestRunner:
+    """Unit tests for QuickTestRunner without Docker."""
+
+    @pytest.fixture()
+    def mock_instance(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return SWEBenchProInstance(
+            instance_id="django__django-1234",
+            repo="django/django",
+            base_commit="abc123",
+            problem_statement="Bug in ORM",
+            patch="",
+            test_patch="",
+            repo_language="python",
+        )
+
+    def test_get_docker_image(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        # Official SWE-bench Pro format: {repo_base}.{repo_name}-{uid}
+        assert (
+            runner._get_docker_image()
+            == "jefzda/sweap-images:django.django-django__django-1234"
+        )
+
+    def test_get_test_filename_python(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        assert runner._get_test_filename() == "test_atomicguard.py"
+
+    def test_get_test_filename_go(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        go_instance = SWEBenchProInstance(
+            instance_id="golang__go-1234",
+            repo="golang/go",
+            base_commit="abc123",
+            problem_statement="Bug",
+            patch="",
+            test_patch="",
+            repo_language="go",
+        )
+        runner = QuickTestRunner(instance=go_instance)
+        assert runner._get_test_filename() == "atomicguard_test.go"
+
+    def test_create_test_script_without_patch(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        script = runner._create_test_script("def test_foo(): pass", patch_diff=None)
+
+        assert "git checkout -f abc123" in script
+        assert "git clean -fdx" in script
+        assert "def test_foo(): pass" in script
+        assert "git apply" not in script
+
+    def test_create_test_script_with_patch(self, mock_instance):
+        from examples.swe_bench_pro.guards import QuickTestRunner
+
+        runner = QuickTestRunner(instance=mock_instance)
+        script = runner._create_test_script(
+            "def test_foo(): pass",
+            patch_diff="--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n-old\n+new",
+        )
+
+        assert "git apply" in script
+        assert "--- a/foo.py" in script
+
+
+class TestTestRedGuard:
+    """Unit tests for TestRedGuard with mocked Docker."""
+
+    @pytest.fixture()
+    def mock_instance(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return SWEBenchProInstance(
+            instance_id="django__django-1234",
+            repo="django/django",
+            base_commit="abc123",
+            problem_statement="Bug in ORM",
+            patch="",
+            test_patch="",
+            repo_language="python",
+        )
+
+    @pytest.fixture()
+    def make_artifact(self):
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        def _factory(content: str) -> Artifact:
+            ctx = ContextSnapshot(
+                workflow_id="w",
+                specification="s",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
+            )
+            return Artifact(
+                artifact_id="a",
+                workflow_id="w",
+                content=content,
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id="ap",
+                created_at="2025-01-01T00:00:00Z",
+                attempt_number=1,
+                status=ArtifactStatus.PENDING,
+                guard_result=None,
+                context=ctx,
+            )
+
+        return _factory
+
+    def test_empty_test_fails(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+
+        guard = TestRedGuard(instance=mock_instance)
+        artifact = make_artifact("")
+        result = guard.validate(artifact)
+
+        assert result.passed is False
+        assert "empty" in result.feedback.lower()
+
+    def test_fatal_when_docker_unavailable(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+
+        guard = TestRedGuard(instance=mock_instance)
+        # Mock ensure_image_available to return unavailable
+        guard._runner.ensure_image_available = lambda: (
+            False,
+            "Docker image not available",
+        )
+
+        artifact = make_artifact("def test_foo(): assert False")
+        result = guard.validate(artifact)
+
+        # Should fail with fatal=True when Docker unavailable (⊥fatal)
+        assert result.passed is False
+        assert result.fatal is True
+        assert "FATAL" in result.feedback
+        assert "Docker image not available" in result.feedback
+
+    def test_fails_when_test_passes_on_buggy_code(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestRedGuard(instance=mock_instance)
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
+            status="PASSED",
+            output="test passed",
+            exit_code=0,
+            duration_seconds=1.0,
+        )
+
+        artifact = make_artifact("def test_foo(): assert True")
+        result = guard.validate(artifact)
+
+        assert result.passed is False
+        assert "PASSES on buggy code" in result.feedback
+
+    def test_passes_when_test_fails_on_buggy_code(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestRedGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestRedGuard(instance=mock_instance)
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
+            status="FAILED",
+            output="AssertionError: expected 1 got 0",
+            exit_code=1,
+            duration_seconds=1.0,
+        )
+
+        artifact = make_artifact("def test_foo(): assert bug()")
+        result = guard.validate(artifact)
+
+        assert result.passed is True
+        assert "correctly FAILS" in result.feedback
+
+
+class TestTestGreenGuard:
+    """Unit tests for TestGreenGuard with mocked Docker."""
+
+    @pytest.fixture()
+    def mock_instance(self):
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+
+        return SWEBenchProInstance(
+            instance_id="django__django-1234",
+            repo="django/django",
+            base_commit="abc123",
+            problem_statement="Bug in ORM",
+            patch="",
+            test_patch="",
+            repo_language="python",
+        )
+
+    @pytest.fixture()
+    def make_artifact(self):
+        from atomicguard.domain.models import (
+            Artifact,
+            ArtifactStatus,
+            ContextSnapshot,
+        )
+
+        def _factory(content: str) -> Artifact:
+            ctx = ContextSnapshot(
+                workflow_id="w",
+                specification="s",
+                constraints="",
+                feedback_history=(),
+                dependency_artifacts=(),
+            )
+            return Artifact(
+                artifact_id="a",
+                workflow_id="w",
+                content=content,
+                previous_attempt_id=None,
+                parent_action_pair_id=None,
+                action_pair_id="ap",
+                created_at="2025-01-01T00:00:00Z",
+                attempt_number=1,
+                status=ArtifactStatus.PENDING,
+                guard_result=None,
+                context=ctx,
+            )
+
+        return _factory
+
+    def test_fails_without_test_dependency(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+
+        guard = TestGreenGuard(instance=mock_instance)
+        patch_artifact = make_artifact('{"patch": "diff --git ..."}')
+        result = guard.validate(patch_artifact)
+
+        assert result.passed is False
+        assert "No test artifact" in result.feedback
+
+    def test_fatal_when_docker_unavailable(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+
+        guard = TestGreenGuard(instance=mock_instance)
+        guard._runner.ensure_image_available = lambda: (
+            False,
+            "Docker image not available",
+        )
+
+        patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
+        test_artifact = make_artifact("def test_foo(): assert fixed()")
+
+        result = guard.validate(patch_artifact, ap_gen_test=test_artifact)
+
+        # Should fail with fatal=True when Docker unavailable (⊥fatal)
+        assert result.passed is False
+        assert result.fatal is True
+        assert "FATAL" in result.feedback
+        assert "Docker image not available" in result.feedback
+
+    def test_passes_when_test_passes_after_patch(self, mock_instance, make_artifact):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestGreenGuard(instance=mock_instance)
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
+            status="PASSED",
+            output="test passed",
+            exit_code=0,
+            duration_seconds=1.0,
+        )
+
+        patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
+        test_artifact = make_artifact("def test_foo(): assert fixed()")
+
+        result = guard.validate(patch_artifact, ap_gen_test=test_artifact)
+
+        assert result.passed is True
+        assert "PASSES after patch" in result.feedback
+
+    def test_fails_when_test_still_fails_after_patch(
+        self, mock_instance, make_artifact
+    ):
+        from examples.swe_bench_pro.guards import TestGreenGuard
+        from examples.swe_bench_pro.guards.quick_test_runner import QuickTestResult
+
+        guard = TestGreenGuard(instance=mock_instance)
+        guard._runner.ensure_image_available = lambda: (True, "Image available")
+        guard._runner.run_test = lambda *_args, **_kwargs: QuickTestResult(
+            status="FAILED",
+            output="AssertionError",
+            exit_code=1,
+            duration_seconds=1.0,
+        )
+
+        patch_artifact = make_artifact('{"patch": "diff --git a/foo.py ..."}')
+        test_artifact = make_artifact("def test_foo(): assert fixed()")
+
+        result = guard.validate(patch_artifact, ap_gen_test=test_artifact)
+
+        assert result.passed is False
+        assert "still FAILS" in result.feedback
+
+
+class TestTDDVerifiedWorkflowConfig:
+    """Tests for the TDD-verified workflow configuration with CompositeGuards."""
+
+    def test_workflow_loads(self):
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        assert config["name"] == "S1 TDD Verified"
+        assert config["rmax"] == 6
+
+    def test_workflow_has_three_action_pairs(self):
+        """New workflow has 3 action pairs instead of 6 (using CompositeGuards)."""
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        expected = {
+            "ap_analysis",
+            "ap_gen_test",
+            "ap_gen_patch",
+        }
+        assert set(config["action_pairs"].keys()) == expected
+
+    def test_gen_test_uses_composite_guard(self):
+        """ap_gen_test should use composite guard with test_syntax and test_red."""
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        ap = config["action_pairs"]["ap_gen_test"]
+        assert ap["generator"] == "TestGenerator"
+        assert ap["guard"] == "composite"
+        assert ap["guards"] == ["test_syntax", "test_red"]
+
+    def test_gen_patch_uses_composite_guard(self):
+        """ap_gen_patch should use composite guard with patch, lint, test_green, full_eval."""
+        from examples.swe_bench_pro.experiment_runner import load_workflow_config
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        ap = config["action_pairs"]["ap_gen_patch"]
+        assert ap["generator"] == "PatchGenerator"
+        assert ap["guard"] == "composite"
+        assert ap["guards"] == ["patch", "lint", "test_green", "full_eval"]
+
+    def test_arm_map_includes_verified(self):
+        from examples.swe_bench_pro.demo import _ARM_MAP
+
+        assert "s1_tdd_verified" in _ARM_MAP
+        assert _ARM_MAP["s1_tdd_verified"] == "05_s1_tdd_verified"
+
+
+class TestCompositeGuardWorkflow:
+    """Tests for CompositeGuard support in build_workflow()."""
+
+    def test_build_workflow_with_composite_guard(self, tmp_path):
+        """build_workflow should correctly parse composite guard config."""
+        from examples.swe_bench_pro.dataset import SWEBenchProInstance
+        from examples.swe_bench_pro.experiment_runner import (
+            build_workflow,
+            load_prompts,
+            load_workflow_config,
+        )
+
+        from atomicguard import CompositeGuard
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
+
+        config = load_workflow_config("05_s1_tdd_verified")
+        prompts = load_prompts()
+        lang = get_language_config("python")
+        dag = FilesystemArtifactDAG(str(tmp_path / "dag"))
+
+        mock_instance = SWEBenchProInstance(
+            instance_id="test__test__1",
+            repo="test/test",
+            base_commit="abc123",
+            problem_statement="Test bug",
+            patch="diff",
+            test_patch="diff",
+            repo_language="python",
+        )
+
+        wf = build_workflow(
+            config=config,
+            prompts=prompts,
+            lang_config=lang,
+            model="test",
+            base_url="http://localhost",
+            artifact_dag=dag,
+            repo_root=str(tmp_path),
+            api_key="test",
+            instance=mock_instance,
+        )
+
+        # Find ap_gen_test step and verify it has a CompositeGuard
+        gen_test_step = None
+        gen_patch_step = None
+        for step in wf._steps:
+            if step.guard_id == "ap_gen_test":
+                gen_test_step = step
+            elif step.guard_id == "ap_gen_patch":
+                gen_patch_step = step
+
+        assert gen_test_step is not None, "ap_gen_test step not found"
+        assert isinstance(gen_test_step.action_pair.guard, CompositeGuard)
+        assert len(gen_test_step.action_pair.guard.guards) == 2
+
+        assert gen_patch_step is not None, "ap_gen_patch step not found"
+        assert isinstance(gen_patch_step.action_pair.guard, CompositeGuard)
+        assert len(gen_patch_step.action_pair.guard.guards) == 4
+
+    def test_composite_guard_requires_guards_array(self, tmp_path):
+        """build_workflow should raise if composite guard has no guards array."""
+        from examples.swe_bench_pro.experiment_runner import (
+            build_workflow,
+            load_prompts,
+        )
+
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
+
+        config = {
+            "rmax": 3,
+            "action_pairs": {
+                "ap_test": {
+                    "generator": "AnalysisGenerator",
+                    "guard": "composite",
+                    # Missing "guards" array
+                }
+            },
+        }
+        prompts = load_prompts()
+        lang = get_language_config("python")
+        dag = FilesystemArtifactDAG(str(tmp_path / "dag"))
+
+        with pytest.raises(ValueError, match="requires 'guards' array"):
+            build_workflow(
+                config=config,
+                prompts=prompts,
+                lang_config=lang,
+                model="test",
+                base_url="http://localhost",
+                artifact_dag=dag,
+                api_key="test",
+            )
+
+    def test_composite_guard_unknown_subguard_raises(self, tmp_path):
+        """build_workflow should raise if composite guard has unknown sub-guard."""
+        from examples.swe_bench_pro.experiment_runner import (
+            build_workflow,
+            load_prompts,
+        )
+
+        from atomicguard.infrastructure.persistence.filesystem import (
+            FilesystemArtifactDAG,
+        )
+
+        config = {
+            "rmax": 3,
+            "action_pairs": {
+                "ap_test": {
+                    "generator": "AnalysisGenerator",
+                    "guard": "composite",
+                    "guards": ["analysis", "nonexistent_guard"],
+                }
+            },
+        }
+        prompts = load_prompts()
+        lang = get_language_config("python")
+        dag = FilesystemArtifactDAG(str(tmp_path / "dag"))
+
+        with pytest.raises(ValueError, match="Unknown guard"):
+            build_workflow(
+                config=config,
+                prompts=prompts,
+                lang_config=lang,
+                model="test",
+                base_url="http://localhost",
+                artifact_dag=dag,
+                api_key="test",
+            )

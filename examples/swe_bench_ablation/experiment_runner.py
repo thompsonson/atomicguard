@@ -10,8 +10,10 @@ import os
 import subprocess
 import tempfile
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
+
+from examples.swe_bench_common import ArmResult, load_existing_results
 
 from atomicguard.infrastructure.persistence.filesystem import FilesystemArtifactDAG
 
@@ -19,20 +21,6 @@ from .dataset import SWEInstance, load_swe_polybench
 from .demo import build_workflow, load_prompts, load_workflow_config
 
 logger = logging.getLogger("swe_bench_ablation.experiment")
-
-
-@dataclass
-class ArmResult:
-    """Result of running one arm on one instance."""
-
-    instance_id: str
-    arm: str
-    workflow_status: str
-    patch_content: str = ""
-    total_tokens: int = 0
-    per_step_tokens: dict[str, int] = field(default_factory=dict)
-    wall_time_seconds: float = 0.0
-    error: str | None = None
 
 
 class ExperimentRunner:
@@ -85,6 +73,9 @@ class ExperimentRunner:
         start_time = time.time()
 
         try:
+            # Track init phase (repo clone + checkout + workflow setup)
+            init_start = time.time()
+
             # Clone and checkout repo
             repo_root = self._prepare_repo(instance)
 
@@ -109,9 +100,15 @@ class ExperimentRunner:
                 provider=self._provider,
             )
 
+            init_time = time.time() - init_start
+
+            # Track workflow phase (action pair execution)
+            workflow_start = time.time()
+
             # Execute workflow with problem statement
             result = workflow.execute(instance.problem_statement)
 
+            workflow_time = time.time() - workflow_start
             wall_time = time.time() - start_time
 
             # Extract patch from final artifact
@@ -134,14 +131,25 @@ class ExperimentRunner:
                     except (json.JSONDecodeError, TypeError):
                         patch_content = artifact.content
 
+            # Extract guard name from provenance (if failure)
+            failed_guard = None
+            if result.provenance:
+                last_artifact, _ = result.provenance[-1]
+                if last_artifact.guard_result and last_artifact.guard_result.guard_name:
+                    failed_guard = last_artifact.guard_result.guard_name
+
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status=result.status.value,
                 patch_content=patch_content,
                 total_tokens=total_tokens,
                 per_step_tokens=per_step_tokens,
                 wall_time_seconds=round(wall_time, 2),
+                init_time_seconds=round(init_time, 2),
+                workflow_time_seconds=round(workflow_time, 2),
+                failed_step=result.failed_step,
+                failed_guard=failed_guard,
+                retry_count=len(result.provenance),
             )
 
         except Exception as e:
@@ -155,7 +163,6 @@ class ExperimentRunner:
             return ArmResult(
                 instance_id=instance.instance_id,
                 arm=arm,
-                workflow_status="error",
                 wall_time_seconds=round(wall_time, 2),
                 error=str(e),
             )
@@ -195,7 +202,7 @@ class ExperimentRunner:
         results: list[ArmResult] = []
 
         if resume_from:
-            results, completed = self._load_existing_results(resume_from)
+            results, completed = load_existing_results(resume_from)
             logger.info("Resuming: %d runs already completed", len(completed))
 
         # Ensure output directory exists
@@ -294,30 +301,3 @@ class ExperimentRunner:
             )
 
         return str(repo_dir)
-
-    def _load_existing_results(
-        self,
-        results_dir: str,
-    ) -> tuple[list[ArmResult], set[tuple[str, str]]]:
-        """Load existing results from JSONL for resume support."""
-        results_path = Path(results_dir) / "results.jsonl"
-        results: list[ArmResult] = []
-        completed: set[tuple[str, str]] = set()
-
-        if not results_path.exists():
-            return results, completed
-
-        with open(results_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    arm_result = ArmResult(**data)
-                    results.append(arm_result)
-                    completed.add((arm_result.instance_id, arm_result.arm))
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning("Skipping malformed result line: %s", e)
-
-        return results, completed

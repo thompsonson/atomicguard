@@ -11,11 +11,11 @@ import logging
 import subprocess
 from pathlib import Path
 
-from examples.swe_bench_ablation.evaluation import (
+from examples.swe_bench_common.evaluation import (
     EvalResult,
     write_eval_logs,
 )
-from examples.swe_bench_ablation.experiment_runner import ArmResult
+from examples.swe_bench_common import ArmResult
 
 logger = logging.getLogger("swe_bench_pro.evaluation")
 
@@ -121,7 +121,8 @@ def prepare_predictions(
         predictions = []
         skipped: list[str] = []
         for r in arm_results:
-            if r.workflow_status != "success" or not r.patch_content:
+            # Skip if workflow failed (error or guard rejection) or no patch
+            if r.error or r.failed_step or not r.patch_content:
                 skipped.append(r.instance_id)
                 continue
             predictions.append(
@@ -186,8 +187,8 @@ def run_evaluation(
     Returns:
         Dict with ``status``, ``stdout``, ``stderr`` keys.
     """
-    predictions_path = Path(predictions_path)
-    eval_repo_path = Path(eval_repo_path)
+    predictions_path = Path(predictions_path).resolve()
+    eval_repo_path = Path(eval_repo_path).resolve()
 
     if not predictions_path.exists():
         raise FileNotFoundError(f"Predictions file not found: {predictions_path}")
@@ -198,9 +199,9 @@ def run_evaluation(
 
     if dataset_csv is None:
         dataset_csv = eval_repo_path / "swe_bench_pro_full.csv"
-    dataset_csv = Path(dataset_csv)
+    dataset_csv = Path(dataset_csv).resolve()
 
-    output_dir = predictions_path.parent / "eval_output"
+    output_dir = (predictions_path.parent / "eval_output").resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -222,11 +223,13 @@ def run_evaluation(
     logger.info("Running SWE-Bench Pro evaluation: %s", " ".join(cmd))
 
     try:
+        # Run from eval_repo_path so relative paths (dockerfiles/) work
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=str(eval_repo_path),
         )
 
         if result.returncode != 0:
@@ -317,3 +320,79 @@ def load_evaluation_results(
         write_eval_logs(eval_results, str(results_dir), run_id)
 
     return resolved
+
+
+# =========================================================================
+# Inline evaluation for experiment integration
+# =========================================================================
+
+
+def evaluate_predictions_inline(
+    predictions_dir: Path,
+    eval_max_workers: int = 4,
+    eval_timeout: int = 7200,
+) -> dict[tuple[str, str], bool]:
+    """Run evaluation on all prediction files and return resolved mapping.
+
+    This function is designed for integration with the experiment command
+    to enable a single-command workflow: patches → evaluation → visualization.
+
+    Args:
+        predictions_dir: Directory containing prediction JSON files (one per arm).
+        eval_max_workers: Number of parallel evaluation workers.
+        eval_timeout: Timeout in seconds for evaluation.
+
+    Returns:
+        Mapping of ``(instance_id, arm) → resolved`` bool.
+
+    Raises:
+        RuntimeError: If evaluation fails for any arm (explicit failure, no fallbacks).
+    """
+    eval_repo = ensure_eval_repo()
+    resolved_map: dict[tuple[str, str], bool] = {}
+
+    pred_files = sorted(predictions_dir.glob("*.json"))
+    if not pred_files:
+        logger.warning("No prediction files found in %s", predictions_dir)
+        return resolved_map
+
+    for pred_file in pred_files:
+        arm = pred_file.stem
+        logger.info("Evaluating arm=%s from %s", arm, pred_file)
+
+        # Check if prediction file has any entries
+        predictions = json.loads(pred_file.read_text())
+        if not predictions:
+            logger.info(
+                "arm=%s: no predictions to evaluate (all instances failed workflow)",
+                arm,
+            )
+            continue
+
+        result = run_evaluation(
+            predictions_path=pred_file,
+            eval_repo_path=eval_repo,
+            max_workers=eval_max_workers,
+            timeout=eval_timeout,
+        )
+
+        if result["status"] == "success":
+            arm_resolved = load_evaluation_results(
+                str(pred_file.parent),
+                run_id=arm,
+            )
+            for instance_id, is_resolved in arm_resolved.items():
+                resolved_map[(instance_id, arm)] = is_resolved
+            logger.info(
+                "arm=%s: %d/%d resolved",
+                arm,
+                sum(1 for v in arm_resolved.values() if v),
+                len(arm_resolved),
+            )
+        else:
+            raise RuntimeError(
+                f"Evaluation failed for arm={arm}: status={result['status']}.\n"
+                f"stderr:\n{result.get('stderr', 'N/A')[-1000:]}"
+            )
+
+    return resolved_map

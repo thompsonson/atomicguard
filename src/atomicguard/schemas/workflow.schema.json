@@ -188,6 +188,30 @@
         "human_prompt_title": {
           "type": "string",
           "description": "Title for human review guard prompts"
+        },
+        "r_patience": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Consecutive similar failures before escalation trigger (invariant: 1 < r_patience < rmax). Extension 09, Definition 44."
+        },
+        "e_max": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Maximum escalation attempts before FAIL (must be >= 1 if escalation configured). Extension 09."
+        },
+        "escalate_feedback_to": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Upstream action_pair_ids to receive failure context on stagnation (Extension 09, Definition 48). These steps will be re-run with injected failure summary. Note: cascade invalidation automatically re-runs all dependent steps; this field controls WHICH steps receive the failure context for informed regeneration."
+        },
+        "escalate_feedback_by_guard": {
+          "type": "object",
+          "description": "Per-guard feedback escalation targets (Definition 45). Keys are guard names, values are arrays of upstream action_pair_ids to receive failure context. Overrides escalate_feedback_to for specific guards.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
         }
       }
     }

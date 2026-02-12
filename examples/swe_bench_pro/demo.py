@@ -1,8 +1,16 @@
 """CLI for SWE-Bench Pro evaluation.
 
 Usage:
-    uv run python -m examples.swe_bench_pro.demo --debug experiment --arms singleshot --max-instances 5
+    # Generate patches only (fast, no Docker needed)
+    uv run python -m examples.swe_bench_pro.demo experiment --arms singleshot --max-instances 5 --provider openai
+
+    # Full pipeline: patches → evaluation → visualization (requires Docker)
+    uv run python -m examples.swe_bench_pro.demo experiment --arms singleshot --max-instances 5 --provider openai --evaluate
+
+    # Re-run evaluation on existing predictions
     uv run python -m examples.swe_bench_pro.demo evaluate --predictions-dir output/swe_bench_pro/predictions
+
+    # Re-generate visualizations
     uv run python -m examples.swe_bench_pro.demo visualize --results output/swe_bench_pro/results.jsonl
 """
 
@@ -113,6 +121,59 @@ def cli(debug: bool, log_file: str | None) -> None:
 
 
 # =========================================================================
+# Helper functions
+# =========================================================================
+
+
+def _rewrite_results_with_resolved(results: list, output_dir: str) -> None:
+    """Rewrite results.jsonl with resolved status from evaluation.
+
+    This updates the single source of truth (results.jsonl) to include
+    the resolved field from evaluation results.
+    """
+    from dataclasses import asdict
+
+    results_path = Path(output_dir) / "results.jsonl"
+    with open(results_path, "w") as f:
+        for r in results:
+            f.write(json.dumps(asdict(r)) + "\n")
+    logger.info("Rewrote %s with resolved status", results_path)
+
+
+def _print_summary_with_resolved(results: list) -> None:
+    """Print summary with resolved counts and guard failures by arm."""
+    from collections import defaultdict
+
+    by_arm: dict[str, list] = defaultdict(list)
+    for r in results:
+        by_arm[r.arm].append(r)
+
+    click.echo("\nSummary by arm:")
+    for arm in sorted(by_arm.keys()):
+        arm_results = by_arm[arm]
+        total = len(arm_results)
+        resolved = sum(1 for r in arm_results if r.resolved)
+        total_retries = sum(r.retry_count for r in arm_results)
+
+        # Count failures by guard (prefer guard name over step ID)
+        failures: dict[str, int] = defaultdict(int)
+        for r in arm_results:
+            if r.failed_step:
+                failure_key = r.failed_guard or r.failed_step
+                failures[failure_key] += 1
+
+        failure_str = ", ".join(f"{g}:{c}" for g, c in sorted(failures.items()))
+
+        click.echo(
+            click.style(
+                f"  {arm}: {resolved}/{total} RESOLVED | "
+                f"{total_retries} retries | failures: {failure_str or 'none'}",
+                fg="green" if resolved > 0 else "yellow",
+            )
+        )
+
+
+# =========================================================================
 # experiment
 # =========================================================================
 
@@ -120,6 +181,14 @@ _ARM_MAP = {
     "singleshot": "02_singleshot",
     "s1_direct": "03_s1_direct",
     "s1_tdd": "04_s1_tdd",
+    "s1_tdd_verified": "05_s1_tdd_verified",
+    "s1_tdd_behavior": "06_s1_tdd_behavior",
+    "s1_decomposed": "07_s1_decomposed",
+    # LLM-as-reviewer and backtracking arms
+    "s1_tdd_review": "17_s1_tdd_review",
+    "s1_tdd_review_backtrack": "18_s1_tdd_review_backtrack",
+    "s1_tdd_rule_backtrack": "19_s1_tdd_rule_backtrack",
+    "adaptive_backtrack": "21_adaptive_backtrack",
 }
 
 
@@ -162,9 +231,25 @@ _ARM_MAP = {
 @click.option("--split", default="test", help="Dataset split")
 @click.option("--max-instances", default=0, type=int, help="Max instances (0=all)")
 @click.option(
+    "--instances",
+    default=None,
+    help="Comma-separated instance ID substrings to include (e.g., 'openlibrary-798055d1,qutebrowser-e64622cd')",
+)
+@click.option(
     "--max-workers", default=1, type=int, help="Parallel workers (1=sequential)"
 )
 @click.option("--resume", is_flag=True, help="Resume from existing results")
+@click.option(
+    "--evaluate",
+    is_flag=True,
+    help="Run evaluation and visualization after generating patches",
+)
+@click.option(
+    "--eval-max-workers",
+    default=4,
+    type=int,
+    help="Parallel workers for evaluation (requires --evaluate)",
+)
 def experiment(
     model: str,
     provider: str,
@@ -175,8 +260,11 @@ def experiment(
     output_dir: str,
     split: str,
     max_instances: int,
+    instances: str | None,
     max_workers: int,
     resume: bool,
+    evaluate: bool,
+    eval_max_workers: int,
 ) -> None:
     """Run workflow arms across SWE-Bench Pro instances."""
     from .experiment_runner import SWEBenchProRunner
@@ -196,10 +284,17 @@ def experiment(
 
     arm_list = [_ARM_MAP[a] for a in raw_arms]
 
+    # Parse instance filter
+    instance_filter: list[str] | None = None
+    if instances:
+        instance_filter = [i.strip() for i in instances.split(",") if i.strip()]
+
     click.echo(f"Running SWE-Bench Pro experiment with model={model}")
     click.echo(f"Arms: {arm_list}")
     if language:
         click.echo(f"Language: {language}")
+    if instance_filter:
+        click.echo(f"Instance filter: {instance_filter}")
     click.echo(f"Output: {output_dir}")
     if max_workers > 1:
         click.echo(f"Parallel workers: {max_workers}")
@@ -218,14 +313,15 @@ def experiment(
         max_instances=max_instances if max_instances > 0 else None,
         resume_from=output_dir if resume else None,
         max_workers=max_workers,
+        instance_filter=instance_filter,
     )
 
     # --- Summary & predictions ---
-    from .evaluation import prepare_predictions
+    from .evaluation import evaluate_predictions_inline, prepare_predictions
 
     total = len(results)
     with_patch = sum(1 for r in results if r.patch_content)
-    errors = sum(1 for r in results if r.workflow_status == "error")
+    errors = sum(1 for r in results if r.error)
 
     _report(
         f"Done: {total} runs, {with_patch} with patches, "
@@ -234,9 +330,55 @@ def experiment(
     )
 
     pred_files = prepare_predictions(results, output_dir)
+    pred_dir = Path(output_dir) / "predictions"
 
-    if with_patch > 0 and pred_files:
-        pred_dir = Path(output_dir) / "predictions"
+    # Full pipeline when --evaluate is set (no fallbacks - failures propagate)
+    if evaluate and pred_files and with_patch > 0:
+        # Step 2: Evaluation
+        _report("Running SWE-Bench Pro evaluation...", fg="cyan")
+        resolved_map = evaluate_predictions_inline(
+            pred_dir,
+            eval_max_workers=eval_max_workers,
+        )
+
+        # Merge resolved status into results
+        for r in results:
+            key = (r.instance_id, r.arm)
+            if key in resolved_map:
+                r.resolved = resolved_map[key]
+
+        # Rewrite results.jsonl with resolved status
+        _rewrite_results_with_resolved(results, output_dir)
+
+        # Step 3: Visualization
+        _report("Generating visualizations...", fg="cyan")
+        from examples.swe_bench_common.analysis import (
+            generate_visualizations,
+            load_results,
+        )
+
+        arm_results = load_results(str(Path(output_dir) / "results.jsonl"))
+
+        # Build resolved map from results for visualization
+        resolved_map_for_viz = {
+            r.instance_id: r.resolved for r in results if r.resolved is not None
+        }
+
+        paths = generate_visualizations(
+            arm_results, resolved_map_for_viz or None, output_dir
+        )
+        _report(f"Generated {len(paths)} visualizations", fg="green")
+
+        # Print summary with resolved counts
+        _print_summary_with_resolved(results)
+
+    elif evaluate and with_patch == 0:
+        _report(
+            "Skipping evaluation (no patches to evaluate).",
+            warn=True,
+            fg="yellow",
+        )
+    elif with_patch > 0 and pred_files:
         _report(f"Predictions written to {pred_dir}/")
         for arm, path in pred_files.items():
             click.echo(f"  {arm}: {path}")
@@ -360,7 +502,7 @@ def evaluate(
 )
 def visualize(results: str, resolved: str | None, output_dir: str) -> None:
     """Generate visualizations from experiment results."""
-    from examples.swe_bench_ablation.analysis import (
+    from examples.swe_bench_common.analysis import (
         generate_visualizations,
         load_results,
     )
@@ -421,6 +563,77 @@ def list_instances(split: str) -> None:
     click.echo("\nBy repository:")
     for repo in sorted(by_repo, key=by_repo.get, reverse=True):  # type: ignore[arg-type]
         click.echo(f"  {repo:40s} {by_repo[repo]:4d}")
+
+
+# =========================================================================
+# analyze-errors
+# =========================================================================
+
+
+@cli.command("analyze-errors")
+@click.option(
+    "--results",
+    default="output/swe_bench_pro/results.jsonl",
+    help="Path to results.jsonl",
+)
+@click.option(
+    "--output-dir",
+    default=None,
+    help="Directory for analysis output (defaults to results directory)",
+)
+def analyze_errors(results: str, output_dir: str | None) -> None:
+    """Analyze final errors from failed benchmark runs.
+
+    Extracts the LAST guard feedback before retry exhaustion for each failed run.
+    This reveals what the agent was "stuck on" when retries were exhausted.
+
+    Output files are timestamped with symlinks to latest:
+    - final_error_analysis_YYYYMMDD_HHMMSS.md
+    - final_errors_YYYYMMDD_HHMMSS.json
+    - final_error_analysis_latest.md (symlink)
+    - final_errors_latest.json (symlink)
+    """
+    from pathlib import Path
+
+    from .final_error_analysis import analyze_final_errors
+
+    results_path = Path(results)
+    if not results_path.exists():
+        click.echo(
+            click.style(f"Results file not found: {results}", fg="red"),
+            err=True,
+        )
+        raise SystemExit(1)
+
+    out_dir = Path(output_dir) if output_dir else results_path.parent
+
+    click.echo(f"Analyzing final errors from {results}")
+    summary = analyze_final_errors(results_path, out_dir)
+
+    if summary.get("total_failures", 0) == 0:
+        click.echo(click.style("No failed runs found.", fg="yellow"))
+        return
+
+    click.echo(
+        click.style(
+            f"\nAnalysis complete: {summary['total_failures']} failed runs",
+            fg="green",
+        )
+    )
+
+    if "by_arm" in summary:
+        click.echo("\nBy arm:")
+        for arm, count in sorted(summary["by_arm"].items()):
+            click.echo(f"  {arm}: {count}")
+
+    if "by_guard" in summary:
+        click.echo("\nBy final guard:")
+        for guard, count in sorted(summary["by_guard"].items(), key=lambda x: -x[1]):
+            click.echo(f"  {guard}: {count}")
+
+    click.echo(f"\nOutput files in: {out_dir}/")
+    click.echo("  - final_error_analysis_latest.md")
+    click.echo("  - final_errors_latest.json")
 
 
 if __name__ == "__main__":

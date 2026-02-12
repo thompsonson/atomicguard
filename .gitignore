@@ -76,6 +76,7 @@ results/*.json
 
 # Example output directories (generated files, any depth)
 examples/**/output/
+examples/swe_bench_pro/example_output/
 
 # Root output directory (from relative path resolution)
 /output/

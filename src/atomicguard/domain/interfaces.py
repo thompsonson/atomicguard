@@ -13,8 +13,6 @@ if TYPE_CHECKING:
         Artifact,
         Context,
         GuardResult,
-        HumanAmendment,
-        WorkflowCheckpoint,
     )
     from atomicguard.domain.prompts import PromptTemplate
 
@@ -155,6 +153,21 @@ class ArtifactDAGInterface(ABC):
         pass
 
     @abstractmethod
+    def get_all_for_action_pair(
+        self, action_pair_id: str, workflow_id: str
+    ) -> list["Artifact"]:
+        """Get all artifacts for an action pair in a specific workflow.
+
+        Args:
+            action_pair_id: The action pair identifier (e.g., 'g_test')
+            workflow_id: UUID of the workflow execution instance
+
+        Returns:
+            List of artifacts sorted by created_at ascending.
+        """
+        pass
+
+    @abstractmethod
     def get_all(self) -> list["Artifact"]:
         """
         Return all artifacts in the DAG.
@@ -164,102 +177,5 @@ class ArtifactDAGInterface(ABC):
 
         Returns:
             List of all artifacts in the repository.
-        """
-        pass
-
-
-class CheckpointDAGInterface(ABC):
-    """
-    Port for checkpoint persistence.
-
-    Provides storage for workflow checkpoints and human amendments,
-    enabling resumable workflows after failure/escalation.
-    """
-
-    @abstractmethod
-    def store_checkpoint(self, checkpoint: "WorkflowCheckpoint") -> str:
-        """
-        Store a checkpoint and return its ID.
-
-        Args:
-            checkpoint: The checkpoint to store
-
-        Returns:
-            The checkpoint_id
-        """
-        pass
-
-    @abstractmethod
-    def get_checkpoint(self, checkpoint_id: str) -> "WorkflowCheckpoint":
-        """
-        Retrieve checkpoint by ID.
-
-        Args:
-            checkpoint_id: The unique identifier
-
-        Returns:
-            The checkpoint
-
-        Raises:
-            KeyError: If checkpoint not found
-        """
-        pass
-
-    @abstractmethod
-    def store_amendment(self, amendment: "HumanAmendment") -> str:
-        """
-        Store a human amendment and return its ID.
-
-        Args:
-            amendment: The amendment to store
-
-        Returns:
-            The amendment_id
-        """
-        pass
-
-    @abstractmethod
-    def get_amendment(self, amendment_id: str) -> "HumanAmendment":
-        """
-        Retrieve amendment by ID.
-
-        Args:
-            amendment_id: The unique identifier
-
-        Returns:
-            The amendment
-
-        Raises:
-            KeyError: If amendment not found
-        """
-        pass
-
-    @abstractmethod
-    def get_amendments_for_checkpoint(
-        self, checkpoint_id: str
-    ) -> list["HumanAmendment"]:
-        """
-        Get all amendments for a checkpoint.
-
-        Args:
-            checkpoint_id: The checkpoint identifier
-
-        Returns:
-            List of amendments linked to this checkpoint
-        """
-        pass
-
-    @abstractmethod
-    def list_checkpoints(
-        self, workflow_id: str | None = None
-    ) -> list["WorkflowCheckpoint"]:
-        """
-        List checkpoints, optionally filtered by workflow_id.
-
-        Args:
-            workflow_id: Optional filter by workflow
-
-        Returns:
-            List of matching checkpoints, newest first
         """
         pass

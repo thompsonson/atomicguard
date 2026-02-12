@@ -11,27 +11,28 @@ class TestPromptTemplateInit:
     """Tests for PromptTemplate initialization."""
 
     def test_init_stores_fields(self) -> None:
-        """PromptTemplate stores role, constraints, task."""
+        """PromptTemplate stores role, constraints, task, feedback_wrapper."""
         template = PromptTemplate(
             role="Python developer",
             constraints="No external imports",
             task="Write a function",
+            feedback_wrapper="{feedback}",
         )
 
         assert template.role == "Python developer"
         assert template.constraints == "No external imports"
         assert template.task == "Write a function"
+        assert template.feedback_wrapper == "{feedback}"
 
-    def test_init_default_feedback_wrapper(self) -> None:
-        """PromptTemplate has default feedback_wrapper."""
+    def test_init_feedback_wrapper_defaults_to_none(self) -> None:
+        """PromptTemplate defaults feedback_wrapper to None."""
         template = PromptTemplate(
             role="dev",
             constraints="none",
             task="test",
         )
 
-        assert "GUARD REJECTION" in template.feedback_wrapper
-        assert "{feedback}" in template.feedback_wrapper
+        assert template.feedback_wrapper is None
 
     def test_init_custom_feedback_wrapper(self) -> None:
         """PromptTemplate accepts custom feedback_wrapper."""
@@ -43,6 +44,28 @@ class TestPromptTemplateInit:
         )
 
         assert template.feedback_wrapper == "Error: {feedback}"
+
+    def test_init_escalation_feedback_wrapper_optional(self) -> None:
+        """PromptTemplate has optional escalation_feedback_wrapper defaulting to None."""
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="test",
+        )
+
+        assert template.escalation_feedback_wrapper is None
+
+    def test_init_escalation_feedback_wrapper_custom(self) -> None:
+        """PromptTemplate accepts custom escalation_feedback_wrapper."""
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="test",
+            feedback_wrapper="{feedback}",
+            escalation_feedback_wrapper="Prior: {feedback}",
+        )
+
+        assert template.escalation_feedback_wrapper == "Prior: {feedback}"
 
 
 class TestPromptTemplateRender:
@@ -165,6 +188,7 @@ class TestPromptTemplateRender:
             role="dev",
             constraints="none",
             task="test",
+            feedback_wrapper="{feedback}",
         )
         dag = InMemoryArtifactDAG()
         ambient = AmbientEnvironment(repository=dag, constraints="")
@@ -181,7 +205,7 @@ class TestPromptTemplateRender:
 
         result = template.render(context)
 
-        assert "# HISTORY" in result
+        assert "# RETRY HISTORY" in result
         assert "Attempt 1" in result
         assert "Syntax error on line 1" in result
         assert "Attempt 2" in result
@@ -206,7 +230,27 @@ class TestPromptTemplateRender:
 
         result = template.render(context)
 
-        assert "# HISTORY" not in result
+        assert "# RETRY HISTORY" not in result
+
+    def test_render_errors_without_feedback_wrapper(self) -> None:
+        """render() raises ValueError if feedback_history exists but no wrapper."""
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="test",
+        )
+        dag = InMemoryArtifactDAG()
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(("bad code", "Syntax error"),),
+            dependency_artifacts=(),
+        )
+
+        with pytest.raises(ValueError, match="feedback_wrapper must be defined"):
+            template.render(context)
 
     def test_render_uses_feedback_wrapper(self) -> None:
         """render() uses feedback_wrapper to format feedback."""
@@ -229,6 +273,80 @@ class TestPromptTemplateRender:
         result = template.render(context)
 
         assert "[ERROR] Bad stuff [/ERROR]" in result
+
+    def test_render_includes_escalation_feedback_when_wrapper_defined(self) -> None:
+        """render() includes escalation feedback when both feedback and wrapper exist."""
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="test",
+            escalation_feedback_wrapper="ESCALATION: {feedback}",
+        )
+        dag = InMemoryArtifactDAG()
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(),
+            escalation_feedback=("Previous cycle failed", "Second cycle also failed"),
+        )
+
+        result = template.render(context)
+
+        assert "# ESCALATION HISTORY" in result
+        assert "Escalation Cycle 1" in result
+        assert "ESCALATION: Previous cycle failed" in result
+        assert "Escalation Cycle 2" in result
+        assert "ESCALATION: Second cycle also failed" in result
+
+    def test_render_excludes_escalation_when_wrapper_not_defined(self) -> None:
+        """render() skips escalation section when escalation_feedback_wrapper is None."""
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="test",
+            # No escalation_feedback_wrapper defined
+        )
+        dag = InMemoryArtifactDAG()
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(),
+            escalation_feedback=("Previous cycle failed",),
+        )
+
+        result = template.render(context)
+
+        assert "# ESCALATION HISTORY" not in result
+        assert "Previous cycle failed" not in result
+
+    def test_render_excludes_escalation_when_feedback_empty(self) -> None:
+        """render() skips escalation section when no escalation feedback exists."""
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="test",
+            escalation_feedback_wrapper="ESCALATION: {feedback}",
+        )
+        dag = InMemoryArtifactDAG()
+        ambient = AmbientEnvironment(repository=dag, constraints="")
+        context = Context(
+            ambient=ambient,
+            specification="test",
+            current_artifact=None,
+            feedback_history=(),
+            dependency_artifacts=(),
+            escalation_feedback=(),  # Empty
+        )
+
+        result = template.render(context)
+
+        assert "# ESCALATION HISTORY" not in result
 
 
 class TestPromptTemplateDependencies:
@@ -365,7 +483,11 @@ class TestPromptTemplateDependencies:
             )
         )
 
-        template = PromptTemplate(role="dev", constraints="none", task="Fix the bug")
+        template = PromptTemplate(
+            role="dev",
+            constraints="none",
+            task="Fix the bug",
+        )
         ambient = AmbientEnvironment(repository=dag, constraints="")
         context = Context(
             ambient=ambient,

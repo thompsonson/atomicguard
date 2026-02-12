@@ -31,6 +31,7 @@
 | PydanticAI for structured output | Add as dependency | Manual JSON parsing |
 | PydanticAI retries | Disabled (`retries=0`) | Merge with AtomicGuard rmax |
 | pytestarch API validation | Whitelist-only (no blocklist) | Blocklist of known bad patterns |
+| Explicit failure over fallbacks | Fatal error on file size/context exceeded | Silent truncation (loses data LLM needs) |
 
 ## Paper Changes Required
 

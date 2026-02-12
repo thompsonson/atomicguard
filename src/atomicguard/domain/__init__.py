@@ -4,7 +4,11 @@ Domain layer for the Dual-State Framework.
 Contains core business logic with no external dependencies.
 """
 
-from atomicguard.domain.exceptions import EscalationRequired, RmaxExhausted
+from atomicguard.domain.exceptions import (
+    EscalationRequired,
+    RmaxExhausted,
+    StagnationDetected,
+)
 from atomicguard.domain.interfaces import (
     ArtifactDAGInterface,
     GeneratorInterface,
@@ -53,4 +57,5 @@ __all__ = [
     # Exceptions
     "RmaxExhausted",
     "EscalationRequired",
+    "StagnationDetected",
 ]
