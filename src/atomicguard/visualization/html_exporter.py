@@ -228,18 +228,50 @@ def extract_workflow_data(
             for nid in seg_nodes:
                 node_to_seg_idx[nid] = seg_idx
 
-    # For run N, anchor nodes are segment N of steps that actually have
-    # that segment (were re-executed in this escalation round).  Then
-    # trace backwards through dependency_artifacts to include the exact
-    # upstream artifacts each anchor depended on, pulling in the whole
-    # segment so the retry chain is visible.
+    # Determine each node's "native" run — the escalation round it
+    # was actually produced in.
+    # Multi-segment steps: segment index IS the native run.
+    # Single-segment steps: assigned to the run of their latest
+    # dependency (they only executed once the upstream was ready).
+    node_native_run: dict[str, int] = {}
+    for step_id, segments in step_segments.items():
+        for seg_idx, seg_nodes in enumerate(segments):
+            for nid in seg_nodes:
+                node_native_run[nid] = seg_idx
+
+    # Iteratively resolve single-segment steps by propagating the max
+    # native-run of their dependency_artifacts (handles chains like
+    # fix_approach -> impact_analysis -> gen_test -> gen_patch).
+    changed = True
+    while changed:
+        changed = False
+        for step_id, segments in step_segments.items():
+            if len(segments) != 1:
+                continue
+            for nid in segments[0]:
+                art = node_to_artifact.get(nid)
+                if not art:
+                    continue
+                max_dep_run = 0
+                for _dep_ap, dep_art_id in art.context.dependency_artifacts:
+                    dep_nid = artifact_node_lookup.get(dep_art_id)
+                    if dep_nid and dep_nid in node_native_run:
+                        max_dep_run = max(max_dep_run, node_native_run[dep_nid])
+                if max_dep_run > node_native_run[nid]:
+                    node_native_run[nid] = max_dep_run
+                    changed = True
+
+    # Build runs.  For each run N, anchor on nodes native to that run,
+    # then trace backwards through dependency_artifacts to include the
+    # exact upstream artifacts they depended on (with full segment
+    # retry chains).
     runs: list[dict[str, Any]] = []
     for run_idx in range(num_runs):
-        # Anchor nodes: segment run_idx from steps that have it.
+        # Anchor nodes: all nodes whose native run == run_idx.
         anchor_nodes: set[str] = set()
-        for _step_id, segments in step_segments.items():
-            if run_idx < len(segments):
-                anchor_nodes.update(segments[run_idx])
+        for nid, native in node_native_run.items():
+            if native == run_idx:
+                anchor_nodes.add(nid)
 
         # Trace dependency_artifacts transitively from anchors.
         run_node_ids: set[str] = set(anchor_nodes)
