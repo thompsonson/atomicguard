@@ -374,8 +374,8 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workflow Visualization: {data.workflow_id[:8]}...</title>
     <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
-    <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
     <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
@@ -639,6 +639,27 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
         .legend-color.pending {{ background: #f59e0b; }}
         .legend-color.superseded {{ background: #6b7280; }}
         .legend-color.escalation {{ background: #ec4899; border: 2px dashed #ec4899; }}
+        @media (max-width: 768px) {{
+            main {{
+                flex-direction: column;
+            }}
+            #cy {{
+                min-height: 300px;
+                border-right: none;
+                border-bottom: 1px solid #e5e7eb;
+            }}
+            .sidebar {{
+                width: 100%;
+            }}
+            .header-info {{
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }}
+            .legend {{
+                flex-wrap: wrap;
+                gap: 0.75rem;
+            }}
+        }}
     </style>
 </head>
 <body>
