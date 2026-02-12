@@ -87,111 +87,152 @@ def extract_workflow_data(
     # Track escalation events
     escalation_count = 0
 
-    # Create step nodes
+    # Create step nodes, splitting into escalation rounds
     for step_id, step_artifacts in steps.items():
-        # Get the final (accepted) artifact for this step
-        final_artifact = None
-        for a in reversed(step_artifacts):
-            if a.status.value == "accepted":
-                final_artifact = a
-                break
+        # Split artifacts into rounds at escalation boundaries
+        rounds: list[list[Artifact]] = [[]]
+        prev_esc_len = 0
+        for artifact in step_artifacts:
+            curr_esc_len = len(artifact.context.escalation_feedback)
+            if curr_esc_len > prev_esc_len and rounds[-1]:
+                # New escalation round
+                rounds.append([])
+            rounds[-1].append(artifact)
+            prev_esc_len = curr_esc_len
 
-        # Determine step status
-        if final_artifact:
-            step_status = "accepted"
-        elif any(a.status.value == "pending" for a in step_artifacts):
-            step_status = "pending"
-        else:
-            step_status = "rejected"
-
-        # Check for escalation in this step
-        step_has_escalation = any(
-            len(a.context.escalation_feedback) > 0 for a in step_artifacts
-        )
-        if step_has_escalation:
+        if len(rounds) > 1:
             escalation_count += 1
 
-        # Create step node
-        nodes.append(
-            {
-                "data": {
-                    "id": f"step_{step_id}",
-                    "label": step_id,
-                    "type": "step",
-                    "status": step_status,
-                    "attempt_count": len(step_artifacts),
-                    "final_artifact_id": final_artifact.artifact_id
-                    if final_artifact
-                    else None,
-                    "has_escalation": step_has_escalation,
-                }
-            }
-        )
+        # Create a compound node per round
+        for round_idx, round_artifacts in enumerate(rounds):
+            has_multiple_rounds = len(rounds) > 1
 
-        # Create artifact sub-nodes for retry chain
-        prev_artifact_node_id = None
-        prev_escalation_len = 0
-        for artifact in step_artifacts:
-            artifact_node_id = f"artifact_{artifact.artifact_id[:8]}"
-            artifact_node_lookup[artifact.artifact_id] = artifact_node_id
+            # Compound node identity
+            if has_multiple_rounds:
+                compound_id = f"step_{step_id}_r{round_idx + 1}"
+                if round_idx == 0:
+                    compound_label = step_id
+                else:
+                    compound_label = f"{step_id} (esc. {round_idx})"
+            else:
+                compound_id = f"step_{step_id}"
+                compound_label = step_id
 
-            # Serialize artifact data for detail panel
-            artifact_data[artifact.artifact_id] = _serialize_artifact(artifact)
+            # Determine round status from its artifacts
+            round_has_accepted = any(
+                a.status.value == "accepted" for a in round_artifacts
+            )
+            if round_has_accepted:
+                round_status = "accepted"
+            elif any(a.status.value == "pending" for a in round_artifacts):
+                round_status = "pending"
+            else:
+                round_status = "rejected"
+
+            # Final artifact for this round (for click-to-detail)
+            final_artifact = None
+            for a in reversed(round_artifacts):
+                if a.status.value == "accepted":
+                    final_artifact = a
+                    break
+            if final_artifact is None:
+                final_artifact = round_artifacts[-1]
 
             nodes.append(
                 {
                     "data": {
-                        "id": artifact_node_id,
-                        "label": f"#{artifact.attempt_number}",
-                        "type": "artifact",
-                        "parent": f"step_{step_id}",
-                        "status": artifact.status.value,
-                        "artifact_id": artifact.artifact_id,
-                        "attempt_number": artifact.attempt_number,
-                        "has_escalation_feedback": len(
-                            artifact.context.escalation_feedback
-                        )
-                        > 0,
-                        "feedback_count": len(artifact.context.feedback_history),
+                        "id": compound_id,
+                        "label": compound_label,
+                        "type": "step",
+                        "status": round_status,
+                        "attempt_count": len(round_artifacts),
+                        "final_artifact_id": final_artifact.artifact_id,
+                        "has_escalation": has_multiple_rounds
+                        and round_idx > 0,
                     }
                 }
             )
 
-            # Detect escalation boundary: new escalation feedback appeared
-            curr_escalation_len = len(artifact.context.escalation_feedback)
-            is_escalation_retry = curr_escalation_len > prev_escalation_len
+            # Create artifact sub-nodes within this round
+            round_artifact_ids = {
+                a.artifact_id for a in round_artifacts
+            }
+            prev_artifact_node_id = None
+            for artifact in round_artifacts:
+                artifact_node_id = f"artifact_{artifact.artifact_id[:8]}"
+                artifact_node_lookup[artifact.artifact_id] = artifact_node_id
 
-            # Create retry chain edge from explicit link or consecutive ordering
-            if artifact.previous_attempt_id:
-                source_id = f"artifact_{artifact.previous_attempt_id[:8]}"
-                edges.append(
+                # Serialize artifact data for detail panel
+                artifact_data[artifact.artifact_id] = _serialize_artifact(
+                    artifact
+                )
+
+                nodes.append(
                     {
                         "data": {
-                            "id": f"retry_{artifact.artifact_id[:8]}",
-                            "source": source_id,
-                            "target": artifact_node_id,
-                            "type": "escalation_retry"
-                            if is_escalation_retry
-                            else "retry",
+                            "id": artifact_node_id,
+                            "label": f"#{artifact.attempt_number}",
+                            "type": "artifact",
+                            "parent": compound_id,
+                            "status": artifact.status.value,
+                            "artifact_id": artifact.artifact_id,
+                            "attempt_number": artifact.attempt_number,
+                            "has_escalation_feedback": len(
+                                artifact.context.escalation_feedback
+                            )
+                            > 0,
+                            "feedback_count": len(
+                                artifact.context.feedback_history
+                            ),
                         }
                     }
                 )
-            elif prev_artifact_node_id is not None:
-                # Infer retry edge from consecutive attempt ordering
-                edges.append(
-                    {
-                        "data": {
-                            "id": f"retry_{artifact.artifact_id[:8]}",
-                            "source": prev_artifact_node_id,
-                            "target": artifact_node_id,
-                            "type": "escalation_retry"
-                            if is_escalation_retry
-                            else "retry",
+
+                # Retry edges within this round only
+                if (
+                    artifact.previous_attempt_id
+                    and artifact.previous_attempt_id in round_artifact_ids
+                ):
+                    source_id = (
+                        f"artifact_{artifact.previous_attempt_id[:8]}"
+                    )
+                    edges.append(
+                        {
+                            "data": {
+                                "id": f"retry_{artifact.artifact_id[:8]}",
+                                "source": source_id,
+                                "target": artifact_node_id,
+                                "type": "retry",
+                            }
                         }
+                    )
+                elif prev_artifact_node_id is not None:
+                    edges.append(
+                        {
+                            "data": {
+                                "id": f"retry_{artifact.artifact_id[:8]}",
+                                "source": prev_artifact_node_id,
+                                "target": artifact_node_id,
+                                "type": "retry",
+                            }
+                        }
+                    )
+                prev_artifact_node_id = artifact_node_id
+
+        # Create escalation_retry edges between consecutive rounds
+        for i in range(1, len(rounds)):
+            prev_last = rounds[i - 1][-1]
+            curr_first = rounds[i][0]
+            edges.append(
+                {
+                    "data": {
+                        "id": f"esc_{prev_last.artifact_id[:8]}_{curr_first.artifact_id[:8]}",
+                        "source": f"artifact_{prev_last.artifact_id[:8]}",
+                        "target": f"artifact_{curr_first.artifact_id[:8]}",
+                        "type": "escalation_retry",
                     }
-                )
-            prev_artifact_node_id = artifact_node_id
-            prev_escalation_len = curr_escalation_len
+                }
+            )
 
     # Create dependency edges at artifact level (avoids visual cycles)
     for step_id, step_artifacts in steps.items():
