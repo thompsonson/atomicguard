@@ -701,13 +701,12 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
         .legend-line.retry {{ background: #9ca3af; border-top: 2px dashed #9ca3af; height: 0; }}
         .legend-line.escalation-retry {{ background: #ec4899; border-top: 2px dashed #ec4899; height: 0; }}
         .run-selector {{
-            display: flex;
+            display: none;
             align-items: center;
             gap: 0.75rem;
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 2rem;
             background: #eef2ff;
-            border-radius: 8px;
-            margin-bottom: 1rem;
+            border-bottom: 1px solid #c7d2fe;
             flex-wrap: wrap;
         }}
         .run-selector-label {{
@@ -769,6 +768,10 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                 <span><strong>Escalations:</strong> {data.escalation_count}</span>
             </div>
         </header>
+        <div id="run-selector" class="run-selector">
+            <span class="run-selector-label">Execution Run:</span>
+            <div id="run-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+        </div>
         <main>
             <div id="cy"></div>
             <div class="sidebar">
@@ -802,10 +805,6 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                         <div class="legend-line escalation-retry"></div>
                         <span>Escalation Retry</span>
                     </div>
-                </div>
-                <div id="run-selector" class="run-selector" style="display:none;">
-                    <span class="run-selector-label">Execution Run:</span>
-                    <div id="run-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
                 </div>
                 <div id="detail-panel">
                     <p class="no-selection">Click on an artifact node to view details</p>
