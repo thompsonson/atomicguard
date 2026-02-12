@@ -29,6 +29,7 @@ smoke:
     PYTHONPATH=src uv run python -m examples.basics.06_extraction
     PYTHONPATH=src uv run python -m examples.basics.07_multiagent
     PYTHONPATH=src uv run python -m examples.basics.08_incremental
+    PYTHONPATH=src uv run python -m examples.basics.09_backtracking_escalation
 
 # Core smoke test only (fastest check that the framework works)
 smoke-core:
