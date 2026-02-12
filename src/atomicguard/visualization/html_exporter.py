@@ -82,6 +82,7 @@ def extract_workflow_data(
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     artifact_data: dict[str, dict[str, Any]] = {}
+    artifact_node_lookup: dict[str, str] = {}  # full artifact_id -> node_id
 
     # Track escalation events
     escalation_count = 0
@@ -129,8 +130,10 @@ def extract_workflow_data(
 
         # Create artifact sub-nodes for retry chain
         prev_artifact_node_id = None
+        prev_escalation_len = 0
         for artifact in step_artifacts:
             artifact_node_id = f"artifact_{artifact.artifact_id[:8]}"
+            artifact_node_lookup[artifact.artifact_id] = artifact_node_id
 
             # Serialize artifact data for detail panel
             artifact_data[artifact.artifact_id] = _serialize_artifact(artifact)
@@ -154,15 +157,22 @@ def extract_workflow_data(
                 }
             )
 
+            # Detect escalation boundary: new escalation feedback appeared
+            curr_escalation_len = len(artifact.context.escalation_feedback)
+            is_escalation_retry = curr_escalation_len > prev_escalation_len
+
             # Create retry chain edge from explicit link or consecutive ordering
             if artifact.previous_attempt_id:
+                source_id = f"artifact_{artifact.previous_attempt_id[:8]}"
                 edges.append(
                     {
                         "data": {
                             "id": f"retry_{artifact.artifact_id[:8]}",
-                            "source": f"artifact_{artifact.previous_attempt_id[:8]}",
+                            "source": source_id,
                             "target": artifact_node_id,
-                            "type": "retry",
+                            "type": "escalation_retry"
+                            if is_escalation_retry
+                            else "retry",
                         }
                     }
                 )
@@ -174,30 +184,37 @@ def extract_workflow_data(
                             "id": f"retry_{artifact.artifact_id[:8]}",
                             "source": prev_artifact_node_id,
                             "target": artifact_node_id,
-                            "type": "retry",
+                            "type": "escalation_retry"
+                            if is_escalation_retry
+                            else "retry",
                         }
                     }
                 )
             prev_artifact_node_id = artifact_node_id
+            prev_escalation_len = curr_escalation_len
 
-    # Create dependency edges between steps
+    # Create dependency edges at artifact level (avoids visual cycles)
     for step_id, step_artifacts in steps.items():
         for artifact in step_artifacts:
+            artifact_node_id = f"artifact_{artifact.artifact_id[:8]}"
             # Check dependency_artifacts for cross-step dependencies
             for (
                 dep_action_pair_id,
-                _dep_artifact_id,
+                dep_artifact_id,
             ) in artifact.context.dependency_artifacts:
-                if dep_action_pair_id in steps:
-                    edge_id = f"dep_{dep_action_pair_id}_{step_id}"
+                dep_node_id = artifact_node_lookup.get(dep_artifact_id)
+                if dep_node_id:
+                    edge_id = (
+                        f"dep_{dep_artifact_id[:8]}_{artifact.artifact_id[:8]}"
+                    )
                     # Avoid duplicate edges
                     if not any(e["data"]["id"] == edge_id for e in edges):
                         edges.append(
                             {
                                 "data": {
                                     "id": edge_id,
-                                    "source": f"step_{dep_action_pair_id}",
-                                    "target": f"step_{step_id}",
+                                    "source": dep_node_id,
+                                    "target": artifact_node_id,
                                     "type": "dependency",
                                 }
                             }
@@ -653,6 +670,14 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
         .legend-color.pending {{ background: #f59e0b; }}
         .legend-color.superseded {{ background: #6b7280; }}
         .legend-color.escalation {{ background: #ec4899; border: 2px dashed #ec4899; }}
+        .legend-line {{
+            width: 24px;
+            height: 2px;
+            position: relative;
+        }}
+        .legend-line.dependency {{ background: #6366f1; }}
+        .legend-line.retry {{ background: #9ca3af; border-top: 2px dashed #9ca3af; height: 0; }}
+        .legend-line.escalation-retry {{ background: #ec4899; border-top: 2px dashed #ec4899; height: 0; }}
         @media (max-width: 768px) {{
             main {{
                 flex-direction: column;
@@ -708,6 +733,18 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                     <div class="legend-item">
                         <div class="legend-color escalation"></div>
                         <span>Escalation</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line dependency"></div>
+                        <span>Dependency</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line retry"></div>
+                        <span>Retry</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line escalation-retry"></div>
+                        <span>Escalation Retry</span>
                     </div>
                 </div>
                 <div id="detail-panel">
@@ -840,6 +877,18 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                         'line-style': 'dashed',
                         'target-arrow-color': '#9ca3af',
                         'target-arrow-shape': 'chevron',
+                        'curve-style': 'bezier'
+                    }}
+                }},
+                // Escalation retry edges
+                {{
+                    selector: 'edge[type="escalation_retry"]',
+                    style: {{
+                        'width': 2,
+                        'line-color': '#ec4899',
+                        'line-style': 'dashed',
+                        'target-arrow-color': '#ec4899',
+                        'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier'
                     }}
                 }},
