@@ -384,7 +384,9 @@ class TestHuggingFaceGeneratorGenerate:
         from atomicguard.domain.prompts import PromptTemplate
 
         template = PromptTemplate(
-            role="test role", constraints="test constraints", task="test task"
+            role="test role",
+            constraints="test constraints",
+            task="test task",
         )
         generator.generate(sample_context, template)
 

@@ -53,9 +53,10 @@ class PromptTemplate:
     role: str
     constraints: str
     task: str
-    feedback_wrapper: str = (
-        "GUARD REJECTION:\n{feedback}\nInstruction: Address the rejection above."
+    feedback_wrapper: str | None = (
+        None  # Template for wrapping retry feedback (optional)
     )
+    escalation_feedback_wrapper: str | None = None  # Template for escalation feedback
 
     def render(self, context: "Context") -> str:
         """Render prompt with context including dependency artifacts.
@@ -105,9 +106,21 @@ class PromptTemplate:
             if dep_parts:
                 parts.append("# DEPENDENCIES\n" + "\n\n".join(dep_parts))
 
-        # Add feedback history
+        # Add escalation feedback if present AND wrapper is defined
+        if context.escalation_feedback and self.escalation_feedback_wrapper:
+            parts.append("# ESCALATION HISTORY (Prior Cycles)")
+            for i, feedback in enumerate(context.escalation_feedback):
+                wrapped = self.escalation_feedback_wrapper.format(feedback=feedback)
+                parts.append(f"--- Escalation Cycle {i + 1} ---\n{wrapped}")
+
+        # Add feedback history (renamed section)
         if context.feedback_history:
-            parts.append("# HISTORY (Context Refinement)")
+            if self.feedback_wrapper is None:
+                raise ValueError(
+                    "feedback_wrapper must be defined when feedback_history is present. "
+                    "Add feedback_wrapper to your PromptTemplate."
+                )
+            parts.append("# RETRY HISTORY (Current Cycle)")
             for i, (_artifact_content, feedback) in enumerate(context.feedback_history):
                 wrapped = self.feedback_wrapper.format(feedback=feedback)
                 parts.append(f"--- Attempt {i + 1} ---\n{wrapped}")

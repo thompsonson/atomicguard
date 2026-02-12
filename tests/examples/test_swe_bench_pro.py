@@ -2291,7 +2291,11 @@ class TestGetSystemPrompt:
         from atomicguard.domain.prompts import PromptTemplate
 
         gen = self._make_gen()
-        tmpl = PromptTemplate(role="Bug analyst", constraints="", task="Analyze bugs")
+        tmpl = PromptTemplate(
+            role="Bug analyst",
+            constraints="",
+            task="Analyze bugs",
+        )
         assert gen._get_system_prompt(tmpl) == "Bug analyst"
 
     def test_raises_when_role_is_empty(self):
@@ -2555,7 +2559,11 @@ class TestActionPairGeneratorErrorSkip:
 
         mock_guard = MagicMock()
 
-        template = PromptTemplate(role="Test role", constraints="", task="Test task")
+        template = PromptTemplate(
+            role="Test role",
+            constraints="",
+            task="Test task",
+        )
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2584,7 +2592,11 @@ class TestActionPairGeneratorErrorSkip:
             passed=True, feedback="", guard_name="TestGuard"
         )
 
-        template = PromptTemplate(role="Test role", constraints="", task="Test task")
+        template = PromptTemplate(
+            role="Test role",
+            constraints="",
+            task="Test task",
+        )
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2617,7 +2629,11 @@ class TestActionPairGeneratorErrorSkip:
 
         mock_guard = MagicMock()
 
-        template = PromptTemplate(role="Test role", constraints="", task="Test task")
+        template = PromptTemplate(
+            role="Test role",
+            constraints="",
+            task="Test task",
+        )
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()

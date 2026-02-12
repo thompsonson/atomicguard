@@ -412,15 +412,24 @@ class TestStagnationVsFatalEscalation:
     """Tests for the separation between StagnationDetected and EscalationRequired."""
 
     def test_stagnation_triggers_backtracking(self) -> None:
-        """Stagnation (Level 2) triggers workflow backtracking, not human escalation."""
+        """Stagnation (Level 2) triggers workflow backtracking, not human escalation.
+
+        With DAG-based feedback reconstruction, the agent sees all prior failures.
+        With r_patience=2 and e_max=2:
+        - Cycle 0: 2 failures -> stagnation (escalation 1)
+        - Cycle 1: 2 prior failures + 1 new = 3 failures -> stagnation (escalation 2)
+        - Cycle 2: 3 prior failures, guard must pass on 4th call to avoid e_max exhaustion
+
+        So fail_count=3 ensures guard passes on 4th call, within e_max=2.
+        """
         gen1 = MockGenerator(responses=["analysis1", "analysis2", "analysis3"])
         gen2 = MockGenerator(responses=["test" + str(i) for i in range(10)])
         pair1 = ActionPair(
             generator=gen1, guard=AlwaysPassGuard(), prompt_template=_TEMPLATE
         )
         guard2 = FailNTimesThenPassGuard(
-            fail_count=4
-        )  # Will fail enough to trigger stagnation
+            fail_count=3
+        )  # Fails 3 times, passes on 4th call
         pair2 = ActionPair(generator=gen2, guard=guard2, prompt_template=_TEMPLATE)
 
         workflow = Workflow(artifact_dag=InMemoryArtifactDAG(), rmax=5)

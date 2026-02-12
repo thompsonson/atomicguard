@@ -31,21 +31,19 @@ class TestActionPairInit:
         assert pair.generator is mock_generator
         assert pair.guard is guard
 
-    def test_init_with_prompt_template(
-        self, mock_generator: MockGenerator, template: PromptTemplate
-    ) -> None:
+    def test_init_with_prompt_template(self, mock_generator: MockGenerator) -> None:
         """ActionPair accepts optional prompt template."""
         guard = SyntaxGuard()
-        template = PromptTemplate(
+        custom_template = PromptTemplate(
             role="Python developer",
             constraints="Pure Python only",
             task="Write a function",
         )
         pair = ActionPair(
-            generator=mock_generator, guard=guard, prompt_template=template
+            generator=mock_generator, guard=guard, prompt_template=custom_template
         )
 
-        assert pair._prompt_template is template
+        assert pair._prompt_template is custom_template
 
 
 class TestActionPairProperties:
