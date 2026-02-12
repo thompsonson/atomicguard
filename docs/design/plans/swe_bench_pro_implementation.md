@@ -26,6 +26,7 @@ possible via imports, not copies.
 ## What Can Be Shared
 
 **Import directly (no changes):**
+
 - `AnalysisGenerator`, `LocalizationGenerator` — language-agnostic
 - `AnalysisGuard`, `LocalizationGuard` — language-agnostic
 - `PatchGuard` — already skips non-`.py` files in syntax check
@@ -37,11 +38,13 @@ possible via imports, not copies.
 - Workflow JSON configs (`02_singleshot.json`, `03_s1_direct.json`, `04_s1_tdd.json`)
 
 **Needs language-aware subclasses:**
+
 - `PatchGenerator` — hardcodes `` ```python `` and "VALID PYTHON" in prompts
 - `TestGenerator` — hardcodes pytest-specific instructions
 - `TestSyntaxGuard` — uses `ast.parse()`, non-functional for Go/JS/TS
 
 **Fully new:**
+
 - Dataset loader (different schema)
 - Evaluation module (different harness, different prediction format)
 - Language configuration registry
@@ -128,6 +131,7 @@ has `repo_language`, `requirements`, `interface`.
 ### 3. `generators/multilang_patch.py` — Language-Aware Patch Generator
 
 Subclasses `PatchGenerator` from ablation. Overrides `_build_prompt` to replace:
+
 - `` ```python `` → `` ```{lang_config.code_block_tag} ``
 - `"VALID PYTHON"` → `lang_config.valid_code_label`
 
@@ -231,6 +235,7 @@ python -m examples.swe_bench_pro.demo visualize \
 Commands: `run`, `experiment`, `evaluate`, `visualize`, `list_instances`.
 
 Loads workflow configs from ablation directory:
+
 ```python
 ABLATION_DIR = Path(__file__).parent.parent / "swe_bench_ablation"
 ```
@@ -257,6 +262,7 @@ Phases 5 and 6 can be developed in parallel.
 ## MVP Scope
 
 **In scope:**
+
 - Dataset loading with language filtering
 - Language-aware generators/guards (Python full, Go/JS/TS heuristic)
 - Workflow execution producing `ArmResult` JSONL
@@ -266,6 +272,7 @@ Phases 5 and 6 can be developed in parallel.
 - Visualization reusing ablation's analysis module
 
 **Out of scope for MVP:**
+
 - Real syntax validators for Go/JS/TS (invoke compilers)
 - Modal (cloud) evaluation
 - Language-stratified analysis charts

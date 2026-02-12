@@ -8,8 +8,6 @@ generated workflow is then executed by the object-level orchestrator.
 Used by: ap_generate_workflow in Arms 20, 21
 """
 
-import json
-import logging
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
@@ -17,9 +15,7 @@ from examples.base.generators import PydanticAIGenerator
 from atomicguard.domain.models import Context
 from atomicguard.domain.prompts import PromptTemplate
 
-from examples.swe_bench_common.models import GeneratedWorkflow, ProblemClassification
-
-logger = logging.getLogger("swe_bench_ablation.generators")
+from examples.swe_bench_common.models import GeneratedWorkflow
 
 
 class WorkflowGenerator(PydanticAIGenerator[GeneratedWorkflow]):
@@ -29,6 +25,9 @@ class WorkflowGenerator(PydanticAIGenerator[GeneratedWorkflow]):
     workflow JSON matching the static workflow config schema. The component
     registry (available generators and guards) is injected via the prompt
     to constrain the LLM to only reference existing components.
+
+    Context comes from prompt templates via {ap_classify_problem} placeholder.
+    The component registry is injected via _build_prompt for custom logic.
     """
 
     output_type = GeneratedWorkflow
@@ -65,56 +64,22 @@ class WorkflowGenerator(PydanticAIGenerator[GeneratedWorkflow]):
     def _build_prompt(
         self,
         context: Context,
-        template: PromptTemplate | None,
+        template: PromptTemplate,
     ) -> str:
-        """Build the prompt for workflow generation."""
-        parts = []
+        """Build the prompt for workflow generation.
 
-        if template:
-            parts.append(template.task)
+        Extends base template rendering by injecting the component registry
+        so the LLM knows what generators and guards are available.
+        """
+        # Get base prompt from template
+        base_prompt = template.render(context)
 
-        parts.append(f"\n\n## Problem Statement\n{context.specification}")
-
-        # Get classification from dependencies
-        classification = self._get_classification(context)
-        if classification:
-            parts.append("\n\n## Problem Classification")
-            parts.append(f"Category: {classification.category.value}")
-            parts.append(
-                f"Estimated complexity: {classification.estimated_complexity}/5"
-            )
-            parts.append(f"Reasoning: {classification.reasoning}")
-
-        # Inject component registry so the LLM knows what's available
-        parts.append("\n\n## Available Components (Component Registry)")
-        parts.append(
-            "You may ONLY reference these generators and guards in your workflow.\n"
+        # Inject component registry
+        registry_section = (
+            "\n\n## Available Components (Component Registry)\n"
+            "You may ONLY reference these generators and guards in your workflow.\n\n"
+            f"Generators: {', '.join(self._component_registry.get('generators', []))}\n"
+            f"Guards: {', '.join(self._component_registry.get('guards', []))}"
         )
-        parts.append(
-            f"Generators: {', '.join(self._component_registry.get('generators', []))}"
-        )
-        parts.append(f"Guards: {', '.join(self._component_registry.get('guards', []))}")
 
-        if template and template.constraints:
-            parts.append(f"\n\n## Constraints\n{template.constraints}")
-
-        if context.feedback_history and template:
-            latest_feedback = context.feedback_history[-1][1]
-            parts.append(
-                f"\n\n## Previous Attempt Rejected\n{template.feedback_wrapper.format(feedback=latest_feedback)}"
-            )
-
-        return "\n".join(parts)
-
-    def _get_classification(self, context: Context) -> ProblemClassification | None:
-        """Extract classification from dependency artifacts."""
-        for dep_id, artifact_id in context.dependency_artifacts:
-            if "classify" in dep_id.lower() or "classification" in dep_id.lower():
-                artifact = context.ambient.repository.get_artifact(artifact_id)
-                if artifact:
-                    try:
-                        data = json.loads(artifact.content)
-                        return ProblemClassification.model_validate(data)
-                    except Exception:
-                        pass
-        return None
+        return base_prompt + registry_section

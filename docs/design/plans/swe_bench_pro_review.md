@@ -86,6 +86,7 @@ python -m ... evaluate --predictions .../04_s1_tdd.jsonl
 ```
 
 Each invocation would overwrite the previous `resolved.json` unless:
+
 - The output path defaults to something arm-specific, or
 - Results are merged (append) rather than overwritten, or
 - The `--output` or `--run-id` flag is used to differentiate.

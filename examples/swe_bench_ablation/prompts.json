@@ -2,98 +2,133 @@
   "ap_classify": {
     "role": "You are a software engineer specializing in bug classification and triage.",
     "constraints": "Classify the bug into a category.\n\nREQUIREMENTS:\n- Choose the most accurate category: trivial_fix, single_file_bug, multi_file_bug, api_change, refactor\n- Estimate complexity from 1 (trivial) to 5 (major refactor)\n- Provide clear reasoning for your classification",
-    "task": "Classify this bug by category and estimate its complexity.",
+    "task": "Classify this bug by category and estimate its complexity.\n\n## Problem Statement\n{specification}",
     "feedback_wrapper": "CLASSIFICATION REJECTED:\n{feedback}\n\nInstruction: Revise your classification with valid category and reasoning."
   },
 
   "ap_structure": {
     "role": "You are a software architect analyzing Python project structure.",
     "constraints": "Analyze the project structure from the repository listing.\n\nREQUIREMENTS:\n- Identify root modules/packages\n- Identify the test framework used (pytest, unittest, nose, etc.)\n- Locate test directories\n- Note any import conventions or key dependencies visible",
-    "task": "Analyze the project structure: identify modules, test framework, and conventions.",
+    "task": "Analyze the project structure: identify modules, test framework, and conventions.\n\n## Problem Statement\n{specification}",
     "feedback_wrapper": "STRUCTURE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- At least one root module or test directory is identified\n- Test framework is specified"
   },
 
   "ap_root_cause": {
     "role": "You are a senior software engineer specializing in root cause analysis.",
     "constraints": "Identify the root cause of the bug.\n\nREQUIREMENTS:\n- Specify a concrete cause_type (e.g., 'incorrect_condition', 'missing_null_check', 'off_by_one')\n- Explain WHY the bug occurs, not just WHAT happens\n- List conditions that trigger the bug\n- Identify affected code paths",
-    "task": "Identify the root cause of this bug based on the classification.",
+    "task": "Identify the root cause of this bug based on the classification.\n\n## Problem Statement\n{specification}\n\n## Bug Classification\n{ap_classify}",
     "feedback_wrapper": "ROOT CAUSE REJECTED:\n{feedback}\n\nInstruction: Revise your root cause analysis. Ensure:\n- cause_type is specific and descriptive\n- cause_description explains why, not just what\n- At least one triggering condition is identified"
   },
 
   "ap_localise_issue": {
     "role": "You are a code search specialist identifying bug locations in a Python codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be Python source files (.py)\n- Prioritize precision over recall\n- Paths should be relative to repository root\n- Use the root cause analysis to guide your search",
-    "task": "Locate the exact files and functions containing the bug.",
+    "task": "Locate the exact files and functions containing the bug.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}",
     "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Ensure file paths exist in the repository and match the root cause analysis."
   },
 
   "ap_context_read": {
     "role": "You are a software engineer reading and understanding code context.",
     "constraints": "Read and summarize the relevant code context.\n\nREQUIREMENTS:\n- Identify the primary file containing the bug\n- List relevant functions and classes\n- Note imports used by the buggy code\n- Extract the specific code snippet around the bug\n- Provide a summary of what the code is doing",
-    "task": "Read the localized files and summarize the relevant code context.",
+    "task": "Read the localized files and summarize the relevant code context.\n\n## Problem Statement\n{specification}\n\n## Localization\n{ap_localise_issue}",
     "feedback_wrapper": "CONTEXT READ REJECTED:\n{feedback}\n\nInstruction: Revise your context summary. Ensure:\n- file_path is specified\n- code_snippet contains relevant code\n- summary explains what the code does"
   },
 
   "ap_localise_tests": {
     "role": "You are a test engineer identifying existing test patterns.",
     "constraints": "Locate existing test files and patterns.\n\nREQUIREMENTS:\n- Find test files related to the buggy code\n- Identify naming patterns for tests\n- Note available fixtures or setup functions\n- Determine the testing style (function-based, class-based, BDD)",
-    "task": "Locate existing test files and patterns to guide test generation.",
+    "task": "Locate existing test files and patterns to guide test generation.\n\n## Problem Statement\n{specification}\n\n## Issue Localization\n{ap_localise_issue}\n\n## Project Structure\n{ap_structure}",
     "feedback_wrapper": "TEST LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your test localization. Look for test files and patterns in the project."
   },
 
   "ap_fix_approach": {
     "role": "You are a senior software engineer designing bug fix strategies.",
     "constraints": "Design a fix strategy based on the root cause and context.\n\nREQUIREMENTS:\n- Provide a one-line summary of the approach\n- List ordered steps to implement the fix\n- Identify files and functions that need modification\n- Consider edge cases the fix should handle\n- Explain your reasoning",
-    "task": "Design the fix strategy: what changes are needed and in what order.",
+    "task": "Design the fix strategy: what changes are needed and in what order.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}\n\n## Code Context\n{ap_context_read}\n\n## Localization\n{ap_localise_issue}",
     "feedback_wrapper": "FIX APPROACH REJECTED:\n{feedback}\n\nInstruction: Revise your fix approach. Ensure:\n- approach_summary is provided\n- At least one step is defined\n- At least one file_to_modify is identified\n- reasoning explains your approach"
   },
 
   "ap_impact_analysis": {
     "role": "You are a software engineer analyzing change impact.",
     "constraints": "Analyze the impact of the proposed fix.\n\nREQUIREMENTS:\n- Identify existing tests that may be affected\n- Note other functions that may be impacted\n- List potential regressions to watch for\n- Identify any API changes\n- Assess the overall risk level (low/medium/high)",
-    "task": "Analyze the impact of the proposed fix on other code and tests.",
+    "task": "Analyze the impact of the proposed fix on other code and tests.\n\n## Problem Statement\n{specification}\n\n## Proposed Fix Approach\n{ap_fix_approach}",
     "feedback_wrapper": "IMPACT ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your impact analysis with clear reasoning."
   },
 
   "ap_localize": {
     "role": "You are a code search specialist identifying bug locations in a Python codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be Python source files (.py)\n- Prioritize precision over recall\n- Paths should be relative to repository root",
-    "task": "Identify files and functions that need modification to fix the bug.",
+    "task": "Identify files and functions that need modification to fix the bug.\n\n## Problem Statement\n{specification}",
     "feedback_wrapper": "GUARD REJECTION:\n{feedback}\n\nInstruction: Revise your localization. Ensure file paths exist in the repository."
   },
 
   "ap_patch": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes.",
     "constraints": "Generate a patch using SEARCH/REPLACE blocks.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file\n- Include surrounding lines if the target is ambiguous",
-    "task": "Generate search-replace blocks to fix the bug.",
+    "task": "Generate search-replace blocks to fix the bug.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}\n\n## Localization\n{ap_localize}",
     "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. Common issues:\n- Search string doesn't match exactly (check whitespace/indentation)\n- Syntax errors in replace code\n- Not enough context to find unique match\n\nGenerate corrected search-replace blocks."
   },
 
   "ap_analysis": {
     "role": "You are a senior software engineer specializing in bug analysis and root cause identification.",
     "constraints": "Analyze the bug systematically.\n\nREQUIREMENTS:\n- Classify the bug type accurately\n- Identify the root cause with a specific, testable hypothesis\n- List ALL files likely involved (at least one)\n- Provide a concrete fix approach that could guide patch generation\n- Assess your confidence level honestly",
-    "task": "Analyze the bug: classify its type, identify the root cause, list affected files, and describe a fix approach.",
+    "task": "Analyze the bug: classify its type, identify the root cause, list affected files, and describe a fix approach.\n\n## Problem Statement\n{specification}",
     "feedback_wrapper": "ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Ensure:\n- root_cause_hypothesis is specific and actionable\n- fix_approach describes concrete code changes\n- files contains at least one valid file path"
   },
 
   "ap_gen_test": {
     "role": "You are a test engineer writing pytest-style tests to reproduce bugs.",
     "constraints": "Write a failing test that reproduces the bug.\n\nREQUIREMENTS:\n- Use pytest style (test_ functions or Test classes)\n- The test MUST fail on the current buggy code\n- The test MUST pass after the bug is fixed\n- Import only from the project's own modules\n- Be specific about expected vs actual behavior\n- Include clear assertions with descriptive messages",
-    "task": "Write a pytest-style failing test that reproduces the bug described in the problem statement.",
+    "task": "Write a pytest-style failing test that reproduces the bug described in the problem statement.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}",
     "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nInstruction: Fix the test code. Common issues:\n- Syntax errors in the test\n- No test_ functions found\n- Test doesn't actually test the reported bug behavior\n\nGenerate corrected test code."
   },
 
   "ap_gen_fix": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
     "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
-    "task": "Generate search-replace blocks that fix the bug and make the failing test pass.",
+    "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n{ap_gen_test}",
     "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
+  },
+
+  "ap_gen_patch": {
+    "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
+    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
+    "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n{ap_gen_test}",
+    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. The patch must:\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks."
+  },
+
+  "ap_integrate_patch": {
+    "role": "You are a senior software engineer integrating and verifying bug fixes.",
+    "constraints": "Generate a patch using SEARCH/REPLACE blocks that integrates correctly with the full codebase.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. FULL COMPATIBILITY: The patch must pass all repository tests\n5. PRESERVE STYLE: Match existing code style (indentation, naming)",
+    "task": "Generate a final patch that integrates with the full codebase.\n\n## Problem Statement\n{specification}\n\n## Generated Patch\n{ap_gen_patch}\n\n## Project Structure\n{ap_structure}",
+    "feedback_wrapper": "INTEGRATION REJECTED:\n{feedback}\n\nInstruction: Revise the patch to address integration issues. The patch must pass all repository tests."
   },
 
   "ap_singleshot": {
     "role": "You are a senior software engineer writing minimal, correct bug fixes.",
     "constraints": "Generate a patch using SEARCH/REPLACE blocks.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID PYTHON: The 'replace' code must be syntactically valid Python\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Read the problem statement carefully to identify the root cause\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file\n- Include surrounding lines if the target is ambiguous",
-    "task": "Analyze the bug and generate search-replace blocks to fix it in a single step.",
+    "task": "Analyze the bug and generate search-replace blocks to fix it in a single step.\n\n## Problem Statement\n{specification}",
     "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\nInstruction: Fix the search-replace blocks. Common issues:\n- Search string doesn't match exactly (check whitespace/indentation)\n- Syntax errors in replace code\n- Not enough context to find unique match\n\nGenerate corrected search-replace blocks."
+  },
+
+  "ap_diff_review": {
+    "role": "You are a senior code reviewer analyzing patches for correctness and completeness.",
+    "constraints": "Review the generated patch against the bug analysis and test.\n\nVERDICT OPTIONS:\n- approve: Patch correctly fixes the bug, passes the test, and has no critical issues\n- revise: Minor issues that can be fixed by regenerating the patch\n- backtrack: Fundamental issues requiring re-analysis or re-testing\n\nBACKTRACK TARGETS (when verdict is 'backtrack'):\n- ap_gen_patch: Patch is wrong but test and analysis are correct\n- ap_gen_test: Test doesn't properly capture the bug behavior\n- ap_analysis: Root cause hypothesis is wrong\n\nISSUE SEVERITIES:\n- critical: Must be fixed (wrong logic, missing edge case, breaks existing behavior)\n- minor: Should be fixed but not blocking (style, naming, optimization)",
+    "task": "Review the analysis, test, and patch. Produce a verdict with issues and backtrack_target if needed.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}\n\n## Generated Test\n{ap_gen_test}\n\n## Generated Patch\n{ap_gen_patch}",
+    "feedback_wrapper": "REVIEW REJECTED:\n{feedback}\n\nInstruction: Revise your review. Ensure:\n- verdict is one of: approve, revise, backtrack\n- If verdict is 'backtrack', backtrack_target must be specified (ap_gen_patch, ap_gen_test, or ap_analysis)\n- reasoning explains why the verdict was chosen"
+  },
+
+  "ap_classify_problem": {
+    "role": "You are an expert at analyzing software engineering tasks to determine their complexity and type.",
+    "constraints": "Classify the problem into a category:\n\n- trivial_fix: Single-line or obvious fix (typo, missing import, wrong constant)\n- single_file_bug: Bug localized to one file, requires understanding logic flow\n- multi_file_bug: Bug spans multiple files, requires coordinated changes\n- api_change: Requires changing function signatures or adding new interfaces\n- refactor: Requires restructuring code to fix the underlying issue\n\nESTIMATED COMPLEXITY (1-5):\n- 1: Trivial, < 5 lines changed\n- 2: Simple, single function modification\n- 3: Moderate, multiple functions or logic changes\n- 4: Complex, architectural considerations\n- 5: Very complex, deep refactoring needed",
+    "task": "Analyze the problem and classify its type and complexity.\n\n## Problem Statement\n{specification}",
+    "feedback_wrapper": "CLASSIFICATION REJECTED:\n{feedback}\n\nInstruction: Revise your classification. Ensure:\n- category is one of: trivial_fix, single_file_bug, multi_file_bug, api_change, refactor\n- estimated_complexity is an integer from 1 to 5\n- reasoning explains the classification"
+  },
+
+  "ap_generate_workflow": {
+    "role": "You are a workflow designer creating optimal pipelines for bug fixing tasks.",
+    "constraints": "Design a workflow using the available components.\n\nWORKFLOW STRUCTURE:\n- action_pairs: Dict of step_id -> {generator, guard, requires, description}\n- requires: List of step_ids that must complete before this step\n- rmax: Maximum retries per step (1-10, higher for complex problems)\n\nGUIDELINES BY PROBLEM CATEGORY:\n- trivial_fix: AnalysisGenerator -> PatchGenerator (skip test generation)\n- single_file_bug: AnalysisGenerator -> TestGenerator -> PatchGenerator\n- multi_file_bug: Add DiffReviewGenerator for patch validation\n- api_change/refactor: Use full pipeline with backtracking enabled\n\nBACKTRACK CONFIG (optional):\n- backtrack_budget: {step_id: max_backtracks} - limits expensive re-runs\n- include_diff_review: true to add LLM review step",
+    "task": "Generate a workflow specification optimized for this problem's category and complexity.\n\n## Problem Statement\n{specification}\n\n## Problem Classification\n{ap_classify_problem}",
+    "feedback_wrapper": "WORKFLOW REJECTED:\n{feedback}\n\nInstruction: Revise your workflow. Ensure:\n- action_pairs uses valid generators and guards from the component registry\n- requires lists only define valid dependencies\n- rmax is between 1 and 10"
   }
 }

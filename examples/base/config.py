@@ -11,6 +11,28 @@ from atomicguard import PromptTemplate
 from .exceptions import ConfigurationError
 
 
+def _require_field(data: dict[str, Any], field: str, step_id: str) -> str:
+    """Extract a required field from prompt data.
+
+    Args:
+        data: Prompt data dictionary
+        field: Field name to extract
+        step_id: Step ID for error messages
+
+    Returns:
+        The field value
+
+    Raises:
+        ConfigurationError: If field is missing or empty
+    """
+    value = data.get(field)
+    if not value:
+        raise ConfigurationError(
+            f"prompts.json: '{step_id}' missing required field '{field}'"
+        )
+    return value
+
+
 def load_prompts(path: Path) -> dict[str, PromptTemplate]:
     """
     Load prompt templates from JSON file.
@@ -43,9 +65,9 @@ def load_prompts(path: Path) -> dict[str, PromptTemplate]:
                 f"Invalid prompt config for '{step_id}': expected dict"
             )
         prompts[step_id] = PromptTemplate(
-            role=prompt_data.get("role", ""),
-            constraints=prompt_data.get("constraints", ""),
-            task=prompt_data.get("task", ""),
+            role=_require_field(prompt_data, "role", step_id),
+            constraints=prompt_data.get("constraints", ""),  # Optional
+            task=_require_field(prompt_data, "task", step_id),
             feedback_wrapper=prompt_data.get("feedback_wrapper", "{feedback}"),
         )
     return prompts

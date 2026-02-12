@@ -1239,6 +1239,15 @@ class TestPatchGeneratorSingleshotFileContent:
         ambient = AmbientEnvironment(repository=MagicMock(spec=[]), constraints="")
         return Context(ambient=ambient, specification=specification)
 
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Patch generator",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
+
     def test_singleshot_includes_referenced_files(self, tmp_path):
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "main.py").write_text("def hello():\n    return 'hi'\n")
@@ -1247,7 +1256,7 @@ class TestPatchGeneratorSingleshotFileContent:
         gen = self._make_gen(repo_root=str(tmp_path))
         spec = "There is a bug in src/main.py where hello() returns wrong value"
         ctx = self._make_context(spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         assert "## Current File Content" in prompt
         assert "src/main.py" in prompt
@@ -1261,7 +1270,7 @@ class TestPatchGeneratorSingleshotFileContent:
         gen = self._make_gen(repo_root=str(tmp_path))
         spec = "There is a bug in src/main.py"
         ctx = self._make_context(spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         assert "src/main.py" in prompt
         # other.py is not mentioned in spec, so its content should not appear
@@ -1279,7 +1288,7 @@ class TestPatchGeneratorSingleshotFileContent:
         # Reference all 8 files in the spec
         spec = "Bug affects: " + ", ".join(file_names)
         ctx = self._make_context(spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         # Count how many file content sections appear
         count = prompt.count("### src/f")
@@ -1293,6 +1302,15 @@ class TestPatchGeneratorSingleshotFileContent:
 
 class TestMultiLangPatchGeneratorSingleshotFileContent:
     """Verify MultiLangPatchGenerator includes referenced file content for singleshot."""
+
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Patch generator",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
 
     def test_singleshot_includes_referenced_files(self, tmp_path):
         from examples.swe_bench_pro.generators.multilang_patch import (
@@ -1316,7 +1334,7 @@ class TestMultiLangPatchGeneratorSingleshotFileContent:
         ambient = AmbientEnvironment(repository=MagicMock(spec=[]), constraints="")
         spec = "Bug in cmd/main.go"
         ctx = Context(ambient=ambient, specification=spec)
-        prompt = gen._build_prompt(ctx, None)
+        prompt = gen._build_prompt(ctx, self._make_template())
 
         assert "## Current File Content" in prompt
         assert "cmd/main.go" in prompt
@@ -1534,7 +1552,11 @@ class MyClass:
 
 
 class TestPatchGeneratorTestGuidance:
-    """Verify PatchGenerator includes guidance when test code is present."""
+    """Verify PatchGenerator includes guidance when test code is present.
+
+    Note: In the new design, TDD guidance comes from prompt templates.
+    These tests verify that templates with test placeholders render correctly.
+    """
 
     def _make_gen(self, **kwargs):
         from examples.swe_bench_common.generators import PatchGenerator
@@ -1556,21 +1578,37 @@ class TestPatchGeneratorTestGuidance:
         ctx = Context(
             ambient=ambient,
             specification="There is a bug",
-            dependency_artifacts=(("test", "test-artifact-id"),),
+            dependency_artifacts=(("ap_gen_test", "test-artifact-id"),),
         )
         return ctx
+
+    def _make_template_with_test_guidance(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="You are a software engineer.",
+            constraints="Fix the bug.",
+            task=(
+                "Generate a patch.\n\n"
+                "## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n"
+                "Do NOT create or modify any test files.\n"
+                "{ap_gen_test}"
+            ),
+        )
 
     def test_tdd_prompt_includes_guidance_note(self):
         gen = self._make_gen()
         ctx = self._make_context_with_test("def test_foo(): assert True")
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
         assert "REFERENCE ONLY" in prompt
 
     def test_tdd_prompt_warns_not_to_patch_tests(self):
         gen = self._make_gen()
         ctx = self._make_context_with_test("def test_foo(): assert True")
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
         assert "DO NOT MODIFY" in prompt
         assert "Do NOT create or modify any test files" in prompt
@@ -1582,7 +1620,10 @@ class TestPatchGeneratorTestGuidance:
 
 
 class TestMultiLangPatchGeneratorTestGuidance:
-    """Verify MultiLangPatchGenerator includes guidance when test code is present."""
+    """Verify MultiLangPatchGenerator includes guidance when test code is present.
+
+    Note: In the new design, TDD guidance comes from prompt templates.
+    """
 
     def _make_context_with_test(self, test_code: str):
         from atomicguard.domain.models import AmbientEnvironment, Context
@@ -1596,9 +1637,23 @@ class TestMultiLangPatchGeneratorTestGuidance:
         ctx = Context(
             ambient=ambient,
             specification="There is a bug",
-            dependency_artifacts=(("test", "test-artifact-id"),),
+            dependency_artifacts=(("ap_gen_test", "test-artifact-id"),),
         )
         return ctx
+
+    def _make_template_with_test_guidance(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="You are a software engineer.",
+            constraints="Fix the bug.",
+            task=(
+                "Generate a patch.\n\n"
+                "## Generated Test (REFERENCE ONLY — DO NOT MODIFY)\n"
+                "Do NOT create or modify any test files.\n"
+                "{ap_gen_test}"
+            ),
+        )
 
     def test_tdd_prompt_includes_guidance_note(self):
         from examples.swe_bench_pro.generators.multilang_patch import (
@@ -1613,7 +1668,8 @@ class TestMultiLangPatchGeneratorTestGuidance:
             api_key="test",
         )
         ctx = self._make_context_with_test('func TestFoo(t *testing.T) { t.Log("ok") }')
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
         assert "REFERENCE ONLY" in prompt
 
@@ -1630,7 +1686,8 @@ class TestMultiLangPatchGeneratorTestGuidance:
             api_key="test",
         )
         ctx = self._make_context_with_test('func TestFoo(t *testing.T) { t.Log("ok") }')
-        prompt = gen._build_prompt(ctx, None)
+        template = self._make_template_with_test_guidance()
+        prompt = gen._build_prompt(ctx, template)
 
         assert "DO NOT MODIFY" in prompt
         assert "Do NOT create or modify any test files" in prompt
@@ -1854,6 +1911,15 @@ class TestGenerateMethodHappyPath:
             dependency_artifacts=deps,
         )
 
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Test assistant",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
+
     def _mock_agent(self, output):
         mock_agent = MagicMock()
         mock_result = MagicMock(spec=[])  # no usage attribute
@@ -1877,7 +1943,7 @@ class TestGenerateMethodHappyPath:
         )
 
         ctx = self._make_context()
-        art = gen.generate(ctx)
+        art = gen.generate(ctx, template=self._make_template())
 
         assert art.status == ArtifactStatus.PENDING
         data = json.loads(art.content)
@@ -1900,7 +1966,12 @@ class TestGenerateMethodHappyPath:
         )
         gen._agent = mock_agent
 
-        tmpl = PromptTemplate(role="Bug analyst", constraints="", task="Analyze this")
+        # Use {specification} placeholder to include the problem statement
+        tmpl = PromptTemplate(
+            role="Bug analyst",
+            constraints="",
+            task="Analyze this\n\n## Problem\n{specification}",
+        )
         ctx = self._make_context(specification="segfault in foo()")
         gen.generate(ctx, template=tmpl)
 
@@ -1924,8 +1995,9 @@ class TestGenerateMethodHappyPath:
         )
 
         ctx = self._make_context()
-        art1 = gen.generate(ctx)
-        art2 = gen.generate(ctx)
+        tmpl = self._make_template()
+        art1 = gen.generate(ctx, template=tmpl)
+        art2 = gen.generate(ctx, template=tmpl)
 
         assert art1.attempt_number == 1
         assert art2.attempt_number == 2
@@ -1945,14 +2017,12 @@ class TestGenerateMethodHappyPath:
 
         ctx = self._make_context(
             specification="spec text",
-            deps=(("analysis", "art-1"),),
         )
-        art = gen.generate(ctx, workflow_id="wf-1")
+        art = gen.generate(ctx, template=self._make_template(), workflow_id="wf-1")
 
         assert art.context.specification == "spec text"
         assert art.context.workflow_id == "wf-1"
         assert art.context.constraints == "c"
-        assert art.context.dependency_artifacts == (("analysis", "art-1"),)
 
     def test_generate_patch_calls_process_output(self, tmp_path):
         from examples.swe_bench_common.models import Patch, SearchReplaceEdit
@@ -1974,7 +2044,7 @@ class TestGenerateMethodHappyPath:
         )
 
         ctx = self._make_context()
-        art = gen.generate(ctx)
+        art = gen.generate(ctx, template=self._make_template())
         data = json.loads(art.content)
         assert "patch" in data
 
@@ -2002,6 +2072,15 @@ class TestGenerateMethodErrorPaths:
         ambient = AmbientEnvironment(repository=MagicMock(spec=[]), constraints="")
         return Context(ambient=ambient, specification="bug")
 
+    def _make_template(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
+        return PromptTemplate(
+            role="Test assistant",
+            constraints="",
+            task="## Problem\n{specification}",
+        )
+
     def test_generate_validation_error_returns_error_artifact(self):
         from pydantic_ai.exceptions import UnexpectedModelBehavior
 
@@ -2012,7 +2091,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         # Content is now the raw body from the LLM (may be re-formatted by PydanticAI)
         assert "bad" in art.content
         assert "data" in art.content
@@ -2032,7 +2111,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         assert art.content == raw_body
         assert "generator_error" in art.metadata
         assert "tool call" in art.metadata["generator_error"]
@@ -2048,7 +2127,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         # Without a body, content falls back to str(e) which is just the message
         assert "1 validation error for Analysis" in art.content
         assert art.metadata["generator_error_kind"] == "validation"
@@ -2065,7 +2144,7 @@ class TestGenerateMethodErrorPaths:
         )
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         assert art.content == "not valid json {"
         assert art.metadata["generator_error_kind"] == "validation"
 
@@ -2075,7 +2154,7 @@ class TestGenerateMethodErrorPaths:
         mock_agent.run_sync.side_effect = RuntimeError("network timeout")
         gen._agent = mock_agent
 
-        art = gen.generate(self._make_context())
+        art = gen.generate(self._make_context(), template=self._make_template())
         assert art.content == "network timeout"
         assert art.metadata["generator_error"] == "Generation failed: network timeout"
         assert art.metadata["generator_error_kind"] == "infrastructure"
@@ -2087,8 +2166,9 @@ class TestGenerateMethodErrorPaths:
         gen._agent = mock_agent
 
         ctx = self._make_context()
-        art1 = gen.generate(ctx)
-        art2 = gen.generate(ctx)
+        tmpl = self._make_template()
+        art1 = gen.generate(ctx, template=tmpl)
+        art2 = gen.generate(ctx, template=tmpl)
 
         assert art1.attempt_number == 1
         assert art2.attempt_number == 2
@@ -2196,7 +2276,7 @@ class TestFormatValidationError:
 
 
 class TestGetSystemPrompt:
-    """Verify _get_system_prompt selects the right source."""
+    """Verify _get_system_prompt requires a valid role."""
 
     def _make_gen(self):
         from examples.swe_bench_common.generators import AnalysisGenerator
@@ -2211,155 +2291,25 @@ class TestGetSystemPrompt:
         from atomicguard.domain.prompts import PromptTemplate
 
         gen = self._make_gen()
-        tmpl = PromptTemplate(role="Bug analyst", constraints="", task="")
+        tmpl = PromptTemplate(role="Bug analyst", constraints="", task="Analyze bugs")
         assert gen._get_system_prompt(tmpl) == "Bug analyst"
 
-    def test_returns_default_when_no_template(self):
+    def test_raises_when_role_is_empty(self):
+        from atomicguard.domain.prompts import PromptTemplate
+
         gen = self._make_gen()
-        assert gen._get_system_prompt(None) == "You are a helpful assistant."
+        tmpl = PromptTemplate(role="", constraints="", task="Test task")
+        with pytest.raises(ValueError, match="requires a role in PromptTemplate"):
+            gen._get_system_prompt(tmpl)
 
 
 # =========================================================================
-# PatchGenerator – dependency extraction helpers
+# NOTE: TestDependencyExtraction class was removed as part of Issue 7
+# (Move All Context to Prompt Templates). The _get_analysis, _get_localization,
+# and _get_test_code methods no longer exist - dependency artifacts are now
+# accessed via {ap_*} placeholders in prompt templates instead of hardcoded
+# extraction methods. See prompts.json for placeholder usage.
 # =========================================================================
-
-
-class TestDependencyExtraction:
-    """Verify _get_analysis, _get_localization, _get_test_code."""
-
-    def _make_gen(self):
-        from examples.swe_bench_common.generators import PatchGenerator
-
-        return PatchGenerator(
-            model="test",
-            base_url="http://localhost",
-            api_key="test",
-        )
-
-    def _make_context(self, deps, artifact_map):
-        """Build a Context whose repo returns artifacts from *artifact_map*.
-
-        Args:
-            deps: Tuple of (dep_id, artifact_id) pairs.
-            artifact_map: Dict mapping artifact_id to content strings.
-        """
-        from atomicguard.domain.models import AmbientEnvironment, Context
-
-        repo = MagicMock(spec=["get_artifact"])
-
-        def _get(aid):
-            content = artifact_map.get(aid)
-            if content is None:
-                return None
-            art = MagicMock()
-            art.content = content
-            return art
-
-        repo.get_artifact.side_effect = _get
-
-        ambient = AmbientEnvironment(repository=repo, constraints="")
-        return Context(ambient=ambient, specification="bug", dependency_artifacts=deps)
-
-    # -- _get_analysis -------------------------------------------------
-
-    def test_get_analysis_valid_returns_model(self):
-        from examples.swe_bench_common.models import Analysis
-
-        gen = self._make_gen()
-        analysis_json = json.dumps(
-            {
-                "bug_type": "logic",
-                "root_cause_hypothesis": "wrong branch",
-                "files": ["f.py"],
-                "fix_approach": "fix branch",
-            }
-        )
-        ctx = self._make_context(
-            deps=(("analysis", "a1"),),
-            artifact_map={"a1": analysis_json},
-        )
-        result = gen._get_analysis(ctx)
-        assert isinstance(result, Analysis)
-        assert result.bug_type.value == "logic"
-
-    def test_get_analysis_invalid_json_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("analysis", "a1"),),
-            artifact_map={"a1": "not json"},
-        )
-        assert gen._get_analysis(ctx) is None
-
-    def test_get_analysis_no_matching_dep_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("patch", "a1"),),
-            artifact_map={"a1": "{}"},
-        )
-        assert gen._get_analysis(ctx) is None
-
-    # -- _get_localization ---------------------------------------------
-
-    def test_get_localization_valid_returns_model(self):
-        from examples.swe_bench_common.models import Localization
-
-        gen = self._make_gen()
-        loc_json = json.dumps(
-            {
-                "files": ["src/main.py"],
-                "functions": [{"name": "foo", "file": "src/main.py"}],
-                "reasoning": "because",
-            }
-        )
-        ctx = self._make_context(
-            deps=(("localize", "l1"),),
-            artifact_map={"l1": loc_json},
-        )
-        result = gen._get_localization(ctx)
-        assert isinstance(result, Localization)
-        assert result.files == ["src/main.py"]
-
-    def test_get_localization_invalid_json_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("localize", "l1"),),
-            artifact_map={"l1": "not valid"},
-        )
-        assert gen._get_localization(ctx) is None
-
-    def test_get_localization_missing_artifact_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("localize", "l1"),),
-            artifact_map={},  # get_artifact returns None
-        )
-        assert gen._get_localization(ctx) is None
-
-    # -- _get_test_code ------------------------------------------------
-
-    def test_get_test_code_valid_returns_content(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("test", "t1"),),
-            artifact_map={"t1": "def test_foo(): assert True"},
-        )
-        assert gen._get_test_code(ctx) == "def test_foo(): assert True"
-
-    def test_get_test_code_empty_content_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("test", "t1"),),
-            artifact_map={"t1": "   \n  "},
-        )
-        assert gen._get_test_code(ctx) is None
-
-    def test_get_test_code_no_test_dep_returns_none(self):
-        gen = self._make_gen()
-        ctx = self._make_context(
-            deps=(("analysis", "a1"),),
-            artifact_map={"a1": "def test_foo(): assert True"},
-        )
-        assert gen._get_test_code(ctx) is None
 
 
 # =========================================================================
@@ -2605,7 +2555,7 @@ class TestActionPairGeneratorErrorSkip:
 
         mock_guard = MagicMock()
 
-        template = PromptTemplate(role="", constraints="", task="")
+        template = PromptTemplate(role="Test role", constraints="", task="Test task")
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2634,7 +2584,7 @@ class TestActionPairGeneratorErrorSkip:
             passed=True, feedback="", guard_name="TestGuard"
         )
 
-        template = PromptTemplate(role="", constraints="", task="")
+        template = PromptTemplate(role="Test role", constraints="", task="Test task")
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
@@ -2667,7 +2617,7 @@ class TestActionPairGeneratorErrorSkip:
 
         mock_guard = MagicMock()
 
-        template = PromptTemplate(role="", constraints="", task="")
+        template = PromptTemplate(role="Test role", constraints="", task="Test task")
         ap = ActionPair(mock_generator, mock_guard, template)
 
         ctx = MagicMock()
