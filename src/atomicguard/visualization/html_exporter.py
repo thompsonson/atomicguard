@@ -88,19 +88,19 @@ def extract_workflow_data(
     # Track escalation events
     escalation_count = 0
 
-    # Track final artifact per step (for dependency edge targets)
-    step_final_artifact: dict[str, str] = {}  # step_id -> artifact_node_id
-
     for step_id, step_artifacts in steps.items():
-        # Detect escalation
-        if any(
-            len(a.context.escalation_feedback) > 0 for a in step_artifacts
-        ):
+        # Detect escalation: any non-first attempt with null
+        # previous_attempt_id indicates an escalation backtrack
+        has_escalation = False
+        for i, a in enumerate(step_artifacts):
+            if i > 0 and a.previous_attempt_id is None:
+                has_escalation = True
+                break
+        if has_escalation:
             escalation_count += 1
 
         # Create flat artifact nodes
         prev_artifact_node_id = None
-        prev_esc_len = 0
         for artifact in step_artifacts:
             artifact_node_id = f"artifact_{artifact.artifact_id[:8]}"
             artifact_node_lookup[artifact.artifact_id] = artifact_node_id
@@ -132,12 +132,11 @@ def extract_workflow_data(
                 }
             )
 
-            # Detect escalation boundary for edge type
-            curr_esc_len = len(artifact.context.escalation_feedback)
-            is_escalation_retry = curr_esc_len > prev_esc_len
-
-            # Retry / escalation-retry edges
+            # Retry / escalation-retry edges between consecutive attempts.
+            # Escalation signal: previous_attempt_id is null on a non-first
+            # attempt (fresh start with new upstream artifacts).
             if artifact.previous_attempt_id:
+                # Explicit retry chain — local retry
                 source_id = (
                     f"artifact_{artifact.previous_attempt_id[:8]}"
                 )
@@ -147,68 +146,52 @@ def extract_workflow_data(
                             "id": f"retry_{artifact.artifact_id[:8]}",
                             "source": source_id,
                             "target": artifact_node_id,
-                            "type": "escalation_retry"
-                            if is_escalation_retry
-                            else "retry",
+                            "type": "retry",
                         }
                     }
                 )
             elif prev_artifact_node_id is not None:
+                # No explicit link — escalation backtrack (fresh start)
                 edges.append(
                     {
                         "data": {
                             "id": f"retry_{artifact.artifact_id[:8]}",
                             "source": prev_artifact_node_id,
                             "target": artifact_node_id,
-                            "type": "escalation_retry"
-                            if is_escalation_retry
-                            else "retry",
+                            "type": "escalation_retry",
                         }
                     }
                 )
 
             prev_artifact_node_id = artifact_node_id
-            prev_esc_len = curr_esc_len
 
-        # Track final artifact for this step (accepted or latest)
-        step_final_artifact[step_id] = f"artifact_{step_artifacts[-1].artifact_id[:8]}"
-        for a in reversed(step_artifacts):
-            if a.status.value == "accepted":
-                step_final_artifact[step_id] = (
-                    f"artifact_{a.artifact_id[:8]}"
-                )
-                break
-
-    # Create dependency edges — one per (source_step, target_step) pair,
-    # connecting the final artifact of the source step to the first
-    # artifact in the target step that referenced it.
-    seen_step_pairs: set[tuple[str, str]] = set()
+    # Create per-artifact dependency edges.
+    # Each artifact's actual dependency links are shown so that
+    # escalation paths are visible (e.g. attempt#3 → structure#2
+    # vs attempt#1 → structure#1).
+    seen_dep_edges: set[tuple[str, str]] = set()
     for step_id, step_artifacts in steps.items():
         for artifact in step_artifacts:
+            artifact_node_id = artifact_node_lookup[artifact.artifact_id]
             for (
                 _dep_action_pair_id,
                 dep_artifact_id,
             ) in artifact.context.dependency_artifacts:
-                source_step = artifact_step_lookup.get(dep_artifact_id)
-                if source_step and source_step != step_id:
-                    pair = (source_step, step_id)
-                    if pair not in seen_step_pairs:
-                        seen_step_pairs.add(pair)
-                        source_node = step_final_artifact.get(source_step)
-                        target_node = artifact_node_lookup.get(
-                            step_artifacts[0].artifact_id
-                        )
-                        if source_node and target_node:
-                            edges.append(
-                                {
-                                    "data": {
-                                        "id": f"dep_{source_step}_{step_id}",
-                                        "source": source_node,
-                                        "target": target_node,
-                                        "type": "dependency",
-                                    }
+                dep_node_id = artifact_node_lookup.get(dep_artifact_id)
+                if dep_node_id:
+                    pair = (dep_node_id, artifact_node_id)
+                    if pair not in seen_dep_edges:
+                        seen_dep_edges.add(pair)
+                        edges.append(
+                            {
+                                "data": {
+                                    "id": f"dep_{dep_artifact_id[:8]}_{artifact.artifact_id[:8]}",
+                                    "source": dep_node_id,
+                                    "target": artifact_node_id,
+                                    "type": "dependency",
                                 }
-                            )
+                            }
+                        )
 
     # Determine overall workflow status
     all_accepted = all(
