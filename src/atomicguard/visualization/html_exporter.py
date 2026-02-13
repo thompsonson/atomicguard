@@ -161,40 +161,39 @@ def extract_workflow_data(
 
             prev_artifact_node_id = artifact_node_id
 
-    # Create step-level causal edges (one edge per step-pair).
-    # Dependency details are available in the sidebar, so the graph
-    # only shows the causal flow between steps for readability.
+    # Create causal edges — one per (upstream_artifact, downstream_step).
+    # When several retries in a downstream step all reference the same
+    # upstream artifact, they share a single edge.  But when an
+    # escalation swaps in a new upstream artifact for the same step
+    # pair, a distinct edge is created — which keeps run filtering
+    # correct.  Full per-artifact dependency details live in the sidebar.
     seen_causal_edges: set[tuple[str, str]] = set()
-    for step_id, step_artifacts in steps.items():
-        # Collect upstream step IDs from all artifacts in this step
-        upstream_steps: set[str] = set()
+    for _step_id, step_artifacts in steps.items():
         for artifact in step_artifacts:
-            for dep_action_pair_id, _dep_artifact_id in artifact.context.dependency_artifacts:
-                if dep_action_pair_id in steps:
-                    upstream_steps.add(dep_action_pair_id)
-        # Draw one causal edge per upstream step
-        for upstream_step_id in upstream_steps:
-            pair = (upstream_step_id, step_id)
-            if pair not in seen_causal_edges:
-                seen_causal_edges.add(pair)
-                # Source: last artifact in upstream step
-                source_node_id = artifact_node_lookup[
-                    steps[upstream_step_id][-1].artifact_id
-                ]
-                # Target: first artifact in downstream step
-                target_node_id = artifact_node_lookup[
-                    step_artifacts[0].artifact_id
-                ]
-                edges.append(
-                    {
-                        "data": {
-                            "id": f"causal_{upstream_step_id[:8]}_{step_id[:8]}",
-                            "source": source_node_id,
-                            "target": target_node_id,
-                            "type": "causal",
+            artifact_node_id = artifact_node_lookup[artifact.artifact_id]
+            for (
+                dep_action_pair_id,
+                dep_artifact_id,
+            ) in artifact.context.dependency_artifacts:
+                dep_node_id = artifact_node_lookup.get(dep_artifact_id)
+                if not dep_node_id:
+                    continue
+                # Deduplicate: one edge per (upstream_artifact, downstream_step).
+                # Target the first downstream artifact that uses this upstream
+                # artifact, giving a clean anchor for the layout.
+                key = (dep_node_id, _step_id)
+                if key not in seen_causal_edges:
+                    seen_causal_edges.add(key)
+                    edges.append(
+                        {
+                            "data": {
+                                "id": f"causal_{dep_node_id[9:]}_{artifact_node_id[9:]}",
+                                "source": dep_node_id,
+                                "target": artifact_node_id,
+                                "type": "causal",
+                            }
                         }
-                    }
-                )
+                    )
 
     # ── Compute escalation runs ──────────────────────────────────
     # Split each step's artifacts into segments at escalation boundaries
