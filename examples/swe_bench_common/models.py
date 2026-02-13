@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # =============================================================================
@@ -222,11 +222,28 @@ class TestLocalization(BaseModel):
     Comprehensive test infrastructure analysis to guide test generation.
     """
 
-    # Required: Test file locations
+    # Test file locations (may be empty when proposed_test_file is used)
     test_files: list[str] = Field(
-        min_length=1,
+        default_factory=list,
         description="Existing test files related to the buggy code",
     )
+
+    # Proposed new test file (for TDD when no existing test file exists)
+    proposed_test_file: str | None = Field(
+        default=None,
+        description=(
+            "Path for a new test file to create when no existing test file "
+            "covers the buggy code. An ancestor directory must exist in the repo."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_test_files_or_proposed(self) -> "TestLocalization":
+        """Ensure at least one of test_files or proposed_test_file is provided."""
+        if not self.test_files and not self.proposed_test_file:
+            msg = "At least one of test_files or proposed_test_file must be provided"
+            raise ValueError(msg)
+        return self
 
     # Test discovery patterns
     test_patterns: list[str] = Field(
