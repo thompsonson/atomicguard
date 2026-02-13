@@ -280,7 +280,7 @@
             height: 2px;
             position: relative;
         }
-        .legend-line.dependency { background: #6366f1; }
+        .legend-line.causal { background: #6366f1; }
         .legend-line.retry { background: #9ca3af; border-top: 2px dashed #9ca3af; height: 0; }
         .legend-line.escalation-retry { background: #ec4899; border-top: 2px dashed #ec4899; height: 0; }
         .run-selector {
@@ -377,8 +377,8 @@
                         <span>Escalation</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-line dependency"></div>
-                        <span>Dependency</span>
+                        <div class="legend-line causal"></div>
+                        <span>Causal</span>
                     </div>
                     <div class="legend-item">
                         <div class="legend-line retry"></div>
@@ -463,9 +463,9 @@
                         'border-style': 'dashed'
                     }
                 },
-                // Dependency edges
+                // Causal edges
                 {
-                    selector: 'edge[type="dependency"]',
+                    selector: 'edge[type="causal"]',
                     style: {
                         'width': 3,
                         'line-color': '#6366f1',
