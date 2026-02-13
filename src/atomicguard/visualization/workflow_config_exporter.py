@@ -240,6 +240,10 @@ def _render_html(
             font-size: 0.85rem;
             opacity: 0.8;
             max-width: 80ch;
+            line-height: 1.5;
+        }}
+        .header-desc p {{
+            margin: 0.25rem 0;
         }}
         main {{
             display: flex;
@@ -443,7 +447,7 @@ def _render_html(
                 <span><strong>Steps:</strong> {step_count}</span>
                 <span><strong>rmax:</strong> {rmax}</span>
             </div>
-            <div class="header-desc">{_escape(description)}</div>
+            <div class="header-desc">{_format_description(description)}</div>
         </header>
         <main>
             <div id="cy"></div>
@@ -714,3 +718,13 @@ def _escape(text: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+def _format_description(text: str) -> str:
+    """Split a description into paragraphs at sentence boundaries."""
+    import re
+
+    if not text:
+        return ""
+    sentences = re.split(r"(?<=\.)\s+(?=[A-Z])", text.strip())
+    return "\n".join(f"<p>{_escape(s)}</p>" for s in sentences)
