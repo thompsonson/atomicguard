@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}DAG: {{ short_name }} / {{ arm }} — AtomicGuard{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/diff.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<header class="page-header compact">
+    <h1>{{ short_name }} <span class="sep">/</span> {{ arm }}</h1>
+    <div class="header-info">
+        <span class="status-badge status-{{ data.status }}">{{ data.status }}</span>
+        <span><strong>Steps:</strong> {{ data.total_steps }}</span>
+        <span><strong>Artifacts:</strong> {{ data.total_artifacts }}</span>
+        <span><strong>Escalations:</strong> {{ data.escalation_count }}</span>
+    </div>
+</header>
+<div id="run-selector" class="run-selector" style="display:none;">
+    <span class="run-selector-label">Execution Run:</span>
+    <div id="run-buttons"></div>
+</div>
+<div class="viewer-layout">
+    <div id="cy" class="cy-container"></div>
+    <div class="sidebar">
+        <h2>Artifact Details</h2>
+        <div class="legend">
+            <div class="legend-item"><div class="legend-color accepted"></div><span>Accepted</span></div>
+            <div class="legend-item"><div class="legend-color rejected"></div><span>Rejected</span></div>
+            <div class="legend-item"><div class="legend-color pending"></div><span>Pending</span></div>
+            <div class="legend-item"><div class="legend-color escalation"></div><span>Escalation</span></div>
+            <div class="legend-item" id="legend-causal"><div class="legend-line causal"></div><span>Causal</span></div>
+            <div class="legend-item"><div class="legend-line retry"></div><span>Retry</span></div>
+            <div class="legend-item"><div class="legend-line escalation-retry"></div><span>Esc. Retry</span></div>
+        </div>
+        <div id="detail-panel">
+            <p class="no-selection">Click on an artifact node to view details</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const nodes = {{ nodes_json }};
+    const edges = {{ edges_json }};
+    const artifacts = {{ artifacts_json }};
+    const runs = {{ runs_json }};
+</script>
+<script src="/static/dag-viewer.js"></script>
+{% endblock %}

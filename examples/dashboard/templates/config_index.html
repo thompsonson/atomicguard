@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Workflow Configs — AtomicGuard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>Workflow Configs</h1>
+    <p class="subtitle">{{ variants | length }} workflow variant(s)</p>
+</header>
+
+{% if variants %}
+<div class="config-list">
+    {% for v in variants %}
+    <a href="/config/{{ v.name }}" class="config-card">
+        <h3>{{ v.display_name }}</h3>
+        <div class="config-meta">
+            <span class="tag">{{ v.name }}</span>
+            <span>{{ v.step_count }} steps</span>
+        </div>
+        {% if v.description %}
+        <p class="config-desc">{{ v.description[:200] }}</p>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">No workflow configs found. Pass --workflows-dir to enable.</p>
+{% endif %}
+{% endblock %}

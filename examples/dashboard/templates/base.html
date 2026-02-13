@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AtomicGuard Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="top-nav">
+        <a href="/" class="nav-brand">AtomicGuard</a>
+        <div class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/experiment/">Experiment</a>
+            <a href="/config/">Configs</a>
+        </div>
+    </nav>
+    <div class="page-container">
+        {% block content %}{% endblock %}
+    </div>
+    <footer class="site-footer">
+        AtomicGuard Dashboard
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

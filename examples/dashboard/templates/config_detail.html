@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Config: {{ config.get('name', variant) }} — AtomicGuard{% endblock %}
+
+{% block head %}
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+{% endblock %}
+
+{% block content %}
+<header class="page-header compact">
+    <h1>{{ config.get('name', variant) }}</h1>
+    <div class="header-info">
+        <span><strong>Steps:</strong> {{ config.get('action_pairs', {}) | length }}</span>
+        <span><strong>rmax:</strong> {{ config.get('rmax', '—') }}</span>
+    </div>
+    {% if config.get('description') %}
+    <p class="header-desc">{{ config['description'] }}</p>
+    {% endif %}
+</header>
+<div class="viewer-layout">
+    <div id="cy" class="cy-container"></div>
+    <div class="sidebar">
+        <h2>Action Pair Details</h2>
+        <div class="legend">
+            <div class="legend-item"><div class="legend-line requires"></div><span>Requires</span></div>
+            <div class="legend-item"><div class="legend-line escalation"></div><span>Escalation</span></div>
+            <div class="legend-item"><div class="legend-line guard-esc"></div><span>Guard Esc.</span></div>
+        </div>
+        <div id="detail-panel">
+            <p class="no-selection">Click on an action pair node to view details</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const nodes = {{ nodes_json }};
+    const edges = {{ edges_json }};
+    const prompts = {{ prompts_json }};
+</script>
+<script src="/static/config-viewer.js"></script>
+{% endblock %}

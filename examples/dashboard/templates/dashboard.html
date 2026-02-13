@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — AtomicGuard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>Experiment Overview</h1>
+</header>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.instance_count }}</div>
+        <div class="stat-label">Instances</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.arm_names | length }}</div>
+        <div class="stat-label">Arms</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.total_dags }}</div>
+        <div class="stat-label">Total DAGs</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.completed_count }}</div>
+        <div class="stat-label">With Accepted</div>
+    </div>
+</div>
+
+<div class="card-grid">
+    <a href="/experiment/" class="action-card">
+        <h3>Experiment Grid</h3>
+        <p>Browse instances and arms in a grid view with status badges.</p>
+    </a>
+    {% if has_configs %}
+    <a href="/config/" class="action-card">
+        <h3>Workflow Configs</h3>
+        <p>View workflow topology diagrams and prompt templates.</p>
+    </a>
+    {% endif %}
+</div>
+
+{% if summary.arm_names %}
+<div class="section">
+    <h2>Arms</h2>
+    <div class="tag-list">
+        {% for arm in summary.arm_names %}
+        <span class="tag">{{ arm }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
