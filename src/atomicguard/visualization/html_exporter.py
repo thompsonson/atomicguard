@@ -161,29 +161,37 @@ def extract_workflow_data(
 
             prev_artifact_node_id = artifact_node_id
 
-    # Create causal edges — one per (upstream_artifact, downstream_step).
-    # When several retries in a downstream step all reference the same
-    # upstream artifact, they share a single edge.  But when an
-    # escalation swaps in a new upstream artifact for the same step
-    # pair, a distinct edge is created — which keeps run filtering
-    # correct.  Full per-artifact dependency details live in the sidebar.
+    # Create causal edges — only for segment-entry artifacts.
+    # Each escalation segment's first artifact (attempt #1, or first
+    # after an escalation boundary where previous_attempt_id is None)
+    # gets causal edges from its upstream dependencies.  Subsequent
+    # retries within the same segment are already connected via retry
+    # edges, so they don't need their own causal edges.  This keeps
+    # the graph sparse while ensuring every escalation run has full
+    # step-to-step connectivity.  Full dependency details are in the
+    # sidebar.
+    first_in_segment: set[str] = set()
+    for _step_id, step_artifacts in steps.items():
+        for i, artifact in enumerate(step_artifacts):
+            if i == 0 or artifact.previous_attempt_id is None:
+                first_in_segment.add(artifact.artifact_id)
+
     seen_causal_edges: set[tuple[str, str]] = set()
     for _step_id, step_artifacts in steps.items():
         for artifact in step_artifacts:
+            if artifact.artifact_id not in first_in_segment:
+                continue
             artifact_node_id = artifact_node_lookup[artifact.artifact_id]
             for (
-                dep_action_pair_id,
+                _dep_action_pair_id,
                 dep_artifact_id,
             ) in artifact.context.dependency_artifacts:
                 dep_node_id = artifact_node_lookup.get(dep_artifact_id)
                 if not dep_node_id:
                     continue
-                # Deduplicate: one edge per (upstream_artifact, downstream_step).
-                # Target the first downstream artifact that uses this upstream
-                # artifact, giving a clean anchor for the layout.
-                key = (dep_node_id, _step_id)
-                if key not in seen_causal_edges:
-                    seen_causal_edges.add(key)
+                pair = (dep_node_id, artifact_node_id)
+                if pair not in seen_causal_edges:
+                    seen_causal_edges.add(pair)
                     edges.append(
                         {
                             "data": {
