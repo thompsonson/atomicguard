@@ -57,9 +57,10 @@ def make_valid_localization(
     test_invocation: str = "pytest tests/test_module.py",
     test_library: str = "pytest",
     test_style: str = "function-based",
+    proposed_test_file: str | None = None,
 ) -> dict:
     """Create a valid TestLocalization dict."""
-    return {
+    result = {
         "test_files": ["tests/test_module.py"] if test_files is None else test_files,
         "test_patterns": ["test_*.py"],
         "test_library": test_library,
@@ -70,6 +71,9 @@ def make_valid_localization(
         "test_invocation": test_invocation,
         "reasoning": "Found test file in tests directory",
     }
+    if proposed_test_file is not None:
+        result["proposed_test_file"] = proposed_test_file
+    return result
 
 
 class TestSchemaValidation:
@@ -113,8 +117,10 @@ class TestSchemaValidation:
         assert result.passed is False
         assert "Schema validation failed" in result.feedback
 
-    def test_empty_test_files_fails(self, sample_context_snapshot: ContextSnapshot):
-        """Empty test_files list should fail schema validation (min_length=1)."""
+    def test_empty_test_files_no_proposed_fails(
+        self, sample_context_snapshot: ContextSnapshot
+    ):
+        """Empty test_files with no proposed_test_file should fail validation."""
         data = make_valid_localization(test_files=[])
         artifact = make_artifact(json.dumps(data), sample_context_snapshot)
 
@@ -364,3 +370,108 @@ class TestMultipleErrors:
         # All errors should be in feedback
         assert "Unknown test library" in result.feedback
         assert "do not exist in the repository" in result.feedback
+
+
+class TestProposedTestFile:
+    """Tests for proposed_test_file support."""
+
+    def test_proposed_with_empty_test_files_passes(
+        self, temp_repo: Path, sample_context_snapshot: ContextSnapshot
+    ):
+        """proposed_test_file with empty test_files should pass when parent dir exists."""
+        data = make_valid_localization(
+            test_files=[],
+            proposed_test_file="tests/test_new.py",
+            test_invocation="pytest tests/test_new.py",
+        )
+        data["conftest_files"] = []
+        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+
+        guard = _TestLocalizationGuard(repo_root=str(temp_repo))
+        result = guard.validate(artifact)
+
+        assert result.passed is True
+        assert "0 existing + 1 proposed test file" in result.feedback
+
+    def test_proposed_no_ancestor_dir_fails(
+        self, temp_repo: Path, sample_context_snapshot: ContextSnapshot
+    ):
+        """proposed_test_file with no existing ancestor directory should fail."""
+        data = make_valid_localization(
+            test_files=[],
+            proposed_test_file="nonexistent_dir/subdir/test_new.py",
+            test_invocation="pytest nonexistent_dir/subdir/test_new.py",
+        )
+        data["conftest_files"] = []
+        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+
+        guard = _TestLocalizationGuard(repo_root=str(temp_repo))
+        result = guard.validate(artifact)
+
+        assert result.passed is False
+        assert "no existing ancestor directory" in result.feedback
+
+    def test_proposed_ancestor_dir_exists_passes(
+        self, temp_repo: Path, sample_context_snapshot: ContextSnapshot
+    ):
+        """proposed_test_file where an ancestor (not immediate parent) exists should pass."""
+        # tests/ exists but tests/subdir/ doesn't
+        data = make_valid_localization(
+            test_files=[],
+            proposed_test_file="tests/subdir/test_new.py",
+            test_invocation="pytest tests/subdir/test_new.py",
+        )
+        data["conftest_files"] = []
+        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+
+        guard = _TestLocalizationGuard(repo_root=str(temp_repo))
+        result = guard.validate(artifact)
+
+        assert result.passed is True
+
+    def test_neither_test_files_nor_proposed_fails(
+        self, sample_context_snapshot: ContextSnapshot
+    ):
+        """Both test_files=[] and proposed_test_file=None should fail schema validation."""
+        data = make_valid_localization(test_files=[])
+        # proposed_test_file defaults to None
+        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+
+        guard = _TestLocalizationGuard()
+        result = guard.validate(artifact)
+
+        assert result.passed is False
+        assert "Schema validation failed" in result.feedback
+
+    def test_both_test_files_and_proposed_passes(
+        self, temp_repo: Path, sample_context_snapshot: ContextSnapshot
+    ):
+        """Both test_files and proposed_test_file provided should pass."""
+        data = make_valid_localization(
+            test_files=["tests/test_module.py"],
+            proposed_test_file="tests/test_new.py",
+        )
+        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+
+        guard = _TestLocalizationGuard(repo_root=str(temp_repo))
+        result = guard.validate(artifact)
+
+        assert result.passed is True
+        assert "1 existing + 1 proposed test file" in result.feedback
+
+    def test_invocation_referencing_proposed_file_passes(
+        self, temp_repo: Path, sample_context_snapshot: ContextSnapshot
+    ):
+        """Test invocation using proposed_test_file path should not be rejected as missing."""
+        data = make_valid_localization(
+            test_files=[],
+            proposed_test_file="tests/test_new_feature.py",
+            test_invocation="pytest tests/test_new_feature.py -v",
+        )
+        data["conftest_files"] = []
+        artifact = make_artifact(json.dumps(data), sample_context_snapshot)
+
+        guard = _TestLocalizationGuard(repo_root=str(temp_repo))
+        result = guard.validate(artifact)
+
+        assert result.passed is True

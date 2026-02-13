@@ -94,6 +94,25 @@ class TestLocalizationGuard(GuardInterface):
 
         errors: list[str] = []
 
+        # Validate proposed_test_file ancestor directory exists
+        if loc.proposed_test_file and self._repo_root:
+            repo_path_check = Path(self._repo_root)
+            proposed = Path(loc.proposed_test_file)
+            # Walk up from parent until we find an existing ancestor dir or hit repo root
+            ancestor_exists = False
+            for parent in proposed.parents:
+                if parent == Path("."):
+                    break  # Don't count repo root itself as a valid ancestor
+                if (repo_path_check / parent).is_dir():
+                    ancestor_exists = True
+                    break
+            if not ancestor_exists:
+                errors.append(
+                    f"proposed_test_file '{loc.proposed_test_file}' has no existing "
+                    f"ancestor directory in the repository. At least one parent "
+                    f"directory must already exist."
+                )
+
         # Validate test_library
         if loc.test_library.lower() not in self.VALID_TEST_LIBRARIES:
             errors.append(
@@ -148,7 +167,8 @@ class TestLocalizationGuard(GuardInterface):
 
             # Check test invocation paths exist
             invocation_errors = self._validate_invocation_paths(
-                loc.test_invocation, repo_path
+                loc.test_invocation, repo_path,
+                proposed_test_file=loc.proposed_test_file,
             )
             errors.extend(invocation_errors)
 
@@ -161,8 +181,15 @@ class TestLocalizationGuard(GuardInterface):
                 guard_name="TestLocalizationGuard",
             )
 
+        # Build feedback string
+        if loc.proposed_test_file:
+            file_summary = (
+                f"{len(loc.test_files)} existing + 1 proposed test file"
+            )
+        else:
+            file_summary = f"{len(loc.test_files)} test files"
         feedback = (
-            f"Test localization valid: {len(loc.test_files)} test files, "
+            f"Test localization valid: {file_summary}, "
             f"library={loc.test_library}, style={loc.test_style}"
         )
         logger.info("[TestLocalizationGuard] PASSED: %s", feedback)
@@ -173,12 +200,18 @@ class TestLocalizationGuard(GuardInterface):
             guard_name="TestLocalizationGuard",
         )
 
-    def _validate_invocation_paths(self, invocation: str, repo_path: Path) -> list[str]:
+    def _validate_invocation_paths(
+        self,
+        invocation: str,
+        repo_path: Path,
+        proposed_test_file: str | None = None,
+    ) -> list[str]:
         """Parse test_invocation and verify paths exist.
 
         Args:
             invocation: The test invocation command string
             repo_path: Path to the repository root
+            proposed_test_file: Path that doesn't exist yet (skip existence check)
 
         Returns:
             List of error messages (empty if valid)
@@ -216,6 +249,9 @@ class TestLocalizationGuard(GuardInterface):
             if "/" in token or token.endswith(".py"):
                 # Handle pytest path::function syntax
                 path_part = token.split("::")[0]
+                # Skip existence check for proposed test file
+                if proposed_test_file and path_part == proposed_test_file:
+                    continue
                 path = repo_path / path_part
                 if not path.exists():
                     errors.append(
