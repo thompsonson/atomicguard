@@ -161,14 +161,13 @@ def extract_workflow_data(
 
             prev_artifact_node_id = artifact_node_id
 
-    # Create causal edges from the workflow topology.
-    # For each segment-entry artifact (first in each escalation segment),
-    # draw one edge per unique upstream *step* using the actual upstream
-    # artifact it depended on.  This reconstructs the workflow's step DAG
-    # (`requires` topology) while anchoring to real artifacts so that run
-    # filtering works.  Retries within a segment are already linked by
-    # retry edges, and full per-artifact dependency details are in the
-    # sidebar.
+    # Create causal chain edges — one per step.
+    # Each step's dependency_artifacts preserves the `requires` ordering
+    # from the workflow definition.  The first entry is the primary
+    # causal dependency.  We show only that single causal link per step,
+    # giving a clean sequential chain through the workflow.  The full
+    # dependency list (all `requires`) is visible in the sidebar.
+    # Retries within a segment are linked by retry edges.
     first_in_segment: set[str] = set()
     for _step_id, step_artifacts in steps.items():
         for i, artifact in enumerate(step_artifacts):
@@ -180,32 +179,29 @@ def extract_workflow_data(
         for artifact in step_artifacts:
             if artifact.artifact_id not in first_in_segment:
                 continue
+            if not artifact.context.dependency_artifacts:
+                continue
             artifact_node_id = artifact_node_lookup[artifact.artifact_id]
-            # One edge per upstream step (topology level)
-            upstream_steps_seen: set[str] = set()
-            for (
-                dep_action_pair_id,
-                dep_artifact_id,
-            ) in artifact.context.dependency_artifacts:
-                if dep_action_pair_id in upstream_steps_seen:
-                    continue
-                upstream_steps_seen.add(dep_action_pair_id)
-                dep_node_id = artifact_node_lookup.get(dep_artifact_id)
-                if not dep_node_id:
-                    continue
-                pair = (dep_node_id, artifact_node_id)
-                if pair not in seen_causal_edges:
-                    seen_causal_edges.add(pair)
-                    edges.append(
-                        {
-                            "data": {
-                                "id": f"causal_{dep_node_id[9:]}_{artifact_node_id[9:]}",
-                                "source": dep_node_id,
-                                "target": artifact_node_id,
-                                "type": "causal",
-                            }
+            # First dependency = primary causal link
+            dep_action_pair_id, dep_artifact_id = (
+                artifact.context.dependency_artifacts[0]
+            )
+            dep_node_id = artifact_node_lookup.get(dep_artifact_id)
+            if not dep_node_id:
+                continue
+            pair = (dep_node_id, artifact_node_id)
+            if pair not in seen_causal_edges:
+                seen_causal_edges.add(pair)
+                edges.append(
+                    {
+                        "data": {
+                            "id": f"causal_{dep_node_id[9:]}_{artifact_node_id[9:]}",
+                            "source": dep_node_id,
+                            "target": artifact_node_id,
+                            "type": "causal",
                         }
-                    )
+                    }
+                )
 
     # ── Compute escalation runs ──────────────────────────────────
     # Split each step's artifacts into segments at escalation boundaries
