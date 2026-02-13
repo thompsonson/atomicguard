@@ -314,6 +314,9 @@ experiment = [
     { name = "huggingface-hub" },
     { name = "swebench" },
 ]
+visualization = [
+    { name = "jinja2" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -340,13 +343,14 @@ requires-dist = [
     { name = "datasets", marker = "extra == 'experiment'", specifier = ">=2.0.0" },
     { name = "docker", marker = "extra == 'experiment'", specifier = ">=7.0.0" },
     { name = "huggingface-hub", marker = "extra == 'experiment'", specifier = ">=0.20" },
+    { name = "jinja2", marker = "extra == 'visualization'", specifier = ">=3.0.0" },
     { name = "matplotlib", specifier = ">=3.10.0" },
     { name = "openhands-ai", specifier = ">=0.27.0" },
     { name = "pydantic-ai", specifier = ">=1.0.0" },
     { name = "pyflakes", specifier = ">=3.0" },
     { name = "swebench", marker = "extra == 'experiment'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["experiment"]
+provides-extras = ["experiment", "visualization"]
 
 [package.metadata.requires-dev]
 dev = [
