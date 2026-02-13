@@ -161,14 +161,13 @@ def extract_workflow_data(
 
             prev_artifact_node_id = artifact_node_id
 
-    # Create causal edges — only for segment-entry artifacts.
-    # Each escalation segment's first artifact (attempt #1, or first
-    # after an escalation boundary where previous_attempt_id is None)
-    # gets causal edges from its upstream dependencies.  Subsequent
-    # retries within the same segment are already connected via retry
-    # edges, so they don't need their own causal edges.  This keeps
-    # the graph sparse while ensuring every escalation run has full
-    # step-to-step connectivity.  Full dependency details are in the
+    # Create causal edges from the workflow topology.
+    # For each segment-entry artifact (first in each escalation segment),
+    # draw one edge per unique upstream *step* using the actual upstream
+    # artifact it depended on.  This reconstructs the workflow's step DAG
+    # (`requires` topology) while anchoring to real artifacts so that run
+    # filtering works.  Retries within a segment are already linked by
+    # retry edges, and full per-artifact dependency details are in the
     # sidebar.
     first_in_segment: set[str] = set()
     for _step_id, step_artifacts in steps.items():
@@ -182,10 +181,15 @@ def extract_workflow_data(
             if artifact.artifact_id not in first_in_segment:
                 continue
             artifact_node_id = artifact_node_lookup[artifact.artifact_id]
+            # One edge per upstream step (topology level)
+            upstream_steps_seen: set[str] = set()
             for (
-                _dep_action_pair_id,
+                dep_action_pair_id,
                 dep_artifact_id,
             ) in artifact.context.dependency_artifacts:
+                if dep_action_pair_id in upstream_steps_seen:
+                    continue
+                upstream_steps_seen.add(dep_action_pair_id)
                 dep_node_id = artifact_node_lookup.get(dep_artifact_id)
                 if not dep_node_id:
                     continue
