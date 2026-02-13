@@ -265,6 +265,13 @@ def extract_workflow_data(
                     node_native_run[nid] = max_dep_run
                     changed = True
 
+    # Tag causal edges with their escalation run (target node's native run)
+    # so the visualizer can colour each escalation round differently.
+    for edge in edges:
+        if edge["data"]["type"] == "causal":
+            target_nid = edge["data"]["target"]
+            edge["data"]["run"] = node_native_run.get(target_nid, 0)
+
     # Build runs.  For each run N, anchor on nodes native to that run,
     # then trace backwards through dependency_artifacts to include the
     # exact upstream artifacts they depended on (with full segment
@@ -875,7 +882,7 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                         <div class="legend-color escalation"></div>
                         <span>Escalation</span>
                     </div>
-                    <div class="legend-item">
+                    <div class="legend-item" id="legend-causal">
                         <div class="legend-line causal"></div>
                         <span>Causal</span>
                     </div>
@@ -904,6 +911,9 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
         const edges = {edges_json};
         const artifacts = {artifacts_json};
         const runs = {runs_json};
+
+        // Colour palette for escalation runs (causal edges).
+        const RUN_COLORS = ['#6366f1', '#f97316', '#06b6d4', '#84cc16', '#ec4899'];
 
         // Initialize Cytoscape
         const cy = cytoscape({{
@@ -962,15 +972,15 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
                         'border-style': 'dashed'
                     }}
                 }},
-                // Dependency edges
+                // Causal chain edges — coloured by escalation run
                 {{
                     selector: 'edge[type="causal"]',
                     style: {{
                         'width': 3,
-                        'line-color': '#6366f1',
-                        'target-arrow-color': '#6366f1',
                         'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier'
+                        'curve-style': 'bezier',
+                        'line-color': function(ele) {{ return RUN_COLORS[ele.data('run') || 0] || RUN_COLORS[0]; }},
+                        'target-arrow-color': function(ele) {{ return RUN_COLORS[ele.data('run') || 0] || RUN_COLORS[0]; }}
                     }}
                 }},
                 // Retry edges
@@ -1247,14 +1257,27 @@ def _generate_embedded_html(data: WorkflowVisualizationData) -> str:
             allBtn.addEventListener('click', () => selectRun(-1));
             btnContainer.appendChild(allBtn);
 
-            // One button per run
+            // One button per run — coloured to match causal edges
             runs.forEach((run, idx) => {{
+                const color = RUN_COLORS[idx] || RUN_COLORS[0];
                 const btn = document.createElement('button');
                 btn.className = 'run-btn';
                 btn.textContent = run.label;
+                btn.style.borderLeft = `4px solid ${{color}}`;
                 btn.addEventListener('click', () => selectRun(idx));
                 btnContainer.appendChild(btn);
             }});
+
+            // Replace single "Causal" legend entry with per-run colour entries
+            const legendCausal = document.getElementById('legend-causal');
+            if (legendCausal && runs.length > 1) {{
+                let html = '';
+                runs.forEach((run, idx) => {{
+                    const color = RUN_COLORS[idx] || RUN_COLORS[0];
+                    html += `<div class="legend-item"><div class="legend-line" style="background:${{color}}"></div><span>${{run.label}}</span></div>`;
+                }});
+                legendCausal.outerHTML = html;
+            }}
 
             function selectRun(runIdx) {{
                 // Update active button
