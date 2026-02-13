@@ -142,7 +142,7 @@ class DAGWatcher:
 
 Each DAG viewer page opens a WebSocket to `/ws/dag/{exp}/{arm}/{instance}`.
 The server subscribes that connection to the corresponding `index.json` watcher.
-New artifacts arrive as JSON messages:
+New or updated artifacts arrive as JSON messages:
 
 ```json
 {
@@ -153,12 +153,27 @@ New artifacts arrive as JSON messages:
 }
 ```
 
-The client JS appends the node/edges to the live Cytoscape instance.
+```json
+{
+  "type": "artifact_updated",
+  "artifact_id": "...",
+  "status": "accepted",
+  "guard_result": { ... }
+}
+```
+
+The client JS appends new nodes/edges or updates existing node styles
+(e.g. pending → accepted colour change) on the live Cytoscape instance.
 
 ### 3.3 DAG Reader
 
 Wraps `FilesystemArtifactDAG` in read-only mode. No `store()` calls.
-Provides methods tailored to the dashboard:
+Provides methods tailored to the dashboard.
+
+**Note:** `_serialize_artifact` is currently private in `html_exporter`.
+Before implementing the dashboard, promote it to a public function
+(`serialize_artifact`) or re-export via `visualization.__init__` to
+avoid coupling to a private API.
 
 ```python
 class DAGReader:
@@ -171,7 +186,7 @@ class DAGReader:
 
     def get_artifact_detail(self, artifact_id: str) -> dict:
         """Single artifact for sidebar."""
-        return _serialize_artifact(self._dag.get_artifact(artifact_id))
+        return serialize_artifact(self._dag.get_artifact(artifact_id))
 ```
 
 ### 3.4 Config Loader
@@ -200,10 +215,15 @@ Scans the artifact_dags directory to discover the hierarchy:
 ```
 artifact_dags/
   <instance_id>/       ← instance (SWE-bench problem)
-    <arm>/             ← arm (workflow variant, e.g. "02_singleshot")
+    <arm>/             ← arm (workflow variant, e.g. "07_s1_decomposed")
       index.json       ← one DAG per (instance, arm) pair
       objects/
 ```
+
+**Note:** Instance IDs are long SWE-bench identifiers
+(e.g. `instance_internetarchive__openlibrary-4a5d2a7d24c9e4c11d3069220c0685b736d5ecde-v1364...`).
+The UI should truncate these for display, extracting the short form
+(e.g. `openlibrary-4a5d2a7d`) from the `<org>__<repo>-<commit>-v<version>` pattern.
 
 ```python
 class ExperimentDiscovery:
@@ -273,6 +293,8 @@ uv run python -m examples.dashboard \
     --port 8000
 
 # Opens at http://localhost:8000
+# Note: binds to 127.0.0.1 by default — only accessible locally.
+# Use --host 0.0.0.0 to expose on the network (no authentication).
 ```
 
 **CLI options:**
@@ -284,6 +306,12 @@ uv run python -m examples.dashboard \
 | `--port` | 8000 | Server port |
 | `--host` | 127.0.0.1 | Bind address |
 | `--no-watch` | False | Disable filesystem watcher (static mode) |
+
+**Known limitation:** `--prompts` takes a single path, but different
+experiment arms may use different prompts files. For v1 this is
+acceptable — the config viewer shows prompts for the specified file
+only. Future work could support per-arm prompts discovery by
+convention (e.g. a `prompts.json` adjacent to each workflow JSON).
 
 
 ## 6. Dependencies
@@ -328,8 +356,9 @@ Workflow Engine                    Dashboard Server                Browser
 
 | What | From | How |
 |------|------|-----|
-| Artifact serialization | `html_exporter._serialize_artifact()` | Import directly |
+| Artifact serialization | `html_exporter.serialize_artifact()` | Import directly (promote from private) |
 | DAG → Cytoscape data | `html_exporter.extract_workflow_data()` | Import directly |
+| Config graph extraction | `workflow_config_exporter._extract_graph()` | Import `_extract_graph`, `_extract_prompts` for `/config/{variant}` |
 | Cytoscape styles | `templates/workflow.html` | Extract to shared JS |
 | Run computation | `html_exporter` (run selector logic) | Import directly |
 | Filesystem DAG | `FilesystemArtifactDAG` | Read-only wrapper |
