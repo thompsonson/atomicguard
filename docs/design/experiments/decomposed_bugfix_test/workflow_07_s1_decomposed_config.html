@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Config: S1 Decomposed</title>
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        .header-info {
+            display: flex;
+            gap: 2rem;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        .header-info span {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        .header-desc {
+            margin-top: 0.4rem;
+            font-size: 0.85rem;
+            opacity: 0.8;
+            max-width: 80ch;
+        }
+        main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        #cy {
+            flex: 1;
+            background: white;
+            border-right: 1px solid #e5e7eb;
+        }
+        .sidebar {
+            width: 450px;
+            background: white;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        .sidebar h2 {
+            margin: 0 0 1rem 0;
+            font-size: 1.1rem;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 0.5rem;
+        }
+        .no-selection {
+            color: #9ca3af;
+            font-style: italic;
+            text-align: center;
+            padding: 2rem;
+        }
+        .detail-section {
+            margin-bottom: 1.5rem;
+        }
+        .collapsible {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 0.75rem;
+        }
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: #f9fafb;
+            cursor: pointer;
+            user-select: none;
+        }
+        .collapsible-header:hover {
+            background: #f3f4f6;
+        }
+        .collapsible-header h4 {
+            margin: 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #374151;
+        }
+        .collapsible-header .toggle {
+            font-size: 1rem;
+            color: #9ca3af;
+            transition: transform 0.2s;
+        }
+        .collapsible.expanded .toggle {
+            transform: rotate(180deg);
+        }
+        .collapsible-content {
+            display: none;
+            padding: 1rem;
+            border-top: 1px solid #e5e7eb;
+            background: white;
+        }
+        .collapsible.expanded .collapsible-content {
+            display: block;
+        }
+        .code-block {
+            background: #f6f8fa;
+            color: #24292e;
+            padding: 1rem;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+        .meta-item {
+            background: #f9fafb;
+            padding: 0.75rem;
+            border-radius: 6px;
+        }
+        .meta-item label {
+            display: block;
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+        }
+        .meta-item span {
+            font-size: 0.9rem;
+            color: #111827;
+            font-weight: 500;
+        }
+        .placeholder-token {
+            background: #dbeafe;
+            color: #1d4ed8;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .guards-list {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+            margin-top: 0.25rem;
+        }
+        .guard-tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: #ede9fe;
+            color: #6d28d9;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 500;
+        }
+        .legend {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .legend-line {
+            width: 24px;
+            height: 3px;
+            position: relative;
+        }
+        .legend-line.requires {
+            background: #6366f1;
+        }
+        .legend-line.escalation {
+            background: #ec4899;
+            border-top: 2px dashed #ec4899;
+            height: 0;
+        }
+        .legend-line.guard-esc {
+            background: transparent;
+            border-top: 2px dotted #ec4899;
+            height: 0;
+        }
+        footer {
+            background: #1f2937;
+            color: #9ca3af;
+            padding: 0.5rem 2rem;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        @media (max-width: 768px) {
+            main {
+                flex-direction: column;
+            }
+            #cy {
+                min-height: 300px;
+                border-right: none;
+                border-bottom: 1px solid #e5e7eb;
+            }
+            .sidebar {
+                width: 100%;
+            }
+            .header-info {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+            .legend {
+                flex-wrap: wrap;
+                gap: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Workflow Config: S1 Decomposed</h1>
+            <div class="header-info">
+                <span><strong>Steps:</strong> 12</span>
+                <span><strong>rmax:</strong> 8</span>
+            </div>
+            <div class="header-desc">Decomposed workflow with granular action pairs and targeted escalation routing. Addresses failure modes observed in backtracking experiments by routing specific error types to appropriate upstream steps.</div>
+        </header>
+        <main>
+            <div id="cy"></div>
+            <div class="sidebar">
+                <h2>Action Pair Details</h2>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-line requires"></div>
+                        <span>Requires (dependency)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line escalation"></div>
+                        <span>Escalation feedback</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-line guard-esc"></div>
+                        <span>Guard escalation</span>
+                    </div>
+                </div>
+                <div id="detail-panel">
+                    <p class="no-selection">Click on an action pair node to view details</p>
+                </div>
+            </div>
+        </main>
+        <footer>
+            Generated by AtomicGuard Workflow Config Visualizer | 2026-02-13T13:46:31.771512
+        </footer>
+    </div>
+
+    <script>
+        const nodes = [
+  {
+    "data": {
+      "id": "ap_classify",
+      "label": "ap_classify",
+      "generator": "ClassificationGenerator",
+      "guard": "classification_schema",
+      "is_composite": false,
+      "guards": [],
+      "description": "Classify bug type (logic, syntax, missing_check, etc.)",
+      "r_patience": "",
+      "e_max": "",
+      "has_escalation": false,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_structure",
+      "label": "ap_structure",
+      "generator": "StructureGenerator",
+      "guard": "structure",
+      "is_composite": false,
+      "guards": [],
+      "description": "Analyze project structure, imports, dependencies",
+      "r_patience": "",
+      "e_max": "",
+      "has_escalation": false,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_root_cause",
+      "label": "ap_root_cause",
+      "generator": "RootCauseGenerator",
+      "guard": "root_cause",
+      "is_composite": false,
+      "guards": [],
+      "description": "Identify root cause based on classification",
+      "r_patience": "",
+      "e_max": "",
+      "has_escalation": false,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_localise_issue",
+      "label": "ap_localise_issue",
+      "generator": "LocalizationGenerator",
+      "guard": "localization",
+      "is_composite": false,
+      "guards": [],
+      "description": "Locate exact files/functions containing the bug",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_context_read",
+      "label": "ap_context_read",
+      "generator": "ContextReadGenerator",
+      "guard": "context",
+      "is_composite": false,
+      "guards": [],
+      "description": "Read and summarize relevant code context",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_localise_tests",
+      "label": "ap_localise_tests",
+      "generator": "TestLocalizationGenerator",
+      "guard": "test_localization",
+      "is_composite": false,
+      "guards": [],
+      "description": "Locate existing test files and patterns",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": "{\"repo_root\": \"{repo_root}\"}"
+    }
+  },
+  {
+    "data": {
+      "id": "ap_fix_approach",
+      "label": "ap_fix_approach",
+      "generator": "FixApproachGenerator",
+      "guard": "fix_approach",
+      "is_composite": false,
+      "guards": [],
+      "description": "Design the fix strategy",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_impact_analysis",
+      "label": "ap_impact_analysis",
+      "generator": "ImpactAnalysisGenerator",
+      "guard": "impact",
+      "is_composite": false,
+      "guards": [],
+      "description": "Analyze impact on other code and tests",
+      "r_patience": 2,
+      "e_max": 1,
+      "has_escalation": true,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_gen_test",
+      "label": "ap_gen_test",
+      "generator": "TestGenerator",
+      "guard": "composite",
+      "is_composite": true,
+      "guards": [
+        "test_syntax",
+        "test_red"
+      ],
+      "description": "Generate failing test (TDD red phase)",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": ""
+    }
+  },
+  {
+    "data": {
+      "id": "ap_edit_plan",
+      "label": "ap_edit_plan",
+      "generator": "EditPlanGenerator",
+      "guard": "edit_plan",
+      "is_composite": false,
+      "guards": [],
+      "description": "Plan exact file edits before patch generation",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": "{\"repo_root\": \"{repo_root}\"}"
+    }
+  },
+  {
+    "data": {
+      "id": "ap_gen_patch",
+      "label": "ap_gen_patch",
+      "generator": "PatchGenerator",
+      "guard": "composite",
+      "is_composite": true,
+      "guards": [
+        "patch",
+        "lint"
+      ],
+      "description": "Generate patch (TDD green phase)",
+      "r_patience": 3,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": "{\"require_git_apply\": true, \"require_syntax_valid\": true}"
+    }
+  },
+  {
+    "data": {
+      "id": "ap_integrate_patch",
+      "label": "ap_integrate_patch",
+      "generator": "PatchGenerator",
+      "guard": "composite",
+      "is_composite": true,
+      "guards": [
+        "test_green",
+        "full_eval"
+      ],
+      "description": "Integrate and verify patch passes full eval",
+      "r_patience": 2,
+      "e_max": 2,
+      "has_escalation": true,
+      "guard_config": ""
+    }
+  }
+];
+        const edges = [
+  {
+    "data": {
+      "id": "req_ap_classify__ap_root_cause",
+      "source": "ap_classify",
+      "target": "ap_root_cause",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_root_cause__ap_localise_issue",
+      "source": "ap_root_cause",
+      "target": "ap_localise_issue",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_localise_issue__ap_root_cause",
+      "source": "ap_localise_issue",
+      "target": "ap_root_cause",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_localise_issue__ap_context_read",
+      "source": "ap_localise_issue",
+      "target": "ap_context_read",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_context_read__ap_localise_issue",
+      "source": "ap_context_read",
+      "target": "ap_localise_issue",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_localise_issue__ap_localise_tests",
+      "source": "ap_localise_issue",
+      "target": "ap_localise_tests",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_structure__ap_localise_tests",
+      "source": "ap_structure",
+      "target": "ap_localise_tests",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_localise_tests__ap_localise_issue",
+      "source": "ap_localise_tests",
+      "target": "ap_localise_issue",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_localise_tests__ap_structure",
+      "source": "ap_localise_tests",
+      "target": "ap_structure",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_root_cause__ap_fix_approach",
+      "source": "ap_root_cause",
+      "target": "ap_fix_approach",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_context_read__ap_fix_approach",
+      "source": "ap_context_read",
+      "target": "ap_fix_approach",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_localise_issue__ap_fix_approach",
+      "source": "ap_localise_issue",
+      "target": "ap_fix_approach",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_structure__ap_fix_approach",
+      "source": "ap_structure",
+      "target": "ap_fix_approach",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_fix_approach__ap_context_read",
+      "source": "ap_fix_approach",
+      "target": "ap_context_read",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_fix_approach__ap_impact_analysis",
+      "source": "ap_fix_approach",
+      "target": "ap_impact_analysis",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_impact_analysis__ap_fix_approach",
+      "source": "ap_impact_analysis",
+      "target": "ap_fix_approach",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_fix_approach__ap_gen_test",
+      "source": "ap_fix_approach",
+      "target": "ap_gen_test",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_localise_tests__ap_gen_test",
+      "source": "ap_localise_tests",
+      "target": "ap_gen_test",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_impact_analysis__ap_gen_test",
+      "source": "ap_impact_analysis",
+      "target": "ap_gen_test",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_gen_test__ap_fix_approach",
+      "source": "ap_gen_test",
+      "target": "ap_fix_approach",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_gen_test__TestSyntaxGuard__ap_localise_tests",
+      "source": "ap_gen_test",
+      "target": "ap_localise_tests",
+      "type": "guard_escalation",
+      "guard_label": "TestSyntaxGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_gen_test__TestRedGuard__ap_fix_approach",
+      "source": "ap_gen_test",
+      "target": "ap_fix_approach",
+      "type": "guard_escalation",
+      "guard_label": "TestRedGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_gen_test__TestRedGuard__ap_root_cause",
+      "source": "ap_gen_test",
+      "target": "ap_root_cause",
+      "type": "guard_escalation",
+      "guard_label": "TestRedGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_fix_approach__ap_edit_plan",
+      "source": "ap_fix_approach",
+      "target": "ap_edit_plan",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_context_read__ap_edit_plan",
+      "source": "ap_context_read",
+      "target": "ap_edit_plan",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_edit_plan__ap_fix_approach",
+      "source": "ap_edit_plan",
+      "target": "ap_fix_approach",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_edit_plan__ap_gen_patch",
+      "source": "ap_edit_plan",
+      "target": "ap_gen_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_gen_test__ap_gen_patch",
+      "source": "ap_gen_test",
+      "target": "ap_gen_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_context_read__ap_gen_patch",
+      "source": "ap_context_read",
+      "target": "ap_gen_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_gen_patch__ap_edit_plan",
+      "source": "ap_gen_patch",
+      "target": "ap_edit_plan",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_gen_patch__PatchGuard__ap_edit_plan",
+      "source": "ap_gen_patch",
+      "target": "ap_edit_plan",
+      "type": "guard_escalation",
+      "guard_label": "PatchGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_gen_patch__LintGuard__ap_edit_plan",
+      "source": "ap_gen_patch",
+      "target": "ap_edit_plan",
+      "type": "guard_escalation",
+      "guard_label": "LintGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_gen_patch__ap_integrate_patch",
+      "source": "ap_gen_patch",
+      "target": "ap_integrate_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_structure__ap_integrate_patch",
+      "source": "ap_structure",
+      "target": "ap_integrate_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_fix_approach__ap_integrate_patch",
+      "source": "ap_fix_approach",
+      "target": "ap_integrate_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "req_ap_gen_test__ap_integrate_patch",
+      "source": "ap_gen_test",
+      "target": "ap_integrate_patch",
+      "type": "requires"
+    }
+  },
+  {
+    "data": {
+      "id": "esc_ap_integrate_patch__ap_gen_patch",
+      "source": "ap_integrate_patch",
+      "target": "ap_gen_patch",
+      "type": "escalation"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_integrate_patch__TestGreenGuard__ap_gen_patch",
+      "source": "ap_integrate_patch",
+      "target": "ap_gen_patch",
+      "type": "guard_escalation",
+      "guard_label": "TestGreenGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_integrate_patch__TestGreenGuard__ap_edit_plan",
+      "source": "ap_integrate_patch",
+      "target": "ap_edit_plan",
+      "type": "guard_escalation",
+      "guard_label": "TestGreenGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_integrate_patch__FullEvalGuard__ap_impact_analysis",
+      "source": "ap_integrate_patch",
+      "target": "ap_impact_analysis",
+      "type": "guard_escalation",
+      "guard_label": "FullEvalGuard"
+    }
+  },
+  {
+    "data": {
+      "id": "gesc_ap_integrate_patch__FullEvalGuard__ap_gen_patch",
+      "source": "ap_integrate_patch",
+      "target": "ap_gen_patch",
+      "type": "guard_escalation",
+      "guard_label": "FullEvalGuard"
+    }
+  }
+];
+        const prompts = {
+  "ap_classify": {
+    "role": "You are an expert at analyzing software engineering tasks to determine their complexity and type.",
+    "task": "Analyze the problem and classify its type and complexity.\n\n## Problem Statement\n{specification}",
+    "constraints": "Classify the problem into a category:\n\n- trivial_fix: Single-line or obvious fix (typo, missing import, wrong constant)\n- single_file_bug: Bug localized to one file, requires understanding logic flow\n- multi_file_bug: Bug spans multiple files, requires coordinated changes\n- api_change: Requires changing function signatures or adding new interfaces\n- refactor: Requires restructuring code to fix the underlying issue\n\nESTIMATED COMPLEXITY (1-5):\n- 1: Trivial, < 5 lines changed\n- 2: Simple, single function modification\n- 3: Moderate, multiple functions or logic changes\n- 4: Complex, architectural considerations\n- 5: Very complex, deep refactoring needed",
+    "feedback_wrapper": "CLASSIFICATION REJECTED:\n{feedback}\n\nInstruction: Revise your classification. Ensure:\n- category is one of: trivial_fix, single_file_bug, multi_file_bug, api_change, refactor\n- estimated_complexity is an integer from 1 to 5\n- reasoning explains the classification",
+    "escalation_feedback_wrapper": ""
+  },
+  "ap_structure": {
+    "role": "You are a software architect analyzing project structure and conventions.",
+    "task": "Analyze the project structure, test framework, and conventions.\n\n## Problem Statement\n{specification}",
+    "constraints": "Analyze the project structure to identify:\n\n1. ROOT MODULES: Top-level packages/modules in the project\n2. TEST FRAMEWORK: pytest, unittest, nose, etc.\n3. TEST DIRECTORIES: Where test files are located\n4. IMPORT CONVENTIONS: Absolute vs relative imports, common patterns\n5. KEY DEPENDENCIES: Third-party libraries used\n\nUse the Repository Structure listing in the problem statement to guide your analysis.",
+    "feedback_wrapper": "STRUCTURE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your analysis. Use exact paths from the Repository Structure listing.",
+    "escalation_feedback_wrapper": ""
+  },
+  "ap_root_cause": {
+    "role": "You are a debugging expert identifying root causes of software bugs.",
+    "task": "Identify the root cause of the bug based on the classification.\n\n## Problem Statement\n{specification}\n\n## Problem Classification\n{ap_classify}",
+    "constraints": "Based on the problem classification, identify the root cause:\n\n1. CAUSE TYPE: Specific type (e.g., 'incorrect_condition', 'missing_null_check', 'wrong_return_value')\n2. CAUSE DESCRIPTION: Detailed explanation of WHY the bug occurs\n3. TRIGGERING CONDITIONS: What inputs/states trigger the bug\n4. AFFECTED CODE PATHS: Which code paths are affected\n5. CONFIDENCE: How confident are you in this analysis (low/medium/high)",
+    "feedback_wrapper": "ROOT CAUSE ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your root cause analysis. Be more specific about the triggering conditions.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to issues with the root cause analysis:\n{feedback}\n\nRe-analyze with a different hypothesis about the root cause."
+  },
+  "ap_localise_issue": {
+    "role": "You are a code search specialist identifying exact bug locations in a codebase.",
+    "task": "Identify exact files and functions that need modification.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}",
+    "constraints": "Based on the root cause analysis, identify the exact locations:\n\n1. FILES: List of files that need modification (max 5)\n2. FUNCTIONS: Specific functions within those files\n3. LINE NUMBERS: If possible, approximate line numbers\n\nREQUIREMENTS:\n- Paths must be relative to repository root\n- Use exact paths from the Repository Structure listing\n- Prioritize precision over recall\n- Files must be SOURCE files, NOT test files (test_*.py, *_test.py, files under tests/ directories). Test localization is handled separately by ap_localise_tests.",
+    "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Use exact paths from the Repository Structure listing.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to incorrect localization:\n{feedback}\n\nRe-localize using the root cause analysis and repository structure."
+  },
+  "ap_context_read": {
+    "role": "You are a code analyst summarizing relevant context around bug locations.",
+    "task": "Summarize the code context around the bug location.\n\n## Problem Statement\n{specification}\n\n## Localization\n{ap_localise_issue}",
+    "constraints": "Read and summarize the code context around the identified bug location:\n\n1. FILE PATH: The primary file containing the bug\n2. RELEVANT FUNCTIONS: Functions involved in the bug\n3. RELEVANT CLASSES: Classes involved (if any)\n4. IMPORTS: Imports used by the buggy code\n5. CODE SNIPPET: The actual code containing/near the bug\n6. SUMMARY: What the code is doing and how the bug manifests",
+    "feedback_wrapper": "CONTEXT SUMMARY REJECTED:\n{feedback}\n\nInstruction: Revise your context summary. Focus on the code directly related to the bug.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to insufficient context:\n{feedback}\n\nProvide more detailed context about the bug location."
+  },
+  "ap_localise_tests": {
+    "role": "You are a test infrastructure analyst identifying test patterns and locations.",
+    "task": "Identify test files, patterns, and infrastructure for the buggy code.\n\n## Problem Statement\n{specification}\n\n## Localization\n{ap_localise_issue}\n\n## Project Structure\n{ap_structure}",
+    "constraints": "Identify the test infrastructure for the buggy code:\n\n1. TEST FILES: Existing test files related to the buggy code (MUST exist in Repository Structure)\n2. TEST PATTERNS: File naming patterns (test_*.py, *_test.py, etc.)\n3. TEST LIBRARY: pytest, unittest, nose, doctest\n4. TEST PLUGINS: pytest-qt, pytest-asyncio, etc.\n5. TEST FIXTURES: Available fixtures or setup functions\n6. CONFTEST FILES: ONLY list conftest.py files that are VISIBLE in the Repository Structure. If no conftest.py files are shown, leave this list EMPTY []\n7. TEST STYLE: function-based, class-based, bdd, or mixed\n8. TEST INVOCATION: Example command to run the tests\n9. PROPOSED TEST FILE: If NO existing test file exists for the buggy code, set test_files to [] (empty list) and provide a proposed_test_file path following the repository's test naming conventions. An ancestor directory MUST exist in the repository. NEVER put a non-existent file in test_files \u2014 use proposed_test_file instead.\n\nCRITICAL: test_files MUST contain ONLY exact paths from the Repository Structure listing. Do NOT invent or assume files exist. If no test file exists for this code area, set test_files=[] and use proposed_test_file.",
+    "feedback_wrapper": "TEST LOCALIZATION REJECTED:\n{feedback}\n\nThe guard has checked the filesystem and confirmed these files are MISSING. Do NOT retry the same paths.\n\nCRITICAL RULES:\n- test_files MUST ONLY contain files that ACTUALLY EXIST in the Repository Structure\n- If a file is not shown in the structure, do NOT include it in test_files\n- For conftest_files, use an empty list [] if no conftest.py files are visible in the Repository Structure\n- Do NOT guess or hallucinate file paths \u2014 every path in test_files must come from the structure listing\n- IMPORTANT: If NO existing test file covers the buggy code, you MUST set test_files to [] (empty list) and instead provide a proposed_test_file path following the repo's test naming conventions. Do NOT put non-existent files in test_files \u2014 use proposed_test_file for files that need to be created.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nTest generation failed due to incorrect test localization:\n{feedback}\n\nRe-analyze the test infrastructure. For test_files, ONLY list files visible in the Repository Structure. If no test file exists for this code, set test_files to [] and use proposed_test_file instead."
+  },
+  "ap_fix_approach": {
+    "role": "You are a senior software engineer designing fix strategies for bugs.",
+    "task": "Design a fix strategy based on the root cause and context.\n\n## Problem Statement\n{specification}\n\n## Root Cause Analysis\n{ap_root_cause}\n\n## Code Context\n{ap_context_read}\n\n## Localization\n{ap_localise_issue}\n\n## Project Structure\n{ap_structure}",
+    "constraints": "Design a concrete fix approach:\n\n1. APPROACH SUMMARY: One-line summary of the fix\n2. STEPS: Ordered list of steps to implement the fix\n3. FILES TO MODIFY: Which files need changes (REQUIRED \u2014 must list at least one file using exact paths from the Repository Structure)\n4. FUNCTIONS TO MODIFY: Which functions need changes\n5. EDGE CASES: Edge cases the fix should handle\n6. REASONING: Why this approach will fix the bug",
+    "feedback_wrapper": "FIX APPROACH REJECTED:\n{feedback}\n\nInstruction: Revise your fix approach. The files_to_modify field is REQUIRED and must contain at least one file path from the Repository Structure.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed due to issues with the fix approach:\n{feedback}\n\nDesign a different fix approach."
+  },
+  "ap_impact_analysis": {
+    "role": "You are a senior software engineer analyzing the impact of code changes.",
+    "task": "Analyze the impact of the proposed fix on other code and tests.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}",
+    "constraints": "Analyze the impact of the proposed fix:\n\n1. AFFECTED TESTS: Existing tests that may be affected\n2. AFFECTED FUNCTIONS: Other functions that may be affected\n3. POTENTIAL REGRESSIONS: Things that could break\n4. API CHANGES: Any API changes introduced\n5. RISK LEVEL: low, medium, or high\n6. REASONING: Why this risk assessment",
+    "feedback_wrapper": "IMPACT ANALYSIS REJECTED:\n{feedback}\n\nInstruction: Revise your impact analysis. Consider more potential side effects.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nDownstream steps failed, possibly due to missed impacts:\n{feedback}\n\nRe-analyze the impact more thoroughly."
+  },
+  "ap_gen_test": {
+    "role": "You are a test engineer writing TDD-style tests to reproduce bugs.",
+    "task": "Write a STANDALONE test that asserts CORRECT behavior. It will FAIL on buggy code. CRITICAL: Import project modules INSIDE test functions, not at the top level.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Test Infrastructure\n{ap_localise_tests}\n\n## Impact Analysis\n{ap_impact_analysis}",
+    "constraints": "Write a STANDALONE test that asserts CORRECT behavior, which will FAIL on the current buggy code.\n\nCRITICAL: Your test runs IN ISOLATION (pytest test_atomicguard.py at repo root).\nThe project's conftest.py fixtures are NOT available. You must write self-contained tests.\n\nSTANDALONE TEST RULES:\n1. Do NOT import project modules at the top level - they may have complex initialization\n2. Import project modules INSIDE test functions to defer initialization\n3. Do NOT rely on fixtures from conftest.py - they won't be loaded\n4. Use only standard pytest features (caplog, tmp_path, monkeypatch, etc.)\n5. If you need to mock Qt/Django/etc., do it explicitly in the test\n\nMANDATORY FOR Qt-based projects (PyQt/PySide/qutebrowser):\n- Project modules often import Qt at MODULE LEVEL, so even deferred imports trigger Qt\n- You MUST mock Qt modules BEFORE importing ANY project module\n- Use: `with patch.dict('sys.modules', {'PyQt5': MagicMock(), 'PyQt5.QtCore': MagicMock(), 'PyQt5.QtWidgets': MagicMock()}): ...`\n- ALL project imports must be INSIDE the mock context manager\n\nTDD PATTERN:\n- Assert what the code SHOULD do (correct behavior)\n- This assertion will FAIL because the buggy code behaves incorrectly\n- After the bug is fixed, the assertion will PASS\n\nDO NOT write tests that:\n- Import project modules at the top level (causes initialization errors!)\n- Only check if functions exist (e.g., `assert callable(func)`)\n- Only check types or module imports\n- Rely on fixtures from the project's conftest.py\n\nEXAMPLE (Good - standalone with deferred imports):\n```python\nimport pytest\n\ndef test_subdomain_not_blocked():\n    # Import inside function to avoid initialization issues\n    from myproject.blocker import is_blocked\n    result = is_blocked('sub.example.com', blocked=['example.com'])\n    assert result == False, 'Subdomains should not match parent'\n```\n\nEXAMPLE (REQUIRED for Qt projects - mock BEFORE any project import):\n```python\nimport pytest\nfrom unittest.mock import patch, MagicMock\n\ndef test_qt_function():\n    # MUST mock Qt modules BEFORE importing project code\n    # Project modules import Qt at module level, so this is REQUIRED\n    mock_qt = MagicMock()\n    with patch.dict('sys.modules', {\n        'PyQt5': mock_qt,\n        'PyQt5.QtCore': mock_qt,\n        'PyQt5.QtWidgets': mock_qt,\n        'PyQt5.QtGui': mock_qt,\n    }):\n        # NOW import project module - Qt is safely mocked\n        from myproject.utils import my_function\n        result = my_function('test')\n        assert result == 'expected'\n```\n\nEXAMPLE (Bad - top-level imports cause failures):\n```python\nfrom myproject.qt_module import something  # FAILS: Qt not initialized!\n\ndef test_something():\n    assert something() == 'expected'\n```\n\nREQUIREMENTS:\n- Write STANDALONE tests that don't depend on project fixtures\n- Import project modules INSIDE test functions, not at top level\n- Use concrete input values that trigger the bug\n- Assert the EXPECTED (correct) output value",
+    "feedback_wrapper": "TEST REJECTED:\n{feedback}\n\nCOMMON MISTAKES:\n1. Top-level imports of project modules - move imports INSIDE test functions!\n2. Relying on project fixtures (qapp, etc.) - write standalone tests\n3. Not mocking complex dependencies (Qt, Django, etc.)\n4. Testing existence (callable, hasattr) instead of behavior\n5. Not using inputs that trigger the specific bug\n\nFIX:\n- Move ALL project imports inside the test function\n- If initialization still fails, mock the problematic dependencies\n- Call the buggy function with trigger inputs, assert EXPECTED output\n\nGenerate corrected test code.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nA downstream step failed due to issues with the generated test:\n{feedback}\n\nAvoid these issues. Write a test that better captures the bug behavior."
+  },
+  "ap_edit_plan": {
+    "role": "You are a senior software engineer planning exact file edits to fix a bug.",
+    "task": "Plan the exact file edits needed to implement the fix.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Code Context\n{ap_context_read}",
+    "constraints": "Plan the exact file edits needed to implement the fix approach.\n\nREQUIREMENTS:\n1. FILES TO EDIT: List every file that needs modification with exact paths from the Repository Structure\n2. CHANGE DESCRIPTION: For each file, describe what needs to change\n3. FUNCTIONS TO MODIFY: List specific functions that will be modified in each file\n4. IMPORT CHANGES: List any import additions or removals needed\n5. RATIONALE: Explain why these specific edits will fix the bug\n\nCRITICAL:\n- Use ONLY exact paths from the Repository Structure listing\n- Do NOT invent or guess file paths\n- Be specific about what changes in each function",
+    "feedback_wrapper": "EDIT PLAN REJECTED:\n{feedback}\n\nThe guard has checked the filesystem. Any files listed as missing are CONFIRMED to not exist.\n\nRevise your edit plan using ONLY files from the Repository Structure listing.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nPatch generation failed due to issues with the edit plan:\n{feedback}\n\nDesign a different edit plan. Check the Repository Structure carefully."
+  },
+  "ap_gen_patch": {
+    "role": "You are a senior software engineer writing minimal, correct bug fixes guided by test-driven development.",
+    "task": "Generate search-replace blocks that fix the bug and make the failing test pass.\n\n## Problem Statement\n{specification}\n\n## Edit Plan\n{ap_edit_plan}\n\n## Code Context (ACTUAL file content \u2014 use this for exact search strings)\n{ap_context_read}\n\n## Generated Test (REFERENCE ONLY \u2014 DO NOT MODIFY)\n{ap_gen_test}",
+    "constraints": "Generate a patch using SEARCH/REPLACE blocks that fixes the bug AND passes the test.\n\nCRITICAL REQUIREMENTS:\n1. EXACT MATCH: The 'search' string must match EXACTLY (including whitespace/indentation)\n2. VALID CODE: The 'replace' code must be syntactically valid for the target language\n3. MINIMAL CHANGE: Only change what's necessary to fix the bug\n4. SOURCE FILES ONLY: Patch the source code, NOT test files. The failing test is provided as guidance only.\n5. TEST-DRIVEN: The fix must address the failing test provided\n6. PRESERVE STYLE: Match existing code style (indentation, naming)\n\nTIPS:\n- Follow the edit plan exactly \u2014 it specifies which files and functions to modify\n- Review the test to understand expected behaviour\n- Include enough context in 'search' to ensure uniqueness\n- Copy the exact indentation from the file",
+    "feedback_wrapper": "PATCH REJECTED:\n{feedback}\n\n## RESPONSE FORMAT (MANDATORY)\nYou MUST respond with a JSON object containing an 'edits' array.\nDo NOT explain your reasoning in text. Do NOT use markdown code blocks.\nJust return the JSON directly.\n\n## Requirements:\n- Follow the edit plan for which files and functions to modify\n- Fix the reported bug\n- Make the provided test pass\n- Apply cleanly to the codebase\n\nGenerate corrected search-replace blocks as JSON.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe patch failed in a previous escalation cycle:\n{feedback}\n\nThe edit plan is being revised. Follow the updated plan."
+  },
+  "ap_integrate_patch": {
+    "role": "You are a senior software engineer integrating and validating bug fixes.",
+    "task": "Generate the final integrated patch.\n\n## Problem Statement\n{specification}\n\n## Fix Approach\n{ap_fix_approach}\n\n## Generated Test\n{ap_gen_test}\n\n## Previous Patch Attempt\n{ap_gen_patch}\n\n## Project Structure\n{ap_structure}",
+    "constraints": "Generate a final integrated patch that:\n\n1. EXACT MATCH: Search strings match EXACTLY (including whitespace/indentation)\n2. VALID CODE: Replace code is syntactically valid\n3. MINIMAL CHANGE: Only change what's necessary\n4. FULL COVERAGE: Address all aspects of the fix approach\n5. TEST COMPATIBLE: Works with the generated test\n\nThis is the final integration step - ensure the patch is complete and correct.",
+    "feedback_wrapper": "INTEGRATION REJECTED:\n{feedback}\n\n## RESPONSE FORMAT (MANDATORY)\nYou MUST respond with a JSON object containing an 'edits' array.\nDo NOT explain your reasoning in text. Do NOT use markdown code blocks.\nJust return the JSON directly.\n\nGenerate corrected search-replace blocks as JSON.",
+    "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe integrated patch failed validation:\n{feedback}\n\nRevise the patch to address all issues."
+  }
+};
+
+        const cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: {
+                nodes: nodes,
+                edges: edges
+            },
+            style: [
+                // Default action pair nodes
+                {
+                    selector: 'node',
+                    style: {
+                        'shape': 'round-rectangle',
+                        'width': 'label',
+                        'height': 40,
+                        'padding': '14px',
+                        'background-color': '#6366f1',
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'font-size': '11px',
+                        'font-weight': 'bold',
+                        'color': 'white'
+                    }
+                },
+                // Composite guard nodes — slightly different colour
+                {
+                    selector: 'node[is_composite]',
+                    style: {
+                        'background-color': '#7c3aed'
+                    }
+                },
+                // Nodes with escalation config — pink dashed border
+                {
+                    selector: 'node[has_escalation]',
+                    style: {
+                        'border-width': 3,
+                        'border-color': '#ec4899',
+                        'border-style': 'dashed'
+                    }
+                },
+                // Requires edges — solid blue
+                {
+                    selector: 'edge[type="requires"]',
+                    style: {
+                        'width': 3,
+                        'line-color': '#6366f1',
+                        'target-arrow-color': '#6366f1',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                },
+                // Escalation edges — dashed pink
+                {
+                    selector: 'edge[type="escalation"]',
+                    style: {
+                        'width': 2,
+                        'line-color': '#ec4899',
+                        'line-style': 'dashed',
+                        'target-arrow-color': '#ec4899',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                },
+                // Guard escalation edges — dotted pink with label
+                {
+                    selector: 'edge[type="guard_escalation"]',
+                    style: {
+                        'width': 2,
+                        'line-color': '#ec4899',
+                        'line-style': 'dotted',
+                        'target-arrow-color': '#ec4899',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'label': 'data(guard_label)',
+                        'font-size': '9px',
+                        'color': '#9d174d',
+                        'text-background-color': 'white',
+                        'text-background-opacity': 0.9,
+                        'text-background-padding': '2px',
+                        'text-rotation': 'autorotate'
+                    }
+                },
+                // Selection
+                {
+                    selector: 'node:selected',
+                    style: {
+                        'border-width': 4,
+                        'border-color': '#3b82f6'
+                    }
+                }
+            ],
+            layout: {
+                name: 'dagre',
+                rankDir: 'LR',
+                nodeSep: 60,
+                rankSep: 120,
+                padding: 30
+            }
+        });
+
+        // Handle node clicks
+        cy.on('tap', 'node', function(evt) {
+            const node = evt.target;
+            showNodeDetail(node.data());
+        });
+
+        function showNodeDetail(d) {
+            const panel = document.getElementById('detail-panel');
+            const p = prompts[d.id] || {};
+
+            // Meta grid
+            let guardsHtml = '';
+            if (d.is_composite && d.guards && d.guards.length > 0) {
+                guardsHtml = `
+                    <div class="meta-item" style="grid-column: 1 / -1;">
+                        <label>Guards (composite)</label>
+                        <div class="guards-list">
+                            ${d.guards.map(g => `<span class="guard-tag">${escapeHtml(g)}</span>`).join('')}
+                        </div>
+                    </div>`;
+            }
+
+            let guardConfigHtml = '';
+            if (d.guard_config) {
+                guardConfigHtml = `
+                    <div class="collapsible">
+                        <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                            <h4>Guard Config</h4>
+                            <span class="toggle">&#9660;</span>
+                        </div>
+                        <div class="collapsible-content">
+                            <pre class="code-block">${escapeHtml(formatJson(d.guard_config))}</pre>
+                        </div>
+                    </div>`;
+            }
+
+            // Prompt sections
+            let promptSections = '';
+            const promptFields = [
+                ['role', 'Prompt: Role', false],
+                ['task', 'Prompt: Task', true],
+                ['constraints', 'Prompt: Constraints', false],
+                ['feedback_wrapper', 'Prompt: Feedback Wrapper', false],
+                ['escalation_feedback_wrapper', 'Prompt: Escalation Feedback Wrapper', false],
+            ];
+            for (const [key, title, expandByDefault] of promptFields) {
+                const val = p[key];
+                if (!val) continue;
+                const expanded = expandByDefault ? ' expanded' : '';
+                promptSections += `
+                    <div class="collapsible${expanded}">
+                        <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                            <h4>${title}</h4>
+                            <span class="toggle">&#9660;</span>
+                        </div>
+                        <div class="collapsible-content">
+                            <pre class="code-block">${highlightPlaceholders(escapeHtml(val))}</pre>
+                        </div>
+                    </div>`;
+            }
+
+            if (!promptSections && !Object.keys(p).length) {
+                promptSections = '<p style="color:#9ca3af;font-style:italic;">No prompt data available</p>';
+            }
+
+            panel.innerHTML = `
+                <div class="detail-section">
+                    <div class="meta-grid">
+                        <div class="meta-item">
+                            <label>Generator</label>
+                            <span>${escapeHtml(d.generator)}</span>
+                        </div>
+                        <div class="meta-item">
+                            <label>Guard</label>
+                            <span>${escapeHtml(d.guard)}</span>
+                        </div>
+                        <div class="meta-item" style="grid-column: 1 / -1;">
+                            <label>Description</label>
+                            <span>${escapeHtml(d.description)}</span>
+                        </div>
+                        <div class="meta-item">
+                            <label>r_patience</label>
+                            <span>${d.r_patience || 'default'}</span>
+                        </div>
+                        <div class="meta-item">
+                            <label>e_max</label>
+                            <span>${d.e_max || 'default'}</span>
+                        </div>
+                        ${guardsHtml}
+                    </div>
+                </div>
+                ${guardConfigHtml}
+                ${promptSections}
+            `;
+        }
+
+        function toggleCollapsible(header) {
+            const collapsible = header.parentElement;
+            collapsible.classList.toggle('expanded');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
+        function highlightPlaceholders(escapedHtml) {
+            // Highlight {placeholder} tokens in prompt text
+            return escapedHtml.replace(
+                /\{([^}]+)\}/g,
+                '<span class="placeholder-token">{$1}</span>'
+            );
+        }
+
+        function formatJson(str) {
+            try {
+                return JSON.stringify(JSON.parse(str), null, 2);
+            } catch {
+                return str;
+            }
+        }
+    </script>
+</body>
+</html>
