@@ -1,6 +1,6 @@
 {
   "name": "S1 Decomposed",
-  "description": "Decomposed workflow with granular action pairs and targeted escalation routing. Addresses failure modes observed in backtracking experiments by routing specific error types to appropriate upstream steps.",
+  "description": "Decomposed workflow with stateless action pairs and targeted escalation routing. Each action pair receives its full context as input and produces an immutable artifact, so while the workflow definition contains escalation cycles, every execution unfolds as a DAG of (context, response, guard-result) tuples. The workflow engine maintains state by injecting the appropriate upstream artifacts into each invocation. Addresses failure modes observed in backtracking experiments by routing specific error types to the appropriate upstream steps.",
   "rmax": 8,
   "action_pairs": {
     "ap_classify": {
