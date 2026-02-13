@@ -79,7 +79,7 @@ from atomicguard.infrastructure.persistence import (
 )
 
 # Visualization
-from atomicguard.visualization import export_workflow_html
+from atomicguard.visualization import export_workflow_config_html, export_workflow_html
 
 __version__ = "2.2.0"
 
@@ -128,5 +128,6 @@ __all__ = [
     "DynamicTestGuard",
     "HumanReviewGuard",
     # Visualization
+    "export_workflow_config_html",
     "export_workflow_html",
 ]

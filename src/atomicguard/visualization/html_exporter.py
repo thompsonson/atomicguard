@@ -183,9 +183,9 @@ def extract_workflow_data(
                 continue
             artifact_node_id = artifact_node_lookup[artifact.artifact_id]
             # First dependency = primary causal link
-            dep_action_pair_id, dep_artifact_id = (
-                artifact.context.dependency_artifacts[0]
-            )
+            dep_action_pair_id, dep_artifact_id = artifact.context.dependency_artifacts[
+                0
+            ]
             dep_node_id = artifact_node_lookup.get(dep_artifact_id)
             if not dep_node_id:
                 continue
