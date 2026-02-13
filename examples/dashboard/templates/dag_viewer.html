@@ -49,10 +49,10 @@
 
 {% block scripts %}
 <script>
-    const nodes = {{ nodes_json }};
-    const edges = {{ edges_json }};
-    const artifacts = {{ artifacts_json }};
-    const runs = {{ runs_json }};
+    const nodes = {{ nodes_json | safe }};
+    const edges = {{ edges_json | safe }};
+    const artifacts = {{ artifacts_json | safe }};
+    const runs = {{ runs_json | safe }};
 </script>
 <script src="/static/dag-viewer.js"></script>
 {% endblock %}

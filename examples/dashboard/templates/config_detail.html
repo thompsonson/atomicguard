@@ -37,9 +37,9 @@
 
 {% block scripts %}
 <script>
-    const nodes = {{ nodes_json }};
-    const edges = {{ edges_json }};
-    const prompts = {{ prompts_json }};
+    const nodes = {{ nodes_json | safe }};
+    const edges = {{ edges_json | safe }};
+    const prompts = {{ prompts_json | safe }};
 </script>
 <script src="/static/config-viewer.js"></script>
 {% endblock %}
