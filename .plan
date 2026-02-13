@@ -1,0 +1,66 @@
+# Plan: Static Workflow Config Visualizer
+
+## Goal
+Create a self-contained HTML visualization of a `workflow.json` + `prompts.json` pair.
+Shows the static workflow topology (the design, not a runtime execution) with prompt
+details in the sidebar.
+
+## Data sources
+- **workflow.json** — action_pairs with requires, generator, guard, escalation config
+- **prompts.json** — prompt templates keyed by action pair ID (role, task, constraints, feedback_wrapper, escalation_feedback_wrapper)
+
+## Deliverables
+
+### 1. New Python module: `src/atomicguard/visualization/workflow_config_exporter.py`
+
+Public function:
+```python
+def export_workflow_config_html(
+    workflow_path: str | Path,
+    prompts_path: str | Path | None = None,
+    output_path: str | Path = "workflow_config.html",
+) -> Path
+```
+
+Reads the two JSON files and produces:
+
+**Nodes** — one per action pair:
+- id, label (ap_id)
+- generator, guard (single or composite + guards list)
+- description, r_patience, e_max
+- guard_config (if any)
+
+**Edges** — three types:
+- `requires` — solid arrows for each entry in `requires` list
+- `escalation` — dashed arrows for `escalate_feedback_to` (reverse direction, pink)
+- `guard_escalation` — dotted arrows for each entry in `escalate_feedback_by_guard`, labelled with guard name
+
+**Prompt data** — merged from prompts.json by matching ap_id:
+- role, task, constraints, feedback_wrapper, escalation_feedback_wrapper
+
+### 2. New Jinja2 template: `src/atomicguard/visualization/templates/workflow_config.html`
+
+Layout (reuses the existing visual style):
+- **Header**: workflow name, description, step count, rmax
+- **Graph area**: Cytoscape.js with dagre LR layout
+- **Sidebar**: click a node to see:
+  - Step metadata (generator, guard, description, r_patience, e_max, guard_config)
+  - Prompt: Role (collapsible)
+  - Prompt: Task (collapsible, expanded by default — with `{placeholder}` spans highlighted)
+  - Prompt: Constraints (collapsible)
+  - Prompt: Feedback Wrapper (collapsible)
+  - Prompt: Escalation Feedback Wrapper (collapsible, if exists)
+- **Legend**: requires (solid), escalation (dashed pink), guard escalation (dotted, labelled)
+
+### 3. Update `__init__.py`
+Export `export_workflow_config_html`.
+
+### 4. Generate example HTML
+Run the exporter on `07_s1_decomposed.json` + `prompts.json` and save to
+`docs/design/experiments/decomposed_bugfix_test/workflow_07_s1_decomposed_config.html`.
+
+## Files changed
+- `src/atomicguard/visualization/workflow_config_exporter.py` (NEW)
+- `src/atomicguard/visualization/templates/workflow_config.html` (NEW)
+- `src/atomicguard/visualization/__init__.py` (add export)
+- `docs/design/experiments/decomposed_bugfix_test/workflow_07_s1_decomposed_config.html` (NEW, generated)
