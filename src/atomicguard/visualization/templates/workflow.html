@@ -473,8 +473,8 @@
                         'width': 3,
                         'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier',
-                        'line-color': function(ele) { return RUN_COLORS[ele.data('run') || 0] || RUN_COLORS[0]; },
-                        'target-arrow-color': function(ele) { return RUN_COLORS[ele.data('run') || 0] || RUN_COLORS[0]; }
+                        'line-color': 'data(color)',
+                        'target-arrow-color': 'data(color)'
                     }
                 },
                 // Retry edges
