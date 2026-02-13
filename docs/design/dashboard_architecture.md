@@ -1,3 +1,5 @@
+> **STATUS: IMPLEMENTED** — Dashboard lives at `examples/dashboard/`. See commits `916c900`, `784c30a`.
+
 # Architecture: AtomicGuard Live Dashboard
 
 ## Overview

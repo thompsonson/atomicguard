@@ -2,6 +2,8 @@
 
 Anti-patterns identified during architectural review (2026-02-10). Each issue is self-contained — tests pass before and after. Ordered by dependency and risk.
 
+> **Note**: Issues 0–6 are complete. Only Issue 7 (generator-workflow coupling) remains as an active work item.
+
 ## Status Summary
 
 | Issue | Status | Commit |
