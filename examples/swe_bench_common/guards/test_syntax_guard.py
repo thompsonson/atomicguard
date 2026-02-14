@@ -11,6 +11,8 @@ from typing import Any
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
 
+from .escape_utils import detect_escape_issues
+
 logger = logging.getLogger("swe_bench_ablation.guards")
 
 
@@ -59,6 +61,15 @@ class TestSyntaxGuard(GuardInterface):
             return GuardResult(
                 passed=False,
                 feedback=f"Generator returned error: {code}",
+                guard_name="TestSyntaxGuard",
+            )
+
+        # Detect JSON-escaping artefacts before parsing
+        escape_feedback = detect_escape_issues(code)
+        if escape_feedback:
+            return GuardResult(
+                passed=False,
+                feedback=escape_feedback,
                 guard_name="TestSyntaxGuard",
             )
 
