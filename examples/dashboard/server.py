@@ -13,21 +13,47 @@ from jinja2 import Environment, FileSystemLoader
 
 from .config_loader import ConfigLoader
 from .discovery import ExperimentDiscovery
+from .experiment_locator import ExperimentLocator
 from .routes import register_routes
 
 _PACKAGE_DIR = Path(__file__).parent
 
 
 def create_app(
-    artifact_dir: Path,
+    artifact_dir: Path | None = None,
     workflows_dir: Path | None = None,
     prompts_path: Path | None = None,
+    output_dir: Path | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(title="AtomicGuard Dashboard", docs_url=None, redoc_url=None)
 
-    # Data layer
-    app.state.discovery = ExperimentDiscovery(artifact_dir)
+    # Build experiment registry
+    experiments: dict[str, object] = {}  # slug -> ExperimentEntry
+    discoveries: dict[str, ExperimentDiscovery] = {}  # slug -> discovery
+
+    if output_dir and output_dir.is_dir():
+        locator = ExperimentLocator(output_dir)
+        for entry in locator.discover():
+            experiments[entry.slug] = entry
+            discoveries[entry.slug] = ExperimentDiscovery(entry.artifact_dags_path)
+    elif artifact_dir:
+        # Legacy single-experiment fallback
+        from .experiment_locator import ExperimentEntry
+
+        entry = ExperimentEntry(
+            slug="default",
+            display_name="Default Experiment",
+            artifact_dags_path=artifact_dir,
+        )
+        # Derive counts from filesystem
+        locator = ExperimentLocator(Path("."))
+        locator._count_from_filesystem(entry)
+        experiments["default"] = entry
+        discoveries["default"] = ExperimentDiscovery(artifact_dir)
+
+    app.state.experiments = experiments
+    app.state.discoveries = discoveries
     app.state.config_loader = ConfigLoader(workflows_dir, prompts_path)
 
     # Jinja2 templates
@@ -64,10 +90,16 @@ class _TemplateRenderer:
 
 @click.command()
 @click.option(
+    "--output-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Root output directory containing experiment runs.",
+)
+@click.option(
     "--artifact-dir",
     type=click.Path(exists=True, path_type=Path),
-    required=True,
-    help="Root directory containing instance/arm DAGs.",
+    default=None,
+    help="(Legacy) Single artifact_dags directory.",
 )
 @click.option(
     "--workflows-dir",
@@ -84,12 +116,22 @@ class _TemplateRenderer:
 @click.option("--host", default="0.0.0.0", help="Bind address.")
 @click.option("--port", default=8000, type=int, help="Port number.")
 def main(
-    artifact_dir: Path,
+    output_dir: Path | None,
+    artifact_dir: Path | None,
     workflows_dir: Path | None,
     prompts: Path | None,
     host: str,
     port: int,
 ) -> None:
     """Start the AtomicGuard dashboard server."""
-    app = create_app(artifact_dir, workflows_dir, prompts)
+    # Auto-detect ./output if neither flag given
+    if output_dir is None and artifact_dir is None:
+        default_output = Path("./output")
+        if default_output.is_dir():
+            output_dir = default_output
+
+    if output_dir is None and artifact_dir is None:
+        raise click.UsageError("Provide --output-dir or --artifact-dir.")
+
+    app = create_app(artifact_dir, workflows_dir, prompts, output_dir)
     uvicorn.run(app, host=host, port=port)

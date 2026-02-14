@@ -11,8 +11,11 @@
     <nav class="top-nav">
         <a href="/" class="nav-brand">AtomicGuard</a>
         <div class="nav-links">
-            <a href="/">Dashboard</a>
-            <a href="/experiment/">Experiment</a>
+            <a href="/">Experiments</a>
+            {% if slug is defined and slug %}
+            <span class="nav-sep">/</span>
+            <a href="/experiments/{{ slug }}/">{{ experiment_name | default(slug) }}</a>
+            {% endif %}
             <a href="/config/">Configs</a>
         </div>
     </nav>

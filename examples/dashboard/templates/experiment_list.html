@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Experiments — AtomicGuard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1>Experiments</h1>
+    <p class="subtitle">{{ experiments | length }} experiment(s) discovered</p>
+</header>
+
+{% if experiments %}
+<div class="filter-bar">
+    <input type="text" id="experiment-filter" class="filter-input" placeholder="Filter experiments…" autofocus>
+    <span id="filter-count" class="filter-count"></span>
+</div>
+
+<div class="table-wrapper">
+    <table class="grid-table" id="experiment-table">
+        <thead>
+            <tr>
+                <th class="col-left">Experiment</th>
+                <th>Instances</th>
+                <th>Arms</th>
+                <th>Total DAGs</th>
+                <th>Completed</th>
+                <th>Modified</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in experiments %}
+            <tr>
+                <td class="col-left">
+                    <a href="/experiments/{{ exp.slug }}/">{{ exp.display_name }}</a>
+                </td>
+                <td>{{ exp.instance_count }}</td>
+                <td>{{ exp.arm_count }}</td>
+                <td>{{ exp.total_dags }}</td>
+                <td>{{ exp.completed_count }}</td>
+                <td class="timestamp-cell">
+                    {% if exp.modified_at %}
+                    <time datetime="{{ exp.modified_at.isoformat() }}" title="{{ exp.modified_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
+                        {{ exp.modified_at.strftime('%Y-%m-%d %H:%M') }}
+                    </time>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="empty-state">No experiments found. Check --output-dir path.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const input = document.getElementById('experiment-filter');
+    const table = document.getElementById('experiment-table');
+    const countEl = document.getElementById('filter-count');
+    if (!input || !table) return;
+
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const total = rows.length;
+
+    function update() {
+        const q = input.value.toLowerCase();
+        let visible = 0;
+        rows.forEach(function(row) {
+            const text = row.cells[0].textContent.toLowerCase();
+            const show = !q || text.includes(q);
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        countEl.textContent = q ? visible + ' of ' + total : '';
+    }
+
+    input.addEventListener('input', update);
+})();
+</script>
+{% endblock %}

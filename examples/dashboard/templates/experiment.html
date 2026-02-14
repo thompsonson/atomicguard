@@ -1,51 +1,89 @@
 {% extends "base.html" %}
 
-{% block title %}Experiment Grid — AtomicGuard{% endblock %}
+{% block title %}{{ experiment_name | default(slug) }} — AtomicGuard{% endblock %}
 
 {% block content %}
 <header class="page-header">
-    <h1>Experiment Grid</h1>
-    <p class="subtitle">{{ grid_data | length }} instances across {{ arm_names | length }} arm(s)</p>
+    <h1>{{ experiment_name | default(slug) }}</h1>
 </header>
 
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.instance_count }}</div>
+        <div class="stat-label">Instances</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.arm_names | length }}</div>
+        <div class="stat-label">Arms</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.total_dags }}</div>
+        <div class="stat-label">Total DAGs</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.completed_count }}</div>
+        <div class="stat-label">With Accepted</div>
+    </div>
+</div>
+
 {% if grid_data %}
-<div class="table-wrapper">
-    <table class="grid-table">
-        <thead>
-            <tr>
-                <th class="sticky-col">Instance</th>
-                {% for arm in arm_names %}
-                <th>{{ arm }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in grid_data %}
-            <tr>
-                <td class="sticky-col instance-cell" title="{{ row.instance_id }}">
-                    {{ row.short_name }}
-                </td>
-                {% for arm in arm_names %}
-                {% set cell = row.arms[arm] %}
-                {% if cell %}
-                <td class="status-cell">
-                    <a href="/dag/{{ row.instance_id }}/{{ arm }}" class="status-badge badge-{{ cell.status }}">
-                        {{ cell.status }}
-                        <span class="artifact-count">{{ cell.artifact_count }}</span>
-                    </a>
-                </td>
-                {% else %}
-                <td class="status-cell">
-                    <span class="status-badge badge-empty">—</span>
-                </td>
-                {% endif %}
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="exp-collapsible expanded" id="instances-section">
+    <div class="exp-collapsible-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <h2>Instances <span class="badge">{{ grid_data | length }}</span></h2>
+        <span class="toggle">&#9660;</span>
+    </div>
+    <div class="exp-collapsible-body">
+        <div class="table-wrapper">
+            <table class="grid-table">
+                <thead>
+                    <tr>
+                        <th class="sticky-col">Instance</th>
+                        {% for arm in arm_names %}
+                        <th>{{ arm }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in grid_data %}
+                    <tr>
+                        <td class="sticky-col instance-cell" title="{{ row.instance_id }}">
+                            {{ row.short_name }}
+                        </td>
+                        {% for arm in arm_names %}
+                        {% set cell = row.arms[arm] %}
+                        {% if cell %}
+                        <td class="status-cell">
+                            <a href="/experiments/{{ slug }}/{{ arm }}/{{ row.instance_id }}/" class="status-badge badge-{{ cell.status }}">
+                                {{ cell.status }}
+                                <span class="artifact-count">{{ cell.artifact_count }}</span>
+                            </a>
+                        </td>
+                        {% else %}
+                        <td class="status-cell">
+                            <span class="status-badge badge-empty">—</span>
+                        </td>
+                        {% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% else %}
-<p class="empty-state">No instances found. Check --artifact-dir path.</p>
+<p class="empty-state">No instances found for this experiment.</p>
+{% endif %}
+
+{% if notes_html %}
+<div class="exp-collapsible expanded" id="notes-section">
+    <div class="exp-collapsible-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <h2>Notes</h2>
+        <span class="toggle">&#9660;</span>
+    </div>
+    <div class="exp-collapsible-body">
+        <div class="notes-content">{{ notes_html | safe }}</div>
+    </div>
+</div>
 {% endif %}
 {% endblock %}

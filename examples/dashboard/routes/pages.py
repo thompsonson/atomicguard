@@ -11,43 +11,69 @@ from fastapi.responses import HTMLResponse
 router = APIRouter()
 
 
-def _ctx(request: Request) -> dict[str, Any]:
+def _ctx(request: Request, slug: str | None = None) -> dict[str, Any]:
     """Base template context with shared state."""
     app = request.app
-    return {
+    ctx: dict[str, Any] = {
         "request": request,
-        "discovery": app.state.discovery,
         "config_loader": app.state.config_loader,
     }
+    if slug:
+        ctx["slug"] = slug
+        entry = app.state.experiments.get(slug)
+        if entry:
+            ctx["experiment_name"] = entry.display_name
+    return ctx
+
+
+def _get_discovery(request: Request, slug: str):
+    """Return the ExperimentDiscovery for *slug* or raise 404."""
+    discovery = request.app.state.discoveries.get(slug)
+    if discovery is None:
+        raise HTTPException(status_code=404, detail=f"Experiment '{slug}' not found")
+    return discovery
+
+
+def _get_experiment(request: Request, slug: str):
+    """Return the ExperimentEntry for *slug* or raise 404."""
+    entry = request.app.state.experiments.get(slug)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Experiment '{slug}' not found")
+    return entry
+
+
+# -- Experiment list (homepage) ------------------------------------------------
 
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse:
-    """Home page: experiment overview stats + config link."""
-    ctx = _ctx(request)
-    summary = ctx["discovery"].get_summary()
-    config_loader = ctx["config_loader"]
+async def experiment_list(request: Request) -> HTMLResponse:
+    """Home page: list all discovered experiments."""
+    experiments = sorted(
+        request.app.state.experiments.values(),
+        key=lambda e: (e.modified_at is not None, e.modified_at),
+        reverse=True,
+    )
     templates = request.app.state.templates
     return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            **ctx,
-            "summary": summary,
-            "has_configs": bool(config_loader.list_variants()),
-        },
+        "experiment_list.html",
+        {**_ctx(request), "experiments": experiments},
     )
 
 
-@router.get("/experiment/", response_class=HTMLResponse)
-async def experiment(request: Request) -> HTMLResponse:
-    """Instance x arm grid table with status badges."""
-    ctx = _ctx(request)
-    discovery = ctx["discovery"]
+# -- Experiment detail (merged stats + grid) -----------------------------------
+
+
+@router.get("/experiments/{slug}/", response_class=HTMLResponse)
+async def experiment_detail(request: Request, slug: str) -> HTMLResponse:
+    """Stats cards + instance x arm grid for a single experiment."""
+    entry = _get_experiment(request, slug)
+    discovery = _get_discovery(request, slug)
     instances = discovery.get_instance_infos()
-    arm_names = discovery.get_summary().arm_names
+    summary = discovery.get_summary()
+    arm_names = summary.arm_names
     templates = request.app.state.templates
 
-    # Build status grid: for each (instance, arm) check index
+    # Build status grid
     grid_data = []
     for inst in instances:
         row: dict[str, Any] = {
@@ -83,18 +109,40 @@ async def experiment(request: Request) -> HTMLResponse:
                 row["arms"][arm] = None
         grid_data.append(row)
 
+    # Render NOTES.md if present
+    notes_html = None
+    if entry.notes_path and entry.notes_path.exists():
+        import markdown
+
+        notes_html = markdown.markdown(
+            entry.notes_path.read_text(),
+            extensions=["fenced_code", "tables"],
+        )
+
     return templates.TemplateResponse(
         "experiment.html",
-        {**ctx, "grid_data": grid_data, "arm_names": arm_names},
+        {
+            **_ctx(request, slug),
+            "summary": summary,
+            "grid_data": grid_data,
+            "arm_names": arm_names,
+            "notes_html": notes_html,
+        },
     )
 
 
-@router.get("/dag/{instance}/{arm}", response_class=HTMLResponse)
-async def dag_viewer(request: Request, instance: str, arm: str) -> HTMLResponse:
-    """DAG viewer page for a specific instance/arm."""
-    from examples.dashboard.dag_reader import DAGReader
+# -- DAG viewer ----------------------------------------------------------------
 
-    discovery = request.app.state.discovery
+
+@router.get("/experiments/{slug}/{arm}/{instance}/", response_class=HTMLResponse)
+async def dag_viewer(
+    request: Request, slug: str, arm: str, instance: str
+) -> HTMLResponse:
+    """DAG viewer page for a specific instance/arm within an experiment."""
+    from examples.dashboard.dag_reader import DAGReader
+    from examples.dashboard.discovery import parse_short_name
+
+    discovery = _get_discovery(request, slug)
     dag_path = discovery.get_dag_path(instance, arm)
     if not (dag_path / "index.json").exists():
         raise HTTPException(status_code=404, detail="DAG not found")
@@ -103,12 +151,10 @@ async def dag_viewer(request: Request, instance: str, arm: str) -> HTMLResponse:
     data = reader.get_visualization_data()
     templates = request.app.state.templates
 
-    from examples.dashboard.discovery import parse_short_name
-
     return templates.TemplateResponse(
         "dag_viewer.html",
         {
-            **_ctx(request),
+            **_ctx(request, slug),
             "instance": instance,
             "arm": arm,
             "short_name": parse_short_name(instance),
@@ -119,6 +165,9 @@ async def dag_viewer(request: Request, instance: str, arm: str) -> HTMLResponse:
             "runs_json": json.dumps(data.runs),
         },
     )
+
+
+# -- Config routes (unchanged) -------------------------------------------------
 
 
 @router.get("/config/", response_class=HTMLResponse)
