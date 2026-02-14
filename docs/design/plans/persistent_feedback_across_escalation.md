@@ -381,6 +381,7 @@ jq '.context.feedback_history | length' \
 **All prompt templates must come from `prompts.json`** - no defaults in code.
 
 **Current issue**: `feedback_wrapper` has a default in code:
+
 ```python
 feedback_wrapper: str = (
     "GUARD REJECTION:\n{feedback}\nInstruction: Address the rejection above."

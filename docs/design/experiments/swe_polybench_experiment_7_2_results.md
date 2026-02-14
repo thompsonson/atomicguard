@@ -72,6 +72,7 @@ This experiment evaluated three patch generation approaches on 157 Python bug fi
 ### 1. Multi-step Dramatically Improves Success Rate
 
 The analysis step provides crucial context:
+
 - Identifies affected files systematically
 - Helps model understand bug root cause
 - Guards validate file existence before patch generation
@@ -80,10 +81,12 @@ The analysis step provides crucial context:
 ### 2. S1-Direct Outperforms S1-TDD in Workflow Success
 
 In contrast to SWE-Bench Pro where TDD had higher resolution rate:
+
 - S1-Direct: 53.5% success
 - S1-TDD: 45.9% success
 
 This may be because:
+
 - Test generation adds complexity and potential failure points
 - Some instances lack sufficient context for meaningful test generation
 - The additional step increases escalation rate (9.6% vs 7.6%)
@@ -99,15 +102,18 @@ This may be because:
 ### 4. Primary Failure Modes
 
 **Singleshot:**
+
 - No code-aware context
 - Search string mismatches
 - Invalid JSON output format
 
 **S1 Direct:**
+
 - Analysis guard rejects hallucinated file paths
 - Patch search string mismatches (less common)
 
 **S1 TDD:**
+
 - Analysis validation failures
 - Test generation complexity
 - Additional retry rounds consume quota
@@ -115,6 +121,7 @@ This may be because:
 ## Statistical Significance
 
 With 157 instances per arm:
+
 - S1-Direct vs Singleshot: +38.9 percentage points (statistically significant)
 - S1-TDD vs Singleshot: +31.3 percentage points (statistically significant)
 - S1-Direct vs S1-TDD: +7.6 percentage points (moderate effect)
@@ -141,6 +148,7 @@ With 157 instances per arm:
 ## ISMIS 2026 Paper Integration
 
 This experiment provides data for Section 7.2 of the ISMIS 2026 paper:
+
 - Confirms hypothesis that multi-step approaches outperform singleshot
 - Provides statistical power with 157 instances (vs 30 in pilot)
 - Token usage data enables cost-benefit analysis

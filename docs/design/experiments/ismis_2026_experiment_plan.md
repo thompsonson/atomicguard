@@ -41,6 +41,7 @@ strategy selection improve outcomes, and does applying Guard-Driven Synthesis
 | refactoring   | 7     | Tertiary — report, note sample size   |
 
 **Fields used per instance:**
+
 - `problem_statement` — input to pipeline
 - `patch` — gold solution (reference only)
 - `test_patch` — test changes from the PR
@@ -115,6 +116,7 @@ artifact — final validation is always against the ground-truth FAIL_TO_PASS su
 generated patch passes all FAIL_TO_PASS tests.
 
 **Secondary:**
+
 - Pass-to-pass preservation rate (regression safety)
 - Token consumption per arm (requires capturing `response.usage` from HF API)
 - Token Efficiency Ratio: ε̂ / mean tokens consumed
@@ -377,8 +379,8 @@ a data point: the scaffold must work on the dominant category of real work.
 
 ## References
 
-- SWE-PolyBench dataset: https://huggingface.co/datasets/AmazonScience/SWE-PolyBench
-- SWE-PolyBench paper: https://arxiv.org/abs/2504.08703
-- SWE-PolyBench evaluation: https://github.com/amazon-science/SWE-PolyBench
-- Published paper: https://arxiv.org/abs/2512.20660
+- SWE-PolyBench dataset: <https://huggingface.co/datasets/AmazonScience/SWE-PolyBench>
+- SWE-PolyBench paper: <https://arxiv.org/abs/2504.08703>
+- SWE-PolyBench evaluation: <https://github.com/amazon-science/SWE-PolyBench>
+- Published paper: <https://arxiv.org/abs/2512.20660>
 - Paper outline: docs/design/paper_guards/ (The Chaos and the Scaffold)

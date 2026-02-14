@@ -83,14 +83,17 @@ Statistical comparison between arms showing effect sizes for resolution rate dif
 ### Resolved Instances by Arm
 
 **Singleshot (1 resolved):**
+
 - `ansible__ansible-395e5e20...` - Play iterator state handling
 
 **S1 Direct (3 resolved):**
+
 - `ansible__ansible-395e5e20...` - Play iterator state handling
 - `internetarchive__openlibrary-00bec1e7...` - Monitoring scheduler fix
 - `internetarchive__openlibrary-4a5d2a7d...` - Wikidata entity handling
 
 **S1 TDD (4 resolved):**
+
 - `qutebrowser__qutebrowser-f91ace96...` - Qt warning hiding
 - `qutebrowser__qutebrowser-96b99780...` - Duration parsing
 - `internetarchive__openlibrary-4a5d2a7d...` - Wikidata entity handling
@@ -99,14 +102,17 @@ Statistical comparison between arms showing effect sizes for resolution rate dif
 ### Failure Analysis
 
 **Singleshot Failures (21/30 no patch):**
+
 - Primary cause: Search string mismatches (model generates code that doesn't match actual file content)
 - Secondary cause: Invalid JSON output format
 - The singleshot approach doesn't read the actual file content before generating patches
 
 **S1 Direct Failures (2/30 no patch):**
+
 - Files not found in repository (model hallucinates file paths in analysis)
 
 **S1 TDD Failures (5/30 no patch):**
+
 - Analysis guard rejects files not found in repository
 - Test generation complexity increases failure rate
 

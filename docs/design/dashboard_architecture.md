@@ -9,11 +9,11 @@ configurations, prompt templates, and live/completed execution runs
 across multiple experiment arms and instances.
 
 **Design principles:**
+
 - Read-only — never mutates artifacts or configs
 - Zero config — point at a directory, it discovers everything
 - Real-time — watches filesystem for new artifacts during execution
 - Self-contained — single `uv run` command, no build step
-
 
 ## 1. System Architecture
 
@@ -71,7 +71,6 @@ across multiple experiment arms and instances.
        └───────────────────────────────────────────────────┘
 ```
 
-
 ## 2. Site Map
 
 ```
@@ -104,7 +103,6 @@ across multiple experiment arms and instances.
     ├── GET  /api/config/{variant}
     └── WS   /ws/dag/{exp}/{arm}/{instance}
 ```
-
 
 ## 3. Component Detail
 
@@ -242,7 +240,6 @@ class ExperimentDiscovery:
         return self.root / instance / arm
 ```
 
-
 ## 4. Where the Code Lives
 
 ```
@@ -274,11 +271,11 @@ examples/dashboard/                     ← NEW package
 ```
 
 **Why `examples/dashboard/` not `src/atomicguard/dashboard/`:**
+
 - It's a **development tool**, not core library functionality
 - Depends on FastAPI/uvicorn — shouldn't be a core dependency
 - Follows the pattern of existing `examples/gui/` tools
 - Can graduate to core if it proves essential
-
 
 ## 5. How to Run
 
@@ -300,6 +297,7 @@ uv run python -m examples.dashboard \
 ```
 
 **CLI options:**
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--artifact-dir` | (required) | Root of `artifact_dags/` directory |
@@ -314,7 +312,6 @@ experiment arms may use different prompts files. For v1 this is
 acceptable — the config viewer shows prompts for the specified file
 only. Future work could support per-arm prompts discovery by
 convention (e.g. a `prompts.json` adjacent to each workflow JSON).
-
 
 ## 6. Dependencies
 
@@ -331,7 +328,6 @@ dashboard = [
 
 `watchfiles` is a transitive dependency of `uvicorn[standard]` — no
 separate install needed.
-
 
 ## 7. Data Flow: Real-Time Update
 
@@ -353,7 +349,6 @@ Workflow Engine                    Dashboard Server                Browser
      │                                  │                            │
 ```
 
-
 ## 8. Reuse from Existing Codebase
 
 | What | From | How |
@@ -368,7 +363,6 @@ Workflow Engine                    Dashboard Server                Browser
 | Prompt loading | `examples/base/load_prompts` | Import directly |
 | Visual style | Existing CSS palette | Copy to `static/style.css` |
 
-
 ## 9. Relationship to Existing GUI Tools
 
 | Tool | Purpose | Tech | Status |
@@ -380,7 +374,6 @@ Workflow Engine                    Dashboard Server                Browser
 The dashboard is complementary: it's read-only (no execution control),
 multi-experiment (browse across arms/instances), and lightweight (no
 Gradio dependency, pure HTML+JS).
-
 
 ## 10. Implementation Order
 

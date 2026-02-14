@@ -61,6 +61,7 @@ Two sub-categories:
 #### 2a. Test Environment Issues
 
 Example from qutebrowser:
+
 ```
 E   UserWarning: PyQt5 already imported
 FAILED test_atomicguard.py::test_hide_qt_warning_filters_messages
@@ -71,6 +72,7 @@ The LLM-generated test has import order issues that cause test infrastructure wa
 #### 2b. Incorrect Semantic Patches
 
 The patch applies cleanly but doesn't actually fix the bug. Example:
+
 ```json
 {
   "patch": "... from typing import Iterator, Optional, Callable, cast, Any",
@@ -125,6 +127,7 @@ PatchGuard → LintGuard → TestGreenGuard
 ```
 
 Benefits:
+
 1. **Save time** - catch 80%+ of broken patches in <1s
 2. **Better feedback** - "missing import" vs "test failed"
 3. **Reduce Docker overhead** - only test compilable patches
