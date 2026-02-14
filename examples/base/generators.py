@@ -13,9 +13,10 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any, Generic, TypeVar
+from typing import Any
 from uuid import uuid4
 
+from examples.swe_bench_common.guards.escape_utils import detect_escape_issues
 from pydantic import BaseModel
 
 from atomicguard.domain.interfaces import GeneratorInterface
@@ -30,11 +31,8 @@ from atomicguard.domain.prompts import PromptTemplate
 
 logger = logging.getLogger(__name__)
 
-# Type variable for the output model
-OutputT = TypeVar("OutputT", bound=BaseModel)
 
-
-class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
+class PydanticAIGenerator[OutputT: BaseModel](GeneratorInterface):
     """Base generator using PydanticAI for structured output.
 
     Uses PydanticAI Agent with retries=0, allowing AtomicGuard's
@@ -78,7 +76,8 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
         provider: str = "ollama",
         timeout: float = 180.0,
         temperature: float = 0.2,
-        **kwargs: Any,
+        output_mode: str = "tool",
+        **kwargs: Any,  # noqa: ARG002
     ):
         """Initialize the PydanticAI-based generator.
 
@@ -93,6 +92,10 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
                 "huggingface", "openrouter", "openai".
             timeout: Request timeout in seconds
             temperature: Sampling temperature for generation
+            output_mode: Structured output mode. One of "tool" (default,
+                uses function calling), "prompted" (injects schema into
+                prompt, works with all models), or "native" (uses model's
+                JSON schema response format).
             **kwargs: Additional config passed to subclasses
         """
         try:
@@ -106,18 +109,62 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
         self._base_url = base_url
         self._timeout = timeout
         self._temperature = temperature
+        self._output_mode = output_mode
 
         # Create the PydanticAI model based on explicit provider selection
         ai_model = self._create_model(provider, model, base_url, api_key)
 
+        # Wrap output_type with the appropriate mode marker
+        effective_output_type = self._wrap_output_type(output_mode)
+
         # Create Agent with retries=0 - AtomicGuard handles retries
         self._agent: Agent[None, OutputT] = Agent(
             ai_model,
-            output_type=self.output_type,
+            output_type=effective_output_type,
             retries=0,  # Let AtomicGuard feedback loop handle retries
         )
 
         self._attempt_counter = 0
+
+    def _wrap_output_type(self, output_mode: str) -> Any:
+        """Wrap the output_type with the appropriate PydanticAI mode marker.
+
+        Args:
+            output_mode: One of "tool", "prompted", or "native".
+
+        Returns:
+            The output type, optionally wrapped with PromptedOutput or
+            NativeOutput for models that don't support function calling.
+
+        Raises:
+            ValueError: If output_mode is not recognised.
+        """
+        if output_mode == "tool":
+            # Default — uses function calling (ToolOutput). No wrapping
+            # needed; PydanticAI uses tool output by default.
+            return self.output_type
+
+        if output_mode == "prompted":
+            from pydantic_ai import PromptedOutput
+
+            logger.info(
+                "[%s] Using PromptedOutput mode (text-based JSON)",
+                self.__class__.__name__,
+            )
+            return PromptedOutput(self.output_type)
+
+        if output_mode == "native":
+            from pydantic_ai import NativeOutput
+
+            logger.info(
+                "[%s] Using NativeOutput mode (model JSON schema)",
+                self.__class__.__name__,
+            )
+            return NativeOutput(self.output_type)
+
+        raise ValueError(
+            f"Unknown output_mode: {output_mode!r}. Supported: tool, prompted, native"
+        )
 
     @staticmethod
     def _create_model(
@@ -344,7 +391,7 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
             )
         return template.role
 
-    def _process_output(self, output: OutputT, context: Context) -> str:
+    def _process_output(self, output: OutputT, context: Context) -> str:  # noqa: ARG002
         """Process the validated output into artifact content.
 
         Default implementation serializes to JSON. Subclasses can
@@ -382,12 +429,17 @@ class PydanticAIGenerator(GeneratorInterface, Generic[OutputT]):
         if body:
             # Include a truncated preview of what the model returned
             preview = body[:500]
-            return (
+            base = (
                 f"Output validation failed: {msg}\n"
                 f"Your response could not be parsed as a tool call. "
                 f"You must use the provided tool to structure your output.\n"
                 f"Raw response preview: {preview}"
             )
+            # Check for JSON-escaping artefacts in the body
+            escape_hint = detect_escape_issues(body)
+            if escape_hint:
+                base += f"\n\nNote: {escape_hint}"
+            return base
 
         # No body — extract details from __cause__ chain
         # (retries=0 → ToolRetryError → ValidationError)

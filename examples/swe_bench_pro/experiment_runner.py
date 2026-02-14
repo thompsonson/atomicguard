@@ -56,6 +56,7 @@ from .guards import (
     DiffReviewGuard,
     EditPlanGuard,
     FixApproachGuard,
+    FormatGuard,
     FullEvalGuard,
     ImpactGuard,
     LintGuard,
@@ -159,6 +160,7 @@ def _get_guard_registry(
         "context": ContextGuard,
         "edit_plan": EditPlanGuard,
         "fix_approach": FixApproachGuard,
+        "format": FormatGuard,
         "impact": ImpactGuard,
         "lint": LintGuard,
         "localization": LocalizationGuard,
@@ -192,6 +194,7 @@ def build_workflow(
     api_key: str = "ollama",
     provider: str = "ollama",
     instance: SWEBenchProInstance | None = None,
+    output_mode: str = "tool",
 ) -> Workflow:
     """Build a :class:`Workflow` with language-aware registries.
 
@@ -209,6 +212,8 @@ def build_workflow(
         api_key: API key for LLM provider.
         provider: LLM provider name.
         instance: SWE-Bench Pro instance (required for Docker-based guards).
+        output_mode: Structured output mode for PydanticAI generators.
+            One of "tool" (default), "prompted", or "native".
 
     Returns:
         Configured Workflow ready for execution.
@@ -260,6 +265,7 @@ def build_workflow(
                 "base_url": base_url,
                 "api_key": api_key,
                 "provider": provider,
+                "output_mode": output_mode,
             }
             # ContextReadGenerator reads files from disk — repo_root is mandatory.
             if issubclass(gen_cls, ContextReadGenerator):
@@ -626,6 +632,7 @@ class SWEBenchProRunner:
         api_key: str | None = None,
         output_dir: str = "output/swe_bench_pro",
         clone_dir: str | None = None,
+        output_mode: str = "tool",
     ):
         self._model = model
         self._provider = provider
@@ -633,6 +640,7 @@ class SWEBenchProRunner:
         self._api_key = api_key or os.environ.get("LLM_API_KEY", "")
         self._output_dir = Path(output_dir)
         self._clone_dir = Path(clone_dir) if clone_dir else None
+        self._output_mode = output_mode
 
         if not self._api_key:
             logger.warning("LLM_API_KEY not set. API calls will fail.")
@@ -675,6 +683,7 @@ class SWEBenchProRunner:
                 api_key=self._api_key,
                 provider=self._provider,
                 instance=instance,
+                output_mode=self._output_mode,
             )
 
             repo_files = _list_repo_files(
