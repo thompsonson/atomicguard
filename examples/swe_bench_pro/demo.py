@@ -184,6 +184,7 @@ _ARM_MAP = {
     "s1_tdd_verified": "05_s1_tdd_verified",
     "s1_tdd_behavior": "06_s1_tdd_behavior",
     "s1_decomposed": "07_s1_decomposed",
+    "s1_decomposed_lite": "08_s1_decomposed_lite",
     # LLM-as-reviewer and backtracking arms
     "s1_tdd_review": "17_s1_tdd_review",
     "s1_tdd_review_backtrack": "18_s1_tdd_review_backtrack",

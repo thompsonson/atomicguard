@@ -54,6 +54,7 @@ def create_app(
 
     app.state.experiments = experiments
     app.state.discoveries = discoveries
+    app.state.output_dir = output_dir
     app.state.config_loader = ConfigLoader(workflows_dir, prompts_path)
 
     # Jinja2 templates

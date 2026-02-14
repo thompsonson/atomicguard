@@ -339,6 +339,7 @@ th.sticky-col {
 .badge-success, .status-SUCCESS { background: #d1fae5; color: #065f46; }
 .badge-mixed { background: #fef3c7; color: #92400e; }
 .badge-pending, .status-IN_PROGRESS { background: #fef3c7; color: #92400e; }
+.badge-failed { background: #fee2e2; color: #991b1b; }
 .badge-error, .status-FAILED { background: #fee2e2; color: #991b1b; }
 .badge-empty { background: #f3f4f6; color: #9ca3af; }
 .status-EMPTY { background: #f3f4f6; color: #6b7280; }

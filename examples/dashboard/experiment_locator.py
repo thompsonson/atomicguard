@@ -19,6 +19,8 @@ class ExperimentEntry:
     arm_count: int = 0
     total_dags: int = 0
     completed_count: int = 0
+    failed_count: int = 0
+    error_count: int = 0
     elapsed_seconds: float | None = None
     modified_at: datetime | None = None
     notes_path: Path | None = None
@@ -121,6 +123,26 @@ class ExperimentLocator:
                         "completed_count", entry.completed_count
                     )
                     entry.elapsed_seconds = data.get("elapsed_seconds")
+
+                    # Extract failure stats from per-arm data
+                    arms = data.get("arms", {})
+                    if arms:
+                        entry.arm_count = entry.arm_count or len(arms)
+                        entry.failed_count = sum(
+                            sum(a.get("failed_by_guard", {}).values())
+                            for a in arms.values()
+                        )
+                        entry.error_count = sum(
+                            a.get("errors", 0) for a in arms.values()
+                        )
+                        entry.completed_count = sum(
+                            a.get("eval_resolved", 0) for a in arms.values()
+                        )
+                        entry.total_dags = sum(a.get("total", 0) for a in arms.values())
+                        entry.instance_count = entry.instance_count or max(
+                            (a.get("total", 0) for a in arms.values()),
+                            default=0,
+                        )
                     return
                 except (json.JSONDecodeError, OSError):
                     pass

@@ -8,6 +8,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from ..discovery import ExperimentDiscovery
+from ..experiment_locator import ExperimentLocator
+
 router = APIRouter()
 
 
@@ -24,6 +27,20 @@ def _ctx(request: Request, slug: str | None = None) -> dict[str, Any]:
         if entry:
             ctx["experiment_name"] = entry.display_name
     return ctx
+
+
+def _rescan_experiments(request: Request) -> None:
+    """Merge newly discovered experiments into app state."""
+    output_dir = getattr(request.app.state, "output_dir", None)
+    if not output_dir or not output_dir.is_dir():
+        return
+    locator = ExperimentLocator(output_dir)
+    for entry in locator.discover():
+        if entry.slug not in request.app.state.experiments:
+            request.app.state.experiments[entry.slug] = entry
+            request.app.state.discoveries[entry.slug] = ExperimentDiscovery(
+                entry.artifact_dags_path
+            )
 
 
 def _get_discovery(request: Request, slug: str):
@@ -48,6 +65,7 @@ def _get_experiment(request: Request, slug: str):
 @router.get("/", response_class=HTMLResponse)
 async def experiment_list(request: Request) -> HTMLResponse:
     """Home page: list all discovered experiments."""
+    _rescan_experiments(request)
     experiments = sorted(
         request.app.state.experiments.values(),
         key=lambda e: (e.modified_at is not None, e.modified_at),
@@ -93,10 +111,10 @@ async def experiment_detail(request: Request, slug: str) -> HTMLResponse:
                     ]
                     has_accepted = any(s == "accepted" for s in statuses)
                     has_rejected = any(s == "rejected" for s in statuses)
-                    if has_accepted and not has_rejected:
-                        status = "success"
+                    if has_accepted:
+                        status = "mixed" if has_rejected else "success"
                     elif has_rejected:
-                        status = "mixed"
+                        status = "failed"
                     else:
                         status = "pending"
                     row["arms"][arm] = {

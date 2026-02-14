@@ -23,6 +23,8 @@
                 <th>Arms</th>
                 <th>Total DAGs</th>
                 <th>Completed</th>
+                <th>Failed</th>
+                <th>Errors</th>
                 <th>Modified</th>
             </tr>
         </thead>
@@ -36,6 +38,8 @@
                 <td>{{ exp.arm_count }}</td>
                 <td>{{ exp.total_dags }}</td>
                 <td>{{ exp.completed_count }}</td>
+                <td>{{ exp.failed_count }}</td>
+                <td>{{ exp.error_count }}</td>
                 <td class="timestamp-cell">
                     {% if exp.modified_at %}
                     <time datetime="{{ exp.modified_at.isoformat() }}" title="{{ exp.modified_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}">
