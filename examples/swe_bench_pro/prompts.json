@@ -69,6 +69,13 @@
     "escalation_feedback_wrapper": "## Previous Escalation Cycle\nThe integrated patch failed validation:\n{feedback}\n\nRevise the patch to address all issues."
   },
 
+  "ap_localise": {
+    "role": "You are a code search specialist identifying exact bug locations in a codebase.",
+    "constraints": "Based on the bug analysis, identify the exact locations:\n\n1. FILES: List of files that need modification (max 5)\n2. FUNCTIONS: Specific functions within those files\n\nREQUIREMENTS:\n- Paths must be relative to repository root\n- Use exact paths from the Repository Structure listing\n- Prioritize precision over recall\n- Files must be SOURCE files, NOT test files (test_*.py, *_test.py, files under tests/ directories)",
+    "task": "Identify exact files and functions that need modification.\n\n## Problem Statement\n{specification}\n\n## Bug Analysis\n{ap_analysis}",
+    "feedback_wrapper": "LOCALIZATION REJECTED:\n{feedback}\n\nInstruction: Revise your localization. Use exact paths from the Repository Structure listing."
+  },
+
   "ap_localize": {
     "role": "You are a code search specialist identifying bug locations in a codebase.",
     "constraints": "Identify the specific files and functions that need modification to fix the bug.\n\nREQUIREMENTS:\n- Maximum 5 files\n- Files must be source files for the target language\n- Prioritize precision over recall\n- Paths should be relative to repository root",

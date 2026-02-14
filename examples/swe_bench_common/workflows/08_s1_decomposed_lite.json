@@ -1,0 +1,44 @@
+{
+  "name": "S1 Decomposed Lite",
+  "description": "Trimmed decomposed workflow: analysis, localization, fix approach, test generation, then patch (5 action pairs, rmax=3). Retains the key decomposition value of 07_s1_decomposed without fragile steps (ImpactAnalysis, EditPlan, IntegratePatch). Each step adds genuine reasoning structure.",
+  "rmax": 3,
+  "action_pairs": {
+    "ap_analysis": {
+      "generator": "AnalysisGenerator",
+      "guard": "analysis",
+      "guard_config": {},
+      "description": "Analyze the bug: classify type, identify root cause, list affected files"
+    },
+    "ap_localise": {
+      "generator": "LocalizationGenerator",
+      "guard": "localization",
+      "requires": ["ap_analysis"],
+      "description": "Locate exact files and functions that need modification"
+    },
+    "ap_fix_approach": {
+      "generator": "FixApproachGenerator",
+      "guard": "fix_approach",
+      "requires": ["ap_analysis", "ap_localise"],
+      "description": "Design the fix strategy with ordered steps and edge cases"
+    },
+    "ap_gen_test": {
+      "generator": "TestGenerator",
+      "guard": "composite",
+      "guards": ["format", "test_syntax"],
+      "guard_config": {},
+      "requires": ["ap_analysis", "ap_fix_approach"],
+      "description": "Write a failing test that reproduces the bug"
+    },
+    "ap_gen_patch": {
+      "generator": "PatchGenerator",
+      "guard": "composite",
+      "guards": ["format", "patch"],
+      "guard_config": {
+        "require_git_apply": false,
+        "require_syntax_valid": true
+      },
+      "requires": ["ap_analysis", "ap_localise", "ap_fix_approach", "ap_gen_test"],
+      "description": "Generate patch guided by analysis, localization, fix approach, and test"
+    }
+  }
+}
