@@ -233,6 +233,7 @@ Pass a `watch` parameter through to `run_all()`. When enabled, wrap the executio
 In `SWEBenchProRunner.run_all()`, add `watch: bool = False` parameter.
 
 When `watch=True` and `max_workers == 1` (sequential):
+
 ```python
 if watch:
     from rich.live import Live
@@ -247,6 +248,7 @@ else:
 ```
 
 When `watch=True` and `max_workers > 1` (parallel), add periodic table refresh:
+
 ```python
 if watch:
     from rich.live import Live
@@ -313,6 +315,7 @@ Currently `analyze_final_errors()` auto-detects the `traces/` directory. To supp
 **File**: `examples/swe_bench_pro/final_error_analysis.py`
 
 Update `analyze_final_errors()`:
+
 ```python
 def analyze_final_errors(
     results_path: str | Path,

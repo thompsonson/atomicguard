@@ -243,20 +243,24 @@ def watch_results(output_dir: Path, callback: Callable, interval: float = 2.0) -
 Tabbed view for the selected instance+arm:
 
 **Trace tab** (default):
+
 - Chronological table of workflow events
 - Color-coded by event type (green=pass, red=fail, yellow=stagnation, magenta=escalate)
 - Expandable escalation details (targets, invalidated steps, failure summary)
 
 **Patch tab**:
+
 - Syntax-highlighted unified diff of the generated patch
 - Shows "No patch" if workflow failed before patch generation
 
 **Error tab**:
+
 - Full guard feedback from the last failed attempt
 - All retry attempts with guard feedback
 - Escalation history if applicable
 
 **Artifact tab**:
+
 - Raw artifact content for each completed step
 - JSON viewer for structured artifacts (analysis, localization)
 
@@ -330,12 +334,14 @@ if __name__ == "__main__":
 ## Implementation Phases
 
 ### Phase 1: Package scaffold + data layer
+
 1. Create `viewer/` directory structure and `pyproject.toml`
 2. Implement `data.py` with `load_results()`, `load_trace()`, `compute_arm_summaries()`
 3. Implement `__main__.py` entry point
 4. Verify: `pip install -e ./viewer && agviewer --help`
 
 ### Phase 2: Basic TUI with arm + instance panels
+
 1. Create `app.py` with 3-panel layout using Textual
 2. Implement `arm_list.py` — selectable list with progress bars
 3. Implement `instance_list.py` — filtered by arm, status icons
@@ -343,12 +349,14 @@ if __name__ == "__main__":
 5. Verify: navigate between arms and instances
 
 ### Phase 3: Detail panel tabs
+
 1. Add Trace tab — workflow event table with color coding
 2. Add Patch tab — syntax-highlighted diff display
 3. Add Error tab — guard feedback and retry history
 4. Add Artifact tab — raw artifact content viewer
 
 ### Phase 4: File watching + polish
+
 1. Add `watch_results()` to data layer
 2. Wire file watching into Textual app (periodic refresh)
 3. Add keyboard shortcuts, search/filter
@@ -365,6 +373,7 @@ cd viewer && python -m pytest tests/ -v
 ```
 
 Tests should cover:
+
 - `load_results()` parsing of results.jsonl
 - `load_trace()` parsing of event JSONL
 - `compute_arm_summaries()` aggregation
@@ -377,10 +386,12 @@ Create test fixtures from actual experiment output (anonymized if needed).
 ## Dependencies
 
 **atomicguard-viewer only:**
+
 - `textual>=0.50.0` — TUI framework
 - `rich>=13.0.0` — Terminal rendering (Textual dependency, also used standalone)
 
 **NOT required:**
+
 - `atomicguard` — viewer reads raw files, no library import needed
 - `click` — uses argparse for simplicity
 - `matplotlib`, `pydantic-ai`, etc. — none of the core deps
