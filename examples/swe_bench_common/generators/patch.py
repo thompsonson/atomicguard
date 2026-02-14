@@ -14,11 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
+from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
 from atomicguard.domain.models import Artifact, Context
 from atomicguard.domain.prompts import PromptTemplate
-
-from examples.swe_bench_common.models import Patch, SearchReplaceEdit
 
 logger = logging.getLogger("swe_bench_ablation.generators")
 
@@ -121,7 +120,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 parts.append(f"\n### {file_path}\n```{tag}\n{content}\n```")
 
         if file_errors:
-            parts.append(f"\n\n## File Errors\n" + "\n".join(file_errors))
+            parts.append("\n\n## File Errors\n" + "\n".join(file_errors))
 
         # Add search string rules
         parts.append(self._get_search_string_rules())
@@ -151,7 +150,7 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
         if json_match:
             files_str = json_match.group(1)
             for part in files_str.split(","):
-                part = part.strip().strip('"\'')
+                part = part.strip().strip("\"'")
                 if part.endswith(".py"):
                     paths.append(part)
 
@@ -223,12 +222,12 @@ class PatchGenerator(PydanticAIGenerator[Patch]):
                 rel_path = str((dirpath / fname).relative_to(root))
                 path_lower = rel_path.lower()
                 # Check if any utility pattern is in the path
-                if any(pattern in path_lower for pattern in utility_patterns):
-                    # Exclude test files
-                    if not self._is_test_file(rel_path):
-                        found.append(rel_path)
-                        if len(found) >= max_files:
-                            return found
+                if any(
+                    pattern in path_lower for pattern in utility_patterns
+                ) and not self._is_test_file(rel_path):
+                    found.append(rel_path)
+                    if len(found) >= max_files:
+                        return found
         return found
 
     def _extract_function_signatures(
@@ -425,8 +424,12 @@ If the code you need to modify isn't shown above, the patch cannot succeed.
             )
 
             # Extract error message
-            error_match = re.search(r"File .+ exceeding limit of .+ Cannot proceed[^.]*\.", prompt)
-            error_msg = error_match.group(0) if error_match else "File size limit exceeded"
+            error_match = re.search(
+                r"File .+ exceeding limit of .+ Cannot proceed[^.]*\.", prompt
+            )
+            error_msg = (
+                error_match.group(0) if error_match else "File size limit exceeded"
+            )
 
             context_snapshot = ContextSnapshot(
                 workflow_id=workflow_id,

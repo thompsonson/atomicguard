@@ -8,10 +8,10 @@ import json
 import logging
 from typing import Any
 
+from examples.swe_bench_common.models import ImpactAnalysis
+
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-
-from examples.swe_bench_common.models import ImpactAnalysis
 
 logger = logging.getLogger("swe_bench_ablation.guards")
 
@@ -46,9 +46,7 @@ class ImpactGuard(GuardInterface):
         Returns:
             GuardResult with pass/fail and feedback
         """
-        logger.info(
-            "[ImpactGuard] Validating artifact %s...", artifact.artifact_id[:8]
-        )
+        logger.info("[ImpactGuard] Validating artifact %s...", artifact.artifact_id[:8])
 
         try:
             data = json.loads(artifact.content)

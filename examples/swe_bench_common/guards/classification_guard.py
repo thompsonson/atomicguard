@@ -11,10 +11,10 @@ import json
 import logging
 from typing import Any
 
+from examples.swe_bench_common.models import ProblemClassification
+
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-
-from examples.swe_bench_common.models import ProblemClassification
 
 logger = logging.getLogger("swe_bench_ablation.guards")
 

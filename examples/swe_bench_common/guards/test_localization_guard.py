@@ -10,10 +10,10 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+from examples.swe_bench_common.models import TestLocalization
+
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-
-from examples.swe_bench_common.models import TestLocalization
 
 logger = logging.getLogger("swe_bench_ablation.guards")
 
@@ -167,7 +167,8 @@ class TestLocalizationGuard(GuardInterface):
 
             # Check test invocation paths exist
             invocation_errors = self._validate_invocation_paths(
-                loc.test_invocation, repo_path,
+                loc.test_invocation,
+                repo_path,
                 proposed_test_file=loc.proposed_test_file,
             )
             errors.extend(invocation_errors)
@@ -183,9 +184,7 @@ class TestLocalizationGuard(GuardInterface):
 
         # Build feedback string
         if loc.proposed_test_file:
-            file_summary = (
-                f"{len(loc.test_files)} existing + 1 proposed test file"
-            )
+            file_summary = f"{len(loc.test_files)} existing + 1 proposed test file"
         else:
             file_summary = f"{len(loc.test_files)} test files"
         feedback = (

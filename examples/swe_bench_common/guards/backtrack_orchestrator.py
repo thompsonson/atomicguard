@@ -52,7 +52,7 @@ class BacktrackState:
 
 
 def rule_based_heuristic(
-    step_id: str,
+    step_id: str,  # noqa: ARG001
     guard_result: GuardResult,
     retry_count: int,
     history: list[GuardResult],

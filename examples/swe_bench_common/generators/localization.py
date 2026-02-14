@@ -7,7 +7,6 @@ and identify which files and functions need modification to fix the bug.
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
-
 from examples.swe_bench_common.models import Localization
 
 

@@ -14,7 +14,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-
 # =============================================================================
 # Experiment Result Tracking
 # =============================================================================
@@ -316,9 +315,7 @@ class FileEdit(BaseModel):
     """A planned edit to a single file (part of EditPlan)."""
 
     file: str = Field(description="File path relative to repo root")
-    change_description: str = Field(
-        description="What needs to change in this file"
-    )
+    change_description: str = Field(description="What needs to change in this file")
     functions_to_modify: list[str] = Field(
         default_factory=list,
         description="Functions that will be modified in this file",

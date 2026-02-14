@@ -7,7 +7,6 @@ by specifying which files and functions to modify with descriptions.
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
-
 from examples.swe_bench_common.models import EditPlan
 
 

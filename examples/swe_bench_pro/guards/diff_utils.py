@@ -4,6 +4,7 @@ Provides functions to regenerate unified diffs from validated search/replace
 edits, ensuring patches always apply cleanly.
 """
 
+import contextlib
 import logging
 import shutil
 import subprocess
@@ -139,7 +140,5 @@ def regenerate_diff_from_edits(
     finally:
         # Clean up temp directory
         if temp_dir:
-            try:
+            with contextlib.suppress(Exception):
                 shutil.rmtree(temp_dir)
-            except Exception:
-                pass

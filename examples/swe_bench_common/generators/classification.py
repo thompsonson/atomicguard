@@ -10,7 +10,6 @@ Used by: ap_classify_problem in Arms 20, 21
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
-
 from examples.swe_bench_common.models import ProblemClassification
 
 

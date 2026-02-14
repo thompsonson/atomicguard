@@ -11,11 +11,10 @@ Used by: ap_generate_workflow in Arms 20, 21
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
+from examples.swe_bench_common.models import GeneratedWorkflow
 
 from atomicguard.domain.models import Context
 from atomicguard.domain.prompts import PromptTemplate
-
-from examples.swe_bench_common.models import GeneratedWorkflow
 
 
 class WorkflowGenerator(PydanticAIGenerator[GeneratedWorkflow]):

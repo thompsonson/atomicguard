@@ -101,11 +101,14 @@ class PatchGuard(GuardInterface):
         apply_errors: list[str] = []
 
         # Check for identical search/replace edits (no-op)
-        if edits and not patch_content:
-            if all(edit.get("search", "") == edit.get("replace", "") for edit in edits):
-                edit_errors.append(
-                    "All edits have identical search and replace strings (no actual changes)"
-                )
+        if (
+            edits
+            and not patch_content
+            and all(edit.get("search", "") == edit.get("replace", "") for edit in edits)
+        ):
+            edit_errors.append(
+                "All edits have identical search and replace strings (no actual changes)"
+            )
 
         # Check that all edited files exist in the repo
         if edits and self._repo_root:

@@ -5,6 +5,7 @@ Runs the complete SWE-Bench Pro evaluation suite to verify:
 - PASS_TO_PASS tests still pass (no regressions)
 """
 
+import contextlib
 import json
 import logging
 import subprocess
@@ -36,7 +37,7 @@ class FullEvalGuard(GuardInterface):
         dockerhub_username: str = "jefzda",
         timeout_seconds: int = 1800,  # 30 minutes for full eval
         cache_dir: str = "~/.cache/swe_bench_pro",
-        **kwargs,
+        **kwargs,  # noqa: ARG002
     ):
         """Initialize the full eval guard.
 
@@ -57,7 +58,7 @@ class FullEvalGuard(GuardInterface):
             dockerhub_username=dockerhub_username,
         )
 
-    def validate(self, artifact: Artifact, **deps: Artifact) -> GuardResult:
+    def validate(self, artifact: Artifact, **deps: Artifact) -> GuardResult:  # noqa: ARG002
         """Run full evaluation on the patch.
 
         Args:
@@ -138,10 +139,8 @@ class FullEvalGuard(GuardInterface):
             result = self._run_evaluation(eval_repo, pred_path)
             return result
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 pred_path.unlink()
-            except OSError:
-                pass
 
     def _run_evaluation(
         self,

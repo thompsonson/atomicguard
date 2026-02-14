@@ -10,7 +10,6 @@ Used by: ap_diff_review in Arms 17, 18
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
-
 from examples.swe_bench_common.models import DiffReview
 
 

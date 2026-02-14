@@ -10,10 +10,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from examples.swe_bench_common.models import Localization
+
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-
-from examples.swe_bench_common.models import Localization
 
 logger = logging.getLogger("swe_bench_ablation.guards")
 

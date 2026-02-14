@@ -7,7 +7,6 @@ and localization to design a concrete fix approach.
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
-
 from examples.swe_bench_common.models import FixApproach
 
 

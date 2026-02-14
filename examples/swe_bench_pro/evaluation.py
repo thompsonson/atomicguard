@@ -11,11 +11,11 @@ import logging
 import subprocess
 from pathlib import Path
 
+from examples.swe_bench_common import ArmResult
 from examples.swe_bench_common.evaluation import (
     EvalResult,
     write_eval_logs,
 )
-from examples.swe_bench_common import ArmResult
 
 logger = logging.getLogger("swe_bench_pro.evaluation")
 

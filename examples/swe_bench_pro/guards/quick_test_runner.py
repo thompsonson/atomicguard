@@ -5,6 +5,7 @@ Runs a single generated test in a Docker container to verify:
 - Test PASSES after patch applied (TDD green phase)
 """
 
+import contextlib
 import logging
 import subprocess
 import tempfile
@@ -305,10 +306,8 @@ class QuickTestRunner:
 
         finally:
             # Clean up temp file
-            try:
+            with contextlib.suppress(OSError):
                 Path(script_path).unlink()
-            except OSError:
-                pass
 
     def check_image_available(self) -> bool:
         """Check if the Docker image is available locally.

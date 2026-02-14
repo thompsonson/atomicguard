@@ -30,7 +30,7 @@ class TestRedGuard(GuardInterface):
         instance: SWEBenchProInstance,
         dockerhub_username: str = "jefzda",
         timeout_seconds: int = 300,
-        **kwargs,
+        **kwargs,  # noqa: ARG002
     ):
         """Initialize the red guard.
 
@@ -47,7 +47,7 @@ class TestRedGuard(GuardInterface):
             timeout_seconds=timeout_seconds,
         )
 
-    def validate(self, artifact: Artifact, **deps: Artifact) -> GuardResult:
+    def validate(self, artifact: Artifact, **deps: Artifact) -> GuardResult:  # noqa: ARG002
         """Validate that the test fails on buggy code.
 
         Args:

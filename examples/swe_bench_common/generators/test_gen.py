@@ -9,10 +9,9 @@ consume it directly.
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
+from examples.swe_bench_common.models import GeneratedTest
 
 from atomicguard.domain.models import Context
-
-from examples.swe_bench_common.models import GeneratedTest
 
 
 class TestGenerator(PydanticAIGenerator[GeneratedTest]):
@@ -31,6 +30,6 @@ class TestGenerator(PydanticAIGenerator[GeneratedTest]):
         kwargs.setdefault("temperature", 0.3)
         super().__init__(**kwargs)
 
-    def _process_output(self, output: GeneratedTest, context: Context) -> str:
+    def _process_output(self, output: GeneratedTest, context: Context) -> str:  # noqa: ARG002
         """Return raw test code so guards and downstream generators can consume it directly."""
         return output.test_code

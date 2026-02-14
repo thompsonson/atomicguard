@@ -10,6 +10,7 @@ what improvements would help progress.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -342,16 +343,12 @@ def compute_experiment_overview(
             for line in f:
                 line = line.strip()
                 if line:
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError):
                         all_results.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
 
     # Compute basic stats
-    arms = sorted(set(r.get("arm", "") for r in all_results if r.get("arm")))
-    instances = set(
-        r.get("instance_id", "") for r in all_results if r.get("instance_id")
-    )
+    arms = sorted({r.get("arm", "") for r in all_results if r.get("arm")})
+    instances = {r.get("instance_id", "") for r in all_results if r.get("instance_id")}
 
     successful = sum(1 for r in all_results if not r.get("failed_step"))
     failed = sum(1 for r in all_results if r.get("failed_step"))

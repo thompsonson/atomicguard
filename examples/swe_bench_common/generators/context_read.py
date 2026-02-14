@@ -13,6 +13,8 @@ from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
+from examples.swe_bench_common.models import ContextSummary, Localization
+
 from atomicguard.domain.interfaces import GeneratorInterface
 from atomicguard.domain.models import (
     Artifact,
@@ -22,8 +24,6 @@ from atomicguard.domain.models import (
     FeedbackEntry,
 )
 from atomicguard.domain.prompts import PromptTemplate
-
-from examples.swe_bench_common.models import ContextSummary, Localization
 
 logger = logging.getLogger("swe_bench_common.generators.context_read")
 
@@ -193,7 +193,9 @@ class ContextReadGenerator(GeneratorInterface):
         """Extract import statements from file contents."""
         imports: list[str] = []
         seen: set[str] = set()
-        pattern = re.compile(r"^(?:from\s+\S+\s+import\s+.+|import\s+.+)$", re.MULTILINE)
+        pattern = re.compile(
+            r"^(?:from\s+\S+\s+import\s+.+|import\s+.+)$", re.MULTILINE
+        )
         for content in file_contents.values():
             for match in pattern.findall(content):
                 line = match.strip()

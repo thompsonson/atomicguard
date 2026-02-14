@@ -8,10 +8,10 @@ import json
 import logging
 from typing import Any
 
+from examples.swe_bench_common.models import FixApproach
+
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-
-from examples.swe_bench_common.models import FixApproach
 
 logger = logging.getLogger("swe_bench_ablation.guards")
 
@@ -85,9 +85,7 @@ class FixApproachGuard(GuardInterface):
             errors.append("reasoning is empty")
 
         if not fix_approach.steps:
-            errors.append(
-                "No fix steps defined. Must provide at least one step."
-            )
+            errors.append("No fix steps defined. Must provide at least one step.")
 
         if not fix_approach.files_to_modify:
             errors.append(

@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 class AlwaysPassGuard(GuardInterface):
     """Guard that always passes - used for the spec step."""
 
-    def validate(self, artifact: Artifact, **dependencies: Artifact) -> GuardResult:
+    def validate(self, artifact: Artifact, **dependencies: Artifact) -> GuardResult:  # noqa: ARG002
         """Always pass validation."""
         return GuardResult(passed=True, feedback="", guard_name="AlwaysPassGuard")
 
@@ -71,10 +71,15 @@ class RequiresEdgeCaseGuard(GuardInterface):
 
         # Check if spec dependency mentions edge cases
         spec_artifact = dependencies.get("spec")
-        spec_has_edge_cases = spec_artifact and "edge case" in spec_artifact.content.lower()
+        spec_has_edge_cases = (
+            spec_artifact and "edge case" in spec_artifact.content.lower()
+        )
 
         # Check if impl mentions edge case handling
-        impl_has_edge_handling = "edge case" in artifact.content.lower() or "none" in artifact.content.lower()
+        impl_has_edge_handling = (
+            "edge case" in artifact.content.lower()
+            or "none" in artifact.content.lower()
+        )
 
         logger.info(
             "[RequiresEdgeCaseGuard] Call %d: spec_has_edge_cases=%s, impl_has_edge_handling=%s",
@@ -273,7 +278,9 @@ def main() -> None:
                 escalation_info = " [has escalation_feedback]"
             feedback_info = ""
             if art.context.feedback_history:
-                feedback_info = f" [feedback_history: {len(art.context.feedback_history)}]"
+                feedback_info = (
+                    f" [feedback_history: {len(art.context.feedback_history)}]"
+                )
             status_symbol = "PASS" if art.status.value == "accepted" else "FAIL"
             print(
                 f"  {i}. [{art.action_pair_id:4}] attempt={art.attempt_number} "
@@ -296,12 +303,12 @@ def main() -> None:
 """)
 
     elif result.status == WorkflowStatus.ESCALATION:
-        print(f"\n=== ESCALATION (Human intervention needed) ===")
+        print("\n=== ESCALATION (Human intervention needed) ===")
         print(f"Failed step: {result.failed_step}")
         print(f"Feedback: {result.escalation_feedback}")
 
     else:
-        print(f"\n=== FAILED ===")
+        print("\n=== FAILED ===")
         print(f"Failed step: {result.failed_step}")
 
     # Export HTML visualization
@@ -313,7 +320,9 @@ def main() -> None:
     all_artifacts = dag.get_all()
     if all_artifacts:
         workflow_id = all_artifacts[0].workflow_id
-        output_path = export_workflow_html(dag, workflow_id, "workflow_visualization.html")
+        output_path = export_workflow_html(
+            dag, workflow_id, "workflow_visualization.html"
+        )
         print(f"\nVisualization exported to: {output_path}")
         print("Open this file in a browser to explore the workflow DAG interactively.")
 

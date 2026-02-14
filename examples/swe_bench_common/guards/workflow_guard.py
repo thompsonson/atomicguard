@@ -11,10 +11,10 @@ import json
 import logging
 from typing import Any
 
+from examples.swe_bench_common.models import GeneratedWorkflow
+
 from atomicguard.domain.interfaces import GuardInterface
 from atomicguard.domain.models import Artifact, GuardResult
-
-from examples.swe_bench_common.models import GeneratedWorkflow
 
 logger = logging.getLogger("swe_bench_ablation.guards")
 
@@ -184,7 +184,6 @@ class WorkflowGuard(GuardInterface):
                         return True
                 elif neighbor in rec_stack:
                     # Found cycle - return path from neighbor to current
-                    cycle_start = path.index(neighbor)
                     path.append(neighbor)  # Complete the cycle
                     return True
 
@@ -193,8 +192,7 @@ class WorkflowGuard(GuardInterface):
             return False
 
         for node in graph:
-            if node not in visited:
-                if dfs(node):
-                    return path
+            if node not in visited and dfs(node):
+                return path
 
         return None

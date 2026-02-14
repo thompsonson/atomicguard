@@ -81,7 +81,7 @@ class TestGreenGuard(GuardInterface):
         dockerhub_username: str = "jefzda",
         timeout_seconds: int = 300,
         repo_root: str | None = None,
-        **kwargs,
+        **kwargs,  # noqa: ARG002
     ):
         """Initialize the green guard.
 

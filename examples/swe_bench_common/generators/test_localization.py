@@ -7,7 +7,6 @@ to guide test generation in the appropriate style.
 from typing import Any
 
 from examples.base.generators import PydanticAIGenerator
-
 from examples.swe_bench_common.models import TestLocalization
 
 
